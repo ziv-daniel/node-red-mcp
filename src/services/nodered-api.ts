@@ -1,0 +1,567 @@
+/**
+ * Node-RED Admin API client service
+ */
+
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import {
+  NodeRedFlow,
+  NodeRedNode,
+  NodeRedNodeType,
+  NodeRedSettings,
+  NodeRedRuntimeInfo,
+  NodeRedFlowStatus,
+  NodeRedDeploymentOptions,
+  NodeRedAPIError
+} from '../types/nodered.js';
+import { getNodeRedAuthHeader } from '../utils/auth.js';
+import { handleNodeRedError } from '../utils/error-handling.js';
+
+export interface NodeRedAPIConfig {
+  baseURL: string;
+  timeout: number;
+  retries: number;
+  headers?: Record<string, string>;
+}
+
+export class NodeRedAPIClient {
+  private client: AxiosInstance;
+  private config: NodeRedAPIConfig;
+
+  constructor(config: Partial<NodeRedAPIConfig> = {}) {
+    this.config = {
+      baseURL: process.env.NODERED_URL || 'http://localhost:1880',
+      timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
+      retries: parseInt(process.env.NODERED_RETRIES || '3'),
+      ...config
+    };
+
+    this.client = axios.create({
+      baseURL: this.config.baseURL,
+      timeout: this.config.timeout,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getNodeRedAuthHeader(),
+        ...this.config.headers
+      }
+    });
+
+    this.setupInterceptors();
+  }
+  /**
+   * Validate that response contains JSON, not HTML
+   */
+  private validateJsonResponse(response: any, endpoint: string): void {
+    const contentType = response.headers['content-type'] || '';
+    const data = response.data;
+    
+    // Check if content-type indicates HTML
+    if (contentType.includes('text/html')) {
+      throw new Error(`Node-RED returned HTML instead of JSON for ${endpoint}. This usually indicates an authentication redirect or wrong endpoint. Content-Type: ${contentType}`);
+    }
+    
+    // Check if data looks like HTML (starts with common HTML indicators)
+    if (typeof data === 'string' && (
+      data.trim().startsWith('<!DOCTYPE') ||
+      data.trim().startsWith('<html') ||
+      data.trim().startsWith('Node-RED') ||
+      data.includes('<title>')
+    )) {
+      const preview = data.length > 100 ? data.substring(0, 100) + '...' : data;
+      throw new Error(`Node-RED returned HTML content instead of JSON for ${endpoint}. This usually indicates an authentication issue or wrong endpoint. Response preview: ${preview}`);
+    }
+  }
+
+  /**
+   * Setup axios interceptors for retries and error handling
+   */
+  private setupInterceptors(): void {    // Request interceptor for logging
+    this.client.interceptors.request.use(
+      (config) => {
+        // Silent request logging to avoid stdio interference
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );// Response interceptor for validation and retry logic
+    this.client.interceptors.response.use(
+      (response) => {
+        // Skip validation for root endpoint (which returns HTML by design)
+        if (!response.config.url?.endsWith('/')) {
+          try {
+            this.validateJsonResponse(response, response.config.url || 'unknown');          } catch (validationError: any) {
+            // Silent validation warning to avoid stdio interference
+            // For HTML responses on API endpoints, we'll retry once more
+            const config = response.config as any;
+            if (config._htmlRetryCount < 1) {
+              config._htmlRetryCount = (config._htmlRetryCount || 0) + 1;
+              // Small delay before retry
+              setTimeout(() => {}, 500);
+              return this.client(response.config);
+            } else {
+              // If we still get HTML after retry, throw the validation error
+              throw validationError;
+            }
+          }
+        }
+        return response;
+      },
+      async (error) => {
+        const config = error.config;
+        
+        if (!config._retry && config._retryCount < this.config.retries) {
+          config._retry = true;
+          config._retryCount = (config._retryCount || 0) + 1;
+          
+          // Exponential backoff
+          const delay = Math.pow(2, config._retryCount) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          return this.client(config);
+        }
+        
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  /**
+   * Test connection to Node-RED
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.client.get('/');
+      return true;
+    } catch (error) {
+      console.error('Node-RED connection test failed:', error);
+      return false;
+    }
+  }
+
+  // === Flow Management ===
+  /**
+   * Get all flows
+   */  async getFlows(): Promise<NodeRedFlow[]> {
+    try {
+      const response = await this.client.get('/flows');
+      
+      // Additional validation for the flows response
+      if (!Array.isArray(response.data)) {
+        if (typeof response.data === 'string' && response.data.includes('Node-RED')) {
+          throw new Error('Node-RED returned HTML content instead of flow data. Check authentication and endpoint configuration.');
+        }
+      }
+      
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getFlows');
+    }
+  }
+
+  /**
+   * Get specific flow by ID
+   */
+  async getFlow(flowId: string): Promise<NodeRedFlow> {
+    try {
+      const response = await this.client.get(`/flow/${flowId}`);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `getFlow(${flowId})`);
+    }
+  }
+
+  /**
+   * Create new flow
+   */
+  async createFlow(flowData: Partial<NodeRedFlow>): Promise<NodeRedFlow> {
+    try {
+      const response = await this.client.post('/flow', flowData);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'createFlow');
+    }
+  }
+
+  /**
+   * Update existing flow
+   */
+  async updateFlow(flowId: string, flowData: Partial<NodeRedFlow>): Promise<NodeRedFlow> {
+    try {
+      const response = await this.client.put(`/flow/${flowId}`, flowData);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `updateFlow(${flowId})`);
+    }
+  }
+
+  /**
+   * Delete flow
+   */
+  async deleteFlow(flowId: string): Promise<void> {
+    try {
+      await this.client.delete(`/flow/${flowId}`);
+    } catch (error) {
+      handleNodeRedError(error, `deleteFlow(${flowId})`);
+    }
+  }
+
+  /**
+   * Deploy flows
+   */
+  async deployFlows(options: NodeRedDeploymentOptions = { type: 'full' }): Promise<void> {
+    try {
+      await this.client.post('/flows', null, {
+        headers: {
+          'Node-RED-Deployment-Type': options.type
+        }
+      });
+    } catch (error) {
+      handleNodeRedError(error, 'deployFlows');
+    }
+  }
+
+  /**
+   * Enable specific flow
+   */
+  async enableFlow(flowId: string): Promise<void> {
+    try {
+      const flow = await this.getFlow(flowId);
+      flow.disabled = false;
+      await this.updateFlow(flowId, flow);
+      await this.deployFlows({ type: 'flows' });
+    } catch (error) {
+      handleNodeRedError(error, `enableFlow(${flowId})`);
+    }
+  }
+
+  /**
+   * Disable specific flow
+   */
+  async disableFlow(flowId: string): Promise<void> {
+    try {
+      const flow = await this.getFlow(flowId);
+      flow.disabled = true;
+      await this.updateFlow(flowId, flow);
+      await this.deployFlows({ type: 'flows' });
+    } catch (error) {
+      handleNodeRedError(error, `disableFlow(${flowId})`);
+    }
+  }
+
+  // === Node Management ===
+
+  /**
+   * Get all available node types
+   */
+  async getNodeTypes(): Promise<NodeRedNodeType[]> {
+    try {
+      const response = await this.client.get('/nodes');
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getNodeTypes');
+    }
+  }
+
+  /**
+   * Get specific node type
+   */
+  async getNodeType(nodeId: string): Promise<NodeRedNodeType> {
+    try {
+      const response = await this.client.get(`/nodes/${nodeId}`);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `getNodeType(${nodeId})`);
+    }
+  }
+
+  /**
+   * Enable node type
+   */
+  async enableNodeType(nodeId: string): Promise<void> {
+    try {
+      await this.client.put(`/nodes/${nodeId}`, { enabled: true });
+    } catch (error) {
+      handleNodeRedError(error, `enableNodeType(${nodeId})`);
+    }
+  }
+
+  /**
+   * Disable node type
+   */
+  async disableNodeType(nodeId: string): Promise<void> {
+    try {
+      await this.client.put(`/nodes/${nodeId}`, { enabled: false });
+    } catch (error) {
+      handleNodeRedError(error, `disableNodeType(${nodeId})`);
+    }
+  }
+
+  /**
+   * Install node module
+   */
+  async installNodeModule(moduleName: string, version?: string): Promise<void> {
+    try {
+      const body = version ? `${moduleName}@${version}` : moduleName;
+      await this.client.post('/nodes', { module: body });
+    } catch (error) {
+      handleNodeRedError(error, `installNodeModule(${moduleName})`);
+    }
+  }
+
+  /**
+   * Uninstall node module
+   */
+  async uninstallNodeModule(moduleName: string): Promise<void> {
+    try {
+      await this.client.delete(`/nodes/${moduleName}`);
+    } catch (error) {
+      handleNodeRedError(error, `uninstallNodeModule(${moduleName})`);
+    }
+  }
+
+  // === Runtime Information ===
+
+  /**
+   * Get runtime settings
+   */
+  async getSettings(): Promise<NodeRedSettings> {
+    try {
+      const response = await this.client.get('/settings');
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getSettings');
+    }
+  }
+
+  /**
+   * Get runtime information
+   */
+  async getRuntimeInfo(): Promise<NodeRedRuntimeInfo> {
+    try {
+      const response = await this.client.get('/admin/info');
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getRuntimeInfo');
+    }
+  }
+
+  /**
+   * Get flow status
+   */
+  async getFlowStatus(): Promise<NodeRedFlowStatus> {
+    try {
+      const response = await this.client.get('/flows/state');
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getFlowStatus');
+    }
+  }
+
+  /**
+   * Start flows
+   */
+  async startFlows(): Promise<void> {
+    try {
+      await this.client.post('/flows/state', { state: 'start' });
+    } catch (error) {
+      handleNodeRedError(error, 'startFlows');
+    }
+  }
+
+  /**
+   * Stop flows
+   */
+  async stopFlows(): Promise<void> {
+    try {
+      await this.client.post('/flows/state', { state: 'stop' });
+    } catch (error) {
+      handleNodeRedError(error, 'stopFlows');
+    }
+  }
+
+  // === Context and Global Variables ===
+
+  /**
+   * Get global context
+   */
+  async getGlobalContext(key?: string): Promise<any> {
+    try {
+      const url = key ? `/context/global/${key}` : '/context/global';
+      const response = await this.client.get(url);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `getGlobalContext(${key || 'all'})`);
+    }
+  }
+
+  /**
+   * Set global context value
+   */
+  async setGlobalContext(key: string, value: any): Promise<void> {
+    try {
+      await this.client.put(`/context/global/${key}`, { value });
+    } catch (error) {
+      handleNodeRedError(error, `setGlobalContext(${key})`);
+    }
+  }
+
+  /**
+   * Delete global context key
+   */
+  async deleteGlobalContext(key: string): Promise<void> {
+    try {
+      await this.client.delete(`/context/global/${key}`);
+    } catch (error) {
+      handleNodeRedError(error, `deleteGlobalContext(${key})`);
+    }
+  }
+
+  /**
+   * Get flow context
+   */
+  async getFlowContext(flowId: string, key?: string): Promise<any> {
+    try {
+      const url = key ? `/context/flow/${flowId}/${key}` : `/context/flow/${flowId}`;
+      const response = await this.client.get(url);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `getFlowContext(${flowId}, ${key || 'all'})`);
+    }
+  }
+
+  /**
+   * Set flow context value
+   */
+  async setFlowContext(flowId: string, key: string, value: any): Promise<void> {
+    try {
+      await this.client.put(`/context/flow/${flowId}/${key}`, { value });
+    } catch (error) {
+      handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
+    }
+  }
+
+  // === Library Management ===
+
+  /**
+   * Get library entries
+   */
+  async getLibraryEntries(type: string = 'flows'): Promise<any[]> {
+    try {
+      const response = await this.client.get(`/library/${type}`);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `getLibraryEntries(${type})`);
+    }
+  }
+
+  /**
+   * Save to library
+   */
+  async saveToLibrary(type: string, path: string, data: any): Promise<void> {
+    try {
+      await this.client.post(`/library/${type}/${path}`, data);
+    } catch (error) {
+      handleNodeRedError(error, `saveToLibrary(${type}, ${path})`);
+    }
+  }
+
+  /**
+   * Load from library
+   */
+  async loadFromLibrary(type: string, path: string): Promise<any> {
+    try {
+      const response = await this.client.get(`/library/${type}/${path}`);
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, `loadFromLibrary(${type}, ${path})`);
+    }
+  }
+
+  // === Authentication and Authorization ===
+
+  /**
+   * Login to Node-RED (if auth is enabled)
+   */
+  async login(username: string, password: string): Promise<{ access_token: string }> {
+    try {
+      const response = await this.client.post('/auth/token', {
+        client_id: 'node-red-admin',
+        grant_type: 'password',
+        scope: '*',
+        username,
+        password
+      });
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'login');
+    }
+  }
+
+  /**
+   * Refresh authentication token
+   */
+  async refreshToken(refreshToken: string): Promise<{ access_token: string }> {
+    try {
+      const response = await this.client.post('/auth/token', {
+        client_id: 'node-red-admin',
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken
+      });
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'refreshToken');
+    }
+  }
+
+  /**
+   * Get current authentication status
+   */
+  async getAuthStatus(): Promise<any> {
+    try {
+      const response = await this.client.get('/auth/login');
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'getAuthStatus');
+    }
+  }
+
+  // === Utility Methods ===
+
+  /**
+   * Get Node-RED version information
+   */
+  async getVersion(): Promise<string> {
+    try {
+      const info = await this.getRuntimeInfo();
+      return info.version;
+    } catch (error) {
+      handleNodeRedError(error, 'getVersion');
+    }
+  }
+
+  /**
+   * Check if Node-RED is healthy
+   */
+  async healthCheck(): Promise<{ healthy: boolean; details: any }> {
+    try {
+      const [settings, flows, runtime] = await Promise.all([
+        this.getSettings(),
+        this.getFlows(),
+        this.getRuntimeInfo()
+      ]);
+
+      return {
+        healthy: true,
+        details: {
+          version: runtime.version,
+          flowCount: flows.length,
+          nodeCount: Object.keys(runtime.nodes).length,
+          memory: runtime.memory
+        }
+      };
+    } catch (error) {
+      return {
+        healthy: false,
+        details: { error: error instanceof Error ? error.message : 'Unknown error' }
+      };
+    }
+  }
+} 

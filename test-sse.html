@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP Node-RED SSE Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+      .connected {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .disconnected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .event {
+        background-color: #f8f9fa;
+        padding: 8px;
+        margin: 5px 0;
+        border-left: 3px solid #007bff;
+      }
+      #events {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MCP Node-RED SSE Connection Test</h1>
+
+    <div id="status" class="status disconnected">Status: Disconnected</div>
+
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    <button onclick="clearEvents()">Clear Events</button>
+
+    <h3>Events:</h3>
+    <div id="events"></div>
+
+    <script>
+      let eventSource = null;
+      const statusDiv = document.getElementById('status');
+      const eventsDiv = document.getElementById('events');
+
+      function updateStatus(message, isConnected) {
+        statusDiv.textContent = `Status: ${message}`;
+        statusDiv.className = `status ${isConnected ? 'connected' : 'disconnected'}`;
+      }
+
+      function addEvent(type, data) {
+        const eventDiv = document.createElement('div');
+        eventDiv.className = 'event';
+        eventDiv.innerHTML = `
+                <strong>${type}</strong> - ${new Date().toLocaleTimeString()}<br>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+        eventsDiv.insertBefore(eventDiv, eventsDiv.firstChild);
+      }
+
+      function connect() {
+        if (eventSource) {
+          eventSource.close();
+        }
+
+        updateStatus('Connecting...', false);
+
+        eventSource = new EventSource('http://localhost:3000/api/events');
+
+        eventSource.onopen = function (event) {
+          updateStatus('Connected', true);
+          addEvent('connection', { message: 'SSE connection opened' });
+        };
+
+        eventSource.onerror = function (event) {
+          updateStatus('Connection Error', false);
+          addEvent('error', { message: 'SSE connection error', event });
+        };
+
+        eventSource.onmessage = function (event) {
+          try {
+            const data = JSON.parse(event.data);
+            addEvent('message', data);
+          } catch (e) {
+            addEvent('raw-message', { data: event.data });
+          }
+        };
+
+        // Listen for specific event types
+        eventSource.addEventListener('heartbeat', function (event) {
+          const data = JSON.parse(event.data);
+          addEvent('heartbeat', data);
+        });
+
+        eventSource.addEventListener('system-info', function (event) {
+          const data = JSON.parse(event.data);
+          addEvent('system-info', data);
+        });
+
+        eventSource.addEventListener('connection-status', function (event) {
+          const data = JSON.parse(event.data);
+          addEvent('connection-status', data);
+        });
+
+        eventSource.addEventListener('flow-event', function (event) {
+          const data = JSON.parse(event.data);
+          addEvent('flow-event', data);
+        });
+      }
+
+      function disconnect() {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+          updateStatus('Disconnected', false);
+          addEvent('connection', { message: 'SSE connection closed' });
+        }
+      }
+
+      function clearEvents() {
+        eventsDiv.innerHTML = '';
+      }
+
+      // Auto-connect on page load
+      window.onload = function () {
+        connect();
+      };
+    </script>
+  </body>
+</html>

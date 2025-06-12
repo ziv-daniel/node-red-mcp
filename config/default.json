@@ -1,0 +1,42 @@
+{
+  "server": {
+    "name": "nodered-mcp-server",
+    "version": "1.0.0",
+    "port": 3000,
+    "host": "localhost"
+  },
+  "nodeRed": {
+    "url": "http://localhost:1880",
+    "timeout": 5000,
+    "retries": 3,
+    "auth": {
+      "enabled": false,
+      "type": "none"
+    }
+  },
+  "sse": {
+    "enabled": true,
+    "heartbeatInterval": 30000,
+    "maxConnections": 100,
+    "retryTimeout": 5000
+  },
+  "security": {
+    "cors": {
+      "origin": "*",
+      "credentials": true
+    },
+    "rateLimit": {
+      "windowMs": 900000,
+      "maxRequests": 100
+    },
+    "helmet": true
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "monitoring": {
+    "systemInfoInterval": 30000,
+    "healthCheckInterval": 60000
+  }
+} 
