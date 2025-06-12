@@ -77,7 +77,7 @@ Once configured, you should see:
 After setup, Claude will have access to these Node-RED tools:
 
 ### Flow Management
-- `list_flows` - List all flows
+- `get_flows` - List flows (lightweight summaries with flexible type filtering for token efficiency)
 - `get_flow` - Get specific flow details
 - `create_flow` - Create new flow
 - `update_flow` - Update existing flow

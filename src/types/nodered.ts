@@ -4,6 +4,7 @@
 
 export interface NodeRedFlow {
   id: string;
+  type?: string;        // Type of flow: 'tab', 'subflow', or config node types
   label?: string;
   nodes: NodeRedNode[];
   configs?: NodeRedConfig[];
@@ -15,6 +16,19 @@ export interface NodeRedFlow {
     value: string;
     type: string;
   }>;
+}
+
+/**
+ * Lightweight flow summary for efficient token usage
+ * Only includes meaningful properties to reduce token consumption
+ */
+export interface NodeRedFlowSummary {
+  id: string;
+  label?: string;           // Only included if not empty
+  disabled?: boolean;
+  status?: 'active' | 'inactive' | 'error';
+  nodeCount?: number;       // Only included if > 0
+  info?: string;           // Only included if not empty
 }
 
 export interface NodeRedNode {
@@ -223,4 +237,4 @@ export interface NodeRedErrorEvent extends NodeRedEvent {
       name?: string;
     };
   };
-} 
+}

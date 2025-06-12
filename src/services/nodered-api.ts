@@ -5,6 +5,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
   NodeRedFlow,
+  NodeRedFlowSummary,
   NodeRedNode,
   NodeRedNodeType,
   NodeRedSettings,
@@ -153,6 +154,64 @@ export class NodeRedAPIClient {
       return response.data;
     } catch (error) {
       handleNodeRedError(error, 'getFlows');
+    }
+  }  /**
+   * Get lightweight flow summaries (without node details for token efficiency)
+   * Only returns specified flow types, filtering out system flows and config nodes
+   * @param types - Array of flow types to include (default: ['tab', 'subflow'])
+   */
+  async getFlowSummaries(types: string[] = ['tab', 'subflow']): Promise<NodeRedFlowSummary[]> {
+    try {
+      const [fullFlows, flowStatus] = await Promise.all([
+        this.getFlows(),
+        this.getFlowStatus().catch(() => null) // Graceful fallback if flow status not available
+      ]);      // Filter flows based on requested types
+      const userFlows = fullFlows.filter(flow => {
+        // Determine the flow type (tab, subflow, or config node type)
+        const hasNodes = Array.isArray(flow.nodes);
+        const flowType = flow.type || (hasNodes ? 'tab' : 'unknown');
+        
+        // Check if this flow type is in the requested types
+        const isRequestedType = types.includes(flowType);
+        
+        // Exclude config nodes unless specifically requested
+        const isConfigNode = !hasNodes && flow.type && !['tab', 'subflow'].includes(flow.type);
+        const shouldExcludeConfig = isConfigNode && flow.type && !types.includes(flow.type);
+        
+        // Include flows that match requested types and have nodes (or are specifically config types if requested)
+        return isRequestedType && !shouldExcludeConfig && (hasNodes || types.includes(flowType));
+      });
+      
+      return userFlows.map(flow => {
+        const status = flowStatus?.flows?.find(f => f.id === flow.id);
+        
+        // Build summary object with only meaningful properties
+        const summary: NodeRedFlowSummary = {
+          id: flow.id,
+          disabled: flow.disabled || false,
+          status: flow.disabled ? 'inactive' : (status?.state === 'stop' ? 'inactive' : 'active')
+        };
+        
+        // Only add label if it exists and is not empty
+        if (flow.label && flow.label.trim()) {
+          summary.label = flow.label;
+        }
+        
+        // Only add info if it exists and is not empty
+        if (flow.info && flow.info.trim()) {
+          summary.info = flow.info;
+        }
+        
+        // Only add nodeCount if it's meaningful (> 0)
+        const nodeCount = flow.nodes?.length || 0;
+        if (nodeCount > 0) {
+          summary.nodeCount = nodeCount;
+        }
+        
+        return summary;
+      });
+    } catch (error) {
+      handleNodeRedError(error, 'getFlowSummaries');
     }
   }
 
@@ -564,4 +623,4 @@ export class NodeRedAPIClient {
       };
     }
   }
-} 
+}

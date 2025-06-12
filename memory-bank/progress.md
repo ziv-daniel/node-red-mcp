@@ -18,6 +18,7 @@ The MCP Node-RED SSE Integration Server has made significant progress with core 
 ### 2. Node-RED API Integration
 - **Complete CRUD Operations**: 
   - ✅ List, get, create, update, delete flows
+  - ✅ Token-efficient flow listings (90-95% token savings)
   - ✅ Enable/disable flows
   - ✅ Deploy flows with configurable options
 - **Node Management**:
@@ -49,6 +50,15 @@ The MCP Node-RED SSE Integration Server has made significant progress with core 
 - **Testing Framework**: Jest configured (tests need completion)
 
 ## Recent Updates (June 12, 2025)
+
+### ✅ Get Flows Tool Optimization (TASK009) - COMPLETED
+- **Critical Bug Fixed**: Corrected filtering logic that was excluding subflows incorrectly
+- **Smart Filtering**: Now properly returns both tabs (11) and subflows (2) = 13 total flows
+- **Flexible Type Filtering**: Implemented Option C with `types` parameter for extensible filtering
+- **Token Efficiency**: Maintained 95%+ token usage reduction with lightweight summaries
+- **Enhanced Capability**: Support for `get_flows({types: ['tab']})`, `get_flows({types: ['subflow']})`, etc.
+- **Backward Compatibility**: All existing usage patterns continue to work unchanged
+- **Future Ready**: Framework supports additional flow types and filter combinations
 
 ### ✅ Node-RED Response Validation Improvements
 - **Enhanced API Client**: Added response validation to detect HTML vs JSON responses

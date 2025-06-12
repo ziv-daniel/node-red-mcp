@@ -13,6 +13,7 @@ A comprehensive **Model Context Protocol (MCP)** server that provides Node-RED i
 
 ### Node-RED Operations
 - ✅ Flow Management (CRUD, enable/disable, deploy)
+- ✅ Token-Efficient Flow Listings (lightweight summaries with flexible type filtering)
 - ✅ Node Management (install/uninstall modules, enable/disable types)
 - ✅ Runtime Monitoring (system info, health checks, context management)
 - ✅ Real-time Events (flow status, node events, errors)
@@ -145,15 +146,16 @@ Add to your MCP client configuration:
 #### Available MCP Tools
 
 ```typescript
+```typescript
 // Flow Management
-get_flows()                    // List all flows
-get_flow(flowId)              // Get specific flow
-create_flow(flowData)         // Create new flow
-update_flow(flowId, data)     // Update flow
-delete_flow(flowId)           // Delete flow
-deploy_flows(type?)           // Deploy flows
-enable_flow(flowId)           // Enable flow
-disable_flow(flowId)          // Disable flow
+get_flows(includeDetails?, types?)  // List flows (summary by default, flexible type filtering)
+get_flow(flowId)                    // Get specific flow
+create_flow(flowData)               // Create new flow
+update_flow(flowId, data)           // Update flow
+delete_flow(flowId)                 // Delete flow
+deploy_flows(type?)                 // Deploy flows
+enable_flow(flowId)                 // Enable flow
+disable_flow(flowId)                // Disable flow
 
 // Node Management
 get_node_types()              // List node types

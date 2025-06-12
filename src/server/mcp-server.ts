@@ -126,10 +126,22 @@ export class McpNodeRedServer {
       // Flow Management Tools
       {
         name: 'get_flows',
-        description: 'Get all Node-RED flows',
+        description: 'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data)',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            includeDetails: {
+              type: 'boolean',
+              description: 'Include full flow details with nodes (default: false for token efficiency)',
+              default: false
+            },
+            types: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Flow types to include (default: ["tab", "subflow"]). Options: "tab" (main flows), "subflow" (reusable subflows)',
+              default: ['tab', 'subflow']
+            }
+          },
           required: [],
         },
       },
@@ -442,9 +454,15 @@ export class McpNodeRedServer {
       switch (name) {
         // Flow Management Tools
         case 'get_flows':
+          const includeDetails = args?.includeDetails || false;
+          const types = args?.types || ['tab', 'subflow'];
+          const flowData = includeDetails 
+            ? await this.nodeRedClient.getFlows()
+            : await this.nodeRedClient.getFlowSummaries(types);
+          
           result = {
             success: true,
-            data: await this.nodeRedClient.getFlows(),
+            data: flowData,
             timestamp,
           };
           break;
