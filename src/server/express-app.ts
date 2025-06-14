@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { McpNodeRedServer } from './mcp-server.js';
 import { SSEHandler } from './sse-handler.js';
+import { NodeRedEventListener } from '../services/nodered-event-listener.js';
 import {
   authenticate,
   authenticateClaudeCompatible,
@@ -681,6 +682,54 @@ export class ExpressApp {
         const response: ApiResponse = {
           success: true,
           data: { message: 'Subscribed successfully', eventTypes },
+          timestamp: new Date().toISOString(),
+        };
+
+        res.json(response);
+      }),
+    );
+
+    // Advanced subscription management with filters
+    this.app.post(
+      '/api/events/subscribe/filtered',
+      authenticate,
+      asyncHandler(async (req: AuthRequest, res: Response) => {
+        const { connectionId, eventType, filter } = req.body;
+
+        if (!connectionId || !eventType) {
+          throw new ValidationError(
+            'connectionId and eventType are required',
+          );
+        }
+
+        this.sseHandler.subscribeWithFilter(connectionId, eventType, filter);
+
+        const response: ApiResponse = {
+          success: true,
+          data: { message: 'Subscribed with filter successfully', eventType, filter },
+          timestamp: new Date().toISOString(),
+        };
+
+        res.json(response);
+      }),
+    );
+
+    // Get subscription details
+    this.app.get(
+      '/api/events/subscriptions/:connectionId',
+      authenticate,
+      asyncHandler(async (req: AuthRequest, res: Response) => {
+        const { connectionId } = req.params;
+
+        if (!connectionId) {
+          throw new ValidationError('Connection ID is required');
+        }
+
+        const subscriptions = this.sseHandler.getSubscriptions(connectionId);
+
+        const response: ApiResponse = {
+          success: true,
+          data: subscriptions,
           timestamp: new Date().toISOString(),
         };
 

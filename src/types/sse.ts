@@ -15,6 +15,7 @@ export interface SSEConnection {
     lastActivity: Date;
   };
   subscriptions: Set<string>; // Event types the client is subscribed to
+  filters?: Map<string, SSEEventFilter>; // Advanced filters per event type
   heartbeatInterval?: NodeJS.Timeout;
   isAlive: boolean;
 }

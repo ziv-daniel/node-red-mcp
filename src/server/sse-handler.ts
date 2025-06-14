@@ -53,6 +53,7 @@ export class SSEHandler {
     };
 
     this.startHeartbeat();
+    this.startHealthMonitoring();
   }
 
   /**
@@ -179,6 +180,63 @@ export class SSEHandler {
   }
 
   /**
+   * Subscribe connection with advanced filtering
+   */
+  subscribeWithFilter(
+    connectionId: string,
+    eventType: string,
+    filter?: SSEEventFilter,
+  ): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new SSEErrorClass(
+        `Connection ${connectionId} not found`,
+        connectionId,
+      );
+    }
+
+    // Add to basic subscriptions
+    connection.subscriptions.add(eventType);
+
+    // Store filter if provided
+    if (filter) {
+      if (!connection.filters) {
+        connection.filters = new Map();
+      }
+      connection.filters.set(eventType, filter);
+    }
+
+    // Update stats
+    this.stats.connectionsByEventType[eventType] =
+      (this.stats.connectionsByEventType[eventType] || 0) + 1;    connection.clientInfo.lastActivity = new Date();
+  }
+
+  /**
+   * Get subscription details for a connection
+   */
+  getSubscriptions(connectionId: string): { eventTypes: string[], filters: Record<string, SSEEventFilter> } {
+    const connection = this.connections.get(connectionId);
+    if (!connection) {
+      throw new SSEErrorClass(
+        `Connection ${connectionId} not found`,
+        connectionId,
+      );
+    }
+
+    const filters: Record<string, SSEEventFilter> = {};
+    if (connection.filters) {
+      connection.filters.forEach((filter, eventType) => {
+        filters[eventType] = filter;
+      });
+    }
+
+    return {
+      eventTypes: Array.from(connection.subscriptions),
+      filters
+    };
+  }
+
+  /**
    * Unsubscribe connection from event types
    */
   unsubscribe(connectionId: string, eventTypes: string[]): void {
@@ -222,7 +280,6 @@ export class SSEHandler {
       return false;
     }
   }
-
   /**
    * Broadcast event to all subscribed connections
    */
@@ -238,9 +295,17 @@ export class SSEHandler {
         continue;
       }
 
-      // Apply filters
+      // Apply global filters
       if (filter && !this.matchesFilter(event, filter, connection)) {
         continue;
+      }
+
+      // Apply connection-specific filters
+      if (connection.filters?.has(event.type)) {
+        const connectionFilter = connection.filters.get(event.type);
+        if (connectionFilter && !this.matchesFilter(event, connectionFilter, connection)) {
+          continue;
+        }
       }
 
       if (this.sendToConnection(connectionId, event)) {
@@ -252,7 +317,7 @@ export class SSEHandler {
   }
 
   /**
-   * Send heartbeat to all connections
+   * Enhanced heartbeat with connection health checks
    */
   sendHeartbeat(): void {
     const heartbeat: SSEHeartbeat = {
@@ -262,15 +327,60 @@ export class SSEHandler {
       connections: this.connections.size,
     };
 
+    // Check connection health before sending heartbeat
+    this.checkConnectionHealth();
+
     // Send to connections subscribed to heartbeat
     for (const [connectionId, connection] of this.connections) {
       if (
         connection.subscriptions.has('heartbeat') ||
         connection.subscriptions.has('*')
       ) {
-        this.sendToConnection(connectionId, heartbeat);
+        if (this.sendToConnection(connectionId, heartbeat)) {
+          // Update last activity for successful heartbeat
+          connection.clientInfo.lastActivity = new Date();
+        }
       }
     }
+  }
+
+  /**
+   * Enhanced connection health monitoring
+   */
+  checkConnectionHealth(): void {
+    const now = new Date();
+    const connectionTimeoutMs = this.config.heartbeatInterval * 3; // 3x heartbeat interval
+    const deadConnections: string[] = [];
+
+    for (const [connectionId, connection] of this.connections) {
+      const timeSinceLastActivity = now.getTime() - connection.clientInfo.lastActivity.getTime();
+      
+      // Mark connections as dead if they haven't been active
+      if (timeSinceLastActivity > connectionTimeoutMs) {
+        connection.isAlive = false;
+        deadConnections.push(connectionId);
+      }
+    }
+
+    // Clean up dead connections
+    for (const connectionId of deadConnections) {
+      console.log(`Cleaning up dead SSE connection: ${connectionId}`);
+      this.disconnect(connectionId);
+    }
+
+    // Log health status if there were issues
+    if (deadConnections.length > 0) {
+      console.log(`SSE Health Check: Cleaned up ${deadConnections.length} dead connections`);
+    }
+  }
+
+  /**
+   * Start health monitoring
+   */
+  startHealthMonitoring(intervalMs: number = 60000): void {
+    setInterval(() => {
+      this.checkConnectionHealth();
+    }, intervalMs);
   }
 
   /**
