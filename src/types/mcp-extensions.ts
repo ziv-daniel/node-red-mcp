@@ -2,7 +2,12 @@
  * Custom MCP type extensions for Node-RED integration
  */
 
-import { NodeRedFlow, NodeRedNode, NodeRedNodeType, NodeRedRuntimeInfo } from './nodered.js';
+import {
+  NodeRedFlow,
+  NodeRedNode,
+  NodeRedNodeType,
+  NodeRedRuntimeInfo,
+} from './nodered.js';
 import { SSEStats, SSEEventFilter } from './sse.js';
 
 // MCP Tool definitions for Node-RED operations
@@ -67,18 +72,11 @@ export interface NodeRedSystemResource {
   name: string;
   description?: string;
   mimeType: 'application/json';
-  system: {
-    runtime: NodeRedRuntimeInfo;
-    nodes: NodeRedNodeType[];
-    settings: Record<string, any>;
-    status: {
-      state: 'running' | 'stopped' | 'error';
-      uptime: number;
-      memory: {
-        used: number;
-        total: number;
-      };
-    };
+  system: NodeRedRuntimeInfo;
+  metadata: {
+    timestamp: string;
+    serverVersion: string;
+    connected: boolean;
   };
 }
 
@@ -224,4 +222,4 @@ export interface LogEntry {
   source: string;
   context?: Record<string, any>;
   error?: Error;
-} 
+}

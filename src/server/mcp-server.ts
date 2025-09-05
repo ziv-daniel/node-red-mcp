@@ -13,6 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { NodeRedAPIClient } from '../services/nodered-api.js';
+import { PolkadotDocsService } from '../services/polkadot-docs.js';
 import { SSEHandler } from './sse-handler.js';
 import {
   McpServerConfig,
@@ -30,6 +31,7 @@ import { validateRequired, validateTypes } from '../utils/error-handling.js';
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
+  private polkadotDocs: PolkadotDocsService;
   private sseHandler: SSEHandler;
   private config: McpServerConfig;
 
@@ -75,6 +77,7 @@ export class McpNodeRedServer {
     );
 
     this.nodeRedClient = new NodeRedAPIClient(this.config.nodeRed);
+    this.polkadotDocs = new PolkadotDocsService();
     this.sseHandler = new SSEHandler(this.config.sse);
 
     this.setupHandlers();
@@ -123,24 +126,27 @@ export class McpNodeRedServer {
    */
   private getToolDefinitions() {
     return [
-      // Flow Management Tools
+      // Core Flow Management Tools (Optimized)
       {
         name: 'get_flows',
-        description: 'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data)',
+        description:
+          'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data)',
         inputSchema: {
           type: 'object',
           properties: {
             includeDetails: {
               type: 'boolean',
-              description: 'Include full flow details with nodes (default: false for token efficiency)',
-              default: false
+              description:
+                'Include full flow details with nodes (default: false for token efficiency)',
+              default: false,
             },
             types: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Flow types to include (default: ["tab", "subflow"]). Options: "tab" (main flows), "subflow" (reusable subflows)',
-              default: ['tab', 'subflow']
-            }
+              description:
+                'Flow types to include (default: ["tab", "subflow"]). Options: "tab" (main flows), "subflow" (reusable subflows)',
+              default: ['tab', 'subflow'],
+            },
           },
           required: [],
         },
@@ -188,32 +194,6 @@ export class McpNodeRedServer {
         },
       },
       {
-        name: 'delete_flow',
-        description: 'Delete a Node-RED flow',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            flowId: { type: 'string', description: 'Flow ID to delete' },
-          },
-          required: ['flowId'],
-        },
-      },
-      {
-        name: 'deploy_flows',
-        description: 'Deploy Node-RED flows',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            deploymentType: {
-              type: 'string',
-              enum: ['full', 'nodes', 'flows'],
-              description: 'Type of deployment',
-            },
-          },
-          required: [],
-        },
-      },
-      {
         name: 'enable_flow',
         description: 'Enable a specific Node-RED flow',
         inputSchema: {
@@ -235,209 +215,165 @@ export class McpNodeRedServer {
           required: ['flowId'],
         },
       },
-
-      // Node Management Tools
       {
-        name: 'get_node_types',
-        description: 'Get all available Node-RED node types',
+        name: 'get_mcp_modules',
+        description:
+          'Get available Node-RED modules with documentation links for planning and exploration',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            category: {
+              type: 'string',
+              enum: ['all', 'core', 'contrib', 'popular'],
+              description: 'Module category to retrieve (default: popular)',
+              default: 'popular',
+            },
+          },
           required: [],
         },
       },
       {
-        name: 'get_node_type',
-        description: 'Get specific Node-RED node type information',
+        name: 'search_modules',
+        description:
+          'Search for Node-RED palette modules online via npm registry',
         inputSchema: {
           type: 'object',
           properties: {
-            nodeId: { type: 'string', description: 'Node type ID' },
+            query: {
+              type: 'string',
+              description:
+                'Search query for modules (e.g., "mqtt", "dashboard", "influxdb")',
+            },
+            category: {
+              type: 'string',
+              enum: ['all', 'contrib', 'dashboard'],
+              description: 'Module category to search (default: all)',
+              default: 'all',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10)',
+              default: 10,
+              minimum: 1,
+              maximum: 50,
+            },
           },
-          required: ['nodeId'],
+          required: ['query'],
         },
       },
       {
-        name: 'enable_node_type',
-        description: 'Enable a specific node type',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            nodeId: { type: 'string', description: 'Node type ID to enable' },
-          },
-          required: ['nodeId'],
-        },
-      },
-      {
-        name: 'disable_node_type',
-        description: 'Disable a specific node type',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            nodeId: { type: 'string', description: 'Node type ID to disable' },
-          },
-          required: ['nodeId'],
-        },
-      },
-      {
-        name: 'install_node_module',
-        description: 'Install a Node-RED node module',
+        name: 'install_module',
+        description:
+          'Install a Node-RED palette module via Node-RED palette management API',
         inputSchema: {
           type: 'object',
           properties: {
             moduleName: {
               type: 'string',
-              description: 'Module name to install',
+              description:
+                'Name of the module to install (e.g., "node-red-contrib-ui-led")',
             },
             version: {
               type: 'string',
-              description: 'Specific version (optional)',
+              description:
+                'Specific version to install (optional, defaults to latest)',
             },
           },
           required: ['moduleName'],
         },
       },
       {
-        name: 'uninstall_node_module',
-        description: 'Uninstall a Node-RED node module',
+        name: 'get_installed_modules',
+        description: 'Get list of currently installed Node-RED palette modules',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      },
+      // Polkadot Pallet Documentation Tools
+      {
+        name: 'get_polkadot_chains',
+        description:
+          'Get available Polkadot/Substrate chains with their RPC endpoints',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: 'get_pallets_list',
+        description:
+          'Get list of all pallets available on a specific Polkadot/Substrate chain',
         inputSchema: {
           type: 'object',
           properties: {
-            moduleName: {
+            endpoint: {
               type: 'string',
-              description: 'Module name to uninstall',
+              description:
+                'WebSocket RPC endpoint for the chain (e.g., wss://rpc.polkadot.io)',
             },
-          },
-          required: ['moduleName'],
-        },
-      },
-
-      // Runtime and Monitoring Tools
-      {
-        name: 'get_runtime_info',
-        description: 'Get Node-RED runtime information',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'get_settings',
-        description: 'Get Node-RED settings',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'get_flow_status',
-        description: 'Get current flow status',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'start_flows',
-        description: 'Start all Node-RED flows',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'stop_flows',
-        description: 'Stop all Node-RED flows',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'health_check',
-        description: 'Perform Node-RED health check',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-
-      // SSE Management Tools
-      {
-        name: 'get_sse_stats',
-        description: 'Get Server-Sent Events statistics',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'get_sse_clients',
-        description: 'Get connected SSE clients',
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-      },
-      {
-        name: 'disconnect_sse_client',
-        description: 'Force disconnect a specific SSE client',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            connectionId: {
+            chainName: {
               type: 'string',
-              description: 'Connection ID to disconnect',
-            },
-          },
-          required: ['connectionId'],
-        },
-      },
-
-      // Context Management Tools
-      {
-        name: 'get_global_context',
-        description: 'Get Node-RED global context',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description: 'Specific context key (optional)',
+              enum: ['polkadot', 'kusama', 'westend'],
+              description:
+                'Pre-configured chain name (optional, alternative to endpoint)',
             },
           },
           required: [],
         },
       },
       {
-        name: 'set_global_context',
-        description: 'Set Node-RED global context value',
+        name: 'get_pallet_details',
+        description: 'Get detailed documentation for a specific pallet',
         inputSchema: {
           type: 'object',
           properties: {
-            key: { type: 'string', description: 'Context key' },
-            value: { description: 'Context value' },
+            palletName: {
+              type: 'string',
+              description:
+                'Name of the pallet to get details for (e.g., "Balances", "System", "Staking")',
+            },
+            endpoint: {
+              type: 'string',
+              description:
+                'WebSocket RPC endpoint for the chain (e.g., wss://rpc.polkadot.io)',
+            },
+            chainName: {
+              type: 'string',
+              enum: ['polkadot', 'kusama', 'westend'],
+              description:
+                'Pre-configured chain name (optional, alternative to endpoint)',
+            },
           },
-          required: ['key', 'value'],
+          required: ['palletName'],
         },
       },
       {
-        name: 'delete_global_context',
-        description: 'Delete Node-RED global context key',
+        name: 'search_pallets',
+        description: 'Search for pallets by name or functionality',
         inputSchema: {
           type: 'object',
           properties: {
-            key: { type: 'string', description: 'Context key to delete' },
+            query: {
+              type: 'string',
+              description:
+                'Search term for pallets (e.g., "balance", "staking", "governance")',
+            },
+            endpoint: {
+              type: 'string',
+              description:
+                'WebSocket RPC endpoint for the chain (e.g., wss://rpc.polkadot.io)',
+            },
+            chainName: {
+              type: 'string',
+              enum: ['polkadot', 'kusama', 'westend'],
+              description:
+                'Pre-configured chain name (optional, alternative to endpoint)',
+            },
           },
-          required: ['key'],
+          required: ['query'],
         },
       },
     ];
@@ -452,14 +388,14 @@ export class McpNodeRedServer {
 
     try {
       switch (name) {
-        // Flow Management Tools
+        // Core Flow Management Tools
         case 'get_flows':
           const includeDetails = args?.includeDetails || false;
           const types = args?.types || ['tab', 'subflow'];
-          const flowData = includeDetails 
+          const flowData = includeDetails
             ? await this.nodeRedClient.getFlows()
             : await this.nodeRedClient.getFlowSummaries(types);
-          
+
           result = {
             success: true,
             data: flowData,
@@ -478,237 +414,281 @@ export class McpNodeRedServer {
 
         case 'create_flow':
           validateRequired(args, ['flowData']);
-          result = {
-            success: true,
-            data: await this.nodeRedClient.createFlow(args.flowData),
-            timestamp,
+          const createdFlow = await this.nodeRedClient.createFlow(
+            args.flowData,
+          );
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Flow created: ${createdFlow.id || createdFlow.label}`,
+              },
+            ],
           };
-          break;
 
         case 'update_flow':
           validateRequired(args, ['flowId', 'flowData']);
-          result = {
-            success: true,
-            data: await this.nodeRedClient.updateFlow(
-              args.flowId,
-              args.flowData,
-            ),
-            timestamp,
+          await this.nodeRedClient.updateFlow(args.flowId, args.flowData);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Flow ${args.flowId} updated successfully`,
+              },
+            ],
           };
-          break;
-
-        case 'delete_flow':
-          validateRequired(args, ['flowId']);
-          await this.nodeRedClient.deleteFlow(args.flowId);
-          result = {
-            success: true,
-            data: { message: 'Flow deleted successfully' },
-            timestamp,
-          };
-          break;
-
-        case 'deploy_flows':
-          await this.nodeRedClient.deployFlows(args);
-          result = {
-            success: true,
-            data: { message: 'Flows deployed successfully' },
-            timestamp,
-          };
-          break;
 
         case 'enable_flow':
           validateRequired(args, ['flowId']);
           await this.nodeRedClient.enableFlow(args.flowId);
-          result = {
-            success: true,
-            data: { message: 'Flow enabled successfully' },
-            timestamp,
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Flow ${args.flowId} enabled`,
+              },
+            ],
           };
-          break;
 
         case 'disable_flow':
           validateRequired(args, ['flowId']);
           await this.nodeRedClient.disableFlow(args.flowId);
-          result = {
-            success: true,
-            data: { message: 'Flow disabled successfully' },
-            timestamp,
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Flow ${args.flowId} disabled`,
+              },
+            ],
           };
-          break;
 
-        // Node Management Tools
-        case 'get_node_types':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getNodeTypes(),
-            timestamp,
+        case 'get_mcp_modules':
+          const category = args?.category || 'popular';
+          const modules = this.getNodeRedModules(category);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(modules, null, 2),
+              },
+            ],
           };
-          break;
 
-        case 'get_node_type':
-          validateRequired(args, ['nodeId']);
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getNodeType(args.nodeId),
-            timestamp,
-          };
-          break;
-
-        case 'enable_node_type':
-          validateRequired(args, ['nodeId']);
-          await this.nodeRedClient.enableNodeType(args.nodeId);
-          result = {
-            success: true,
-            data: { message: 'Node type enabled successfully' },
-            timestamp,
-          };
-          break;
-
-        case 'disable_node_type':
-          validateRequired(args, ['nodeId']);
-          await this.nodeRedClient.disableNodeType(args.nodeId);
-          result = {
-            success: true,
-            data: { message: 'Node type disabled successfully' },
-            timestamp,
-          };
-          break;
-
-        case 'install_node_module':
-          validateRequired(args, ['moduleName']);
-          await this.nodeRedClient.installNodeModule(
-            args.moduleName,
-            args.version,
+        case 'search_modules':
+          validateRequired(args, ['query']);
+          const searchQuery = args.query;
+          const searchCategory = args.category || 'all';
+          const searchLimit = args.limit || 10;
+          const searchResults = await this.nodeRedClient.searchModules(
+            searchQuery,
+            searchCategory,
+            searchLimit,
           );
-          result = {
-            success: true,
-            data: { message: 'Node module installed successfully' },
-            timestamp,
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(searchResults, null, 2),
+              },
+            ],
           };
-          break;
 
-        case 'uninstall_node_module':
+        case 'install_module':
           validateRequired(args, ['moduleName']);
-          await this.nodeRedClient.uninstallNodeModule(args.moduleName);
-          result = {
-            success: true,
-            data: { message: 'Node module uninstalled successfully' },
-            timestamp,
-          };
-          break;
-
-        // Runtime and Monitoring Tools
-        case 'get_runtime_info':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getRuntimeInfo(),
-            timestamp,
-          };
-          break;
-
-        case 'get_settings':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getSettings(),
-            timestamp,
-          };
-          break;
-
-        case 'get_flow_status':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getFlowStatus(),
-            timestamp,
-          };
-          break;
-
-        case 'start_flows':
-          await this.nodeRedClient.startFlows();
-          result = {
-            success: true,
-            data: { message: 'Flows started successfully' },
-            timestamp,
-          };
-          break;
-
-        case 'stop_flows':
-          await this.nodeRedClient.stopFlows();
-          result = {
-            success: true,
-            data: { message: 'Flows stopped successfully' },
-            timestamp,
-          };
-          break;
-
-        case 'health_check':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.healthCheck(),
-            timestamp,
-          };
-          break;
-
-        // SSE Management Tools
-        case 'get_sse_stats':
-          result = {
-            success: true,
-            data: this.sseHandler.getStats(),
-            timestamp,
-          };
-          break;
-
-        case 'get_sse_clients':
-          result = {
-            success: true,
-            data: this.sseHandler.getClients(),
-            timestamp,
-          };
-          break;
-
-        case 'disconnect_sse_client':
-          validateRequired(args, ['connectionId']);
-          const disconnected = this.sseHandler.forceDisconnect(
-            args.connectionId,
+          const moduleName = args.moduleName;
+          const moduleVersion = args.version;
+          const installResult = await this.nodeRedClient.installModule(
+            moduleName,
+            moduleVersion,
           );
-          result = {
-            success: disconnected,
-            data: {
-              message: disconnected
-                ? 'Client disconnected successfully'
-                : 'Client not found or already disconnected',
-            },
-            timestamp,
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(installResult, null, 2),
+              },
+            ],
           };
-          break;
 
-        // Context Management Tools
-        case 'get_global_context':
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getGlobalContext(args.key),
-            timestamp,
+        case 'get_installed_modules':
+          const installedModules =
+            await this.nodeRedClient.getInstalledModules();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(installedModules, null, 2),
+              },
+            ],
           };
-          break;
 
-        case 'set_global_context':
-          validateRequired(args, ['key', 'value']);
-          await this.nodeRedClient.setGlobalContext(args.key, args.value);
-          result = {
-            success: true,
-            data: { message: 'Global context set successfully' },
-            timestamp,
+        // Polkadot Pallet Documentation Tools
+        case 'get_polkadot_chains':
+          const chains = this.polkadotDocs.getAvailableChains();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(chains, null, 2),
+              },
+            ],
           };
-          break;
 
-        case 'delete_global_context':
-          validateRequired(args, ['key']);
-          await this.nodeRedClient.deleteGlobalContext(args.key);
-          result = {
-            success: true,
-            data: { message: 'Global context key deleted successfully' },
-            timestamp,
-          };
-          break;
+        case 'get_pallets_list':
+          const endpoint =
+            args?.endpoint ||
+            (args?.chainName
+              ? this.polkadotDocs
+                  .getAvailableChains()
+                  .find((c) => c.name === args.chainName)?.endpoint
+              : null) ||
+            'wss://rpc.polkadot.io';
+
+          try {
+            const palletsList =
+              await this.polkadotDocs.getPalletsList(endpoint);
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      endpoint,
+                      palletsCount: palletsList.length,
+                      pallets: palletsList.map((p) => ({
+                        name: p.name,
+                        index: p.index,
+                        description: p.description,
+                      })),
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
+          } catch (error) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error fetching pallets: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                },
+              ],
+            };
+          }
+
+        case 'get_pallet_details':
+          validateRequired(args, ['palletName']);
+          const detailsEndpoint =
+            args?.endpoint ||
+            (args?.chainName
+              ? this.polkadotDocs
+                  .getAvailableChains()
+                  .find((c) => c.name === args.chainName)?.endpoint
+              : null) ||
+            'wss://rpc.polkadot.io';
+
+          try {
+            const palletDetails = await this.polkadotDocs.getPalletDetails(
+              detailsEndpoint,
+              args.palletName,
+            );
+
+            if (!palletDetails) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `Pallet "${args.palletName}" not found on chain ${detailsEndpoint}`,
+                  },
+                ],
+              };
+            }
+
+            const examples = this.polkadotDocs.getPalletExamples(
+              args.palletName,
+            );
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      endpoint: detailsEndpoint,
+                      pallet: palletDetails,
+                      examples:
+                        examples || 'No examples available for this pallet',
+                      documentationLinks: {
+                        cratesIo: `https://docs.rs/pallet-${args.palletName.toLowerCase()}/latest/`,
+                        polkadotDocs: `https://docs.polkadot.com/develop/parachains/customize-parachain/add-existing-pallets/`,
+                      },
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
+          } catch (error) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error fetching pallet details: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                },
+              ],
+            };
+          }
+
+        case 'search_pallets':
+          validateRequired(args, ['query']);
+          const searchEndpoint =
+            args?.endpoint ||
+            (args?.chainName
+              ? this.polkadotDocs
+                  .getAvailableChains()
+                  .find((c) => c.name === args.chainName)?.endpoint
+              : null) ||
+            'wss://rpc.polkadot.io';
+
+          try {
+            const searchResults = await this.polkadotDocs.searchPallets(
+              searchEndpoint,
+              args.query,
+            );
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      endpoint: searchEndpoint,
+                      query: args.query,
+                      resultsCount: searchResults.length,
+                      results: searchResults.map((p) => ({
+                        name: p.name,
+                        index: p.index,
+                        description: p.description,
+                      })),
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
+          } catch (error) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Error searching pallets: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                },
+              ],
+            };
+          }
 
         default:
           throw new Error(`Unknown tool: ${name}`);
@@ -753,15 +733,7 @@ export class McpNodeRedServer {
       resources.push({
         uri: 'system://runtime',
         name: 'Node-RED System Info',
-        description: 'Node-RED runtime and system information',
-        mimeType: 'application/json',
-      });
-
-      // Add SSE resource
-      resources.push({
-        uri: 'sse://stats',
-        name: 'SSE Statistics',
-        description: 'Server-Sent Events statistics and connection info',
+        description: 'Node-RED runtime and connection status',
         mimeType: 'application/json',
       });
     } catch (error) {
@@ -799,84 +771,40 @@ export class McpNodeRedServer {
           contents: [
             {
               uri,
-              mimeType: 'application/json',
               text: JSON.stringify(resource, null, 2),
+              mimeType: 'application/json',
             },
           ],
         };
       }
 
       case 'system': {
-        const [runtime, nodes, settings] = await Promise.all([
-          this.nodeRedClient.getRuntimeInfo(),
-          this.nodeRedClient.getNodeTypes(),
-          this.nodeRedClient.getSettings(),
-        ]);
-
+        const systemInfo = await this.nodeRedClient.getRuntimeInfo();
         const resource: NodeRedSystemResource = {
           uri,
           name: 'Node-RED System Info',
-          description: 'Node-RED runtime and system information',
+          description: 'Node-RED runtime and connection status',
           mimeType: 'application/json',
-          system: {
-            runtime,
-            nodes,
-            settings,
-            status: {
-              state: 'running',
-              uptime: process.uptime(),
-              memory: {
-                used: process.memoryUsage().heapUsed,
-                total: process.memoryUsage().heapTotal,
-              },
-            },
+          system: systemInfo,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            serverVersion: this.config.version,
+            connected: true,
           },
         };
-
         return {
           contents: [
             {
               uri,
-              mimeType: 'application/json',
               text: JSON.stringify(resource, null, 2),
-            },
-          ],
-        };
-      }
-
-      case 'sse': {
-        const resource: NodeRedSSEResource = {
-          uri,
-          name: 'SSE Statistics',
-          description: 'Server-Sent Events statistics and connection info',
-          mimeType: 'application/json',
-          sse: {
-            stats: this.sseHandler.getStats(),
-            activeConnections: this.sseHandler.getClients().map((client) => ({
-              id: client.connectionId,
-              connectedAt: client.connectedAt.toISOString(),
-              subscriptions: client.subscriptions,
-            })),
-            config: {
-              maxConnections: this.config.sse.maxConnections,
-              heartbeatInterval: this.config.sse.heartbeatInterval,
-            },
-          },
-        };
-
-        return {
-          contents: [
-            {
-              uri,
               mimeType: 'application/json',
-              text: JSON.stringify(resource, null, 2),
             },
           ],
         };
       }
 
       default:
-        throw new Error(`Unknown resource protocol: ${protocol}`);
+        throw new Error(`Unsupported resource protocol: ${protocol}`);
     }
   }
 
@@ -931,6 +859,112 @@ export class McpNodeRedServer {
   }
 
   /**
+   * Get Node-RED modules information for MCP planning
+   */
+  private getNodeRedModules(category: string) {
+    const moduleData = {
+      all: this.getAllModules(),
+      core: this.getCoreModules(),
+      contrib: this.getContribModules(),
+      popular: this.getPopularModules(),
+    };
+
+    return {
+      category,
+      description: `Node-RED ${category} modules with documentation links`,
+      modules:
+        moduleData[category as keyof typeof moduleData] || moduleData.popular,
+      documentation: {
+        main: 'https://nodered.org/docs/',
+        packaging: 'https://nodered.org/docs/creating-nodes/packaging',
+        flows: 'https://flows.nodered.org/',
+        npm_search: 'https://www.npmjs.com/search?q=node-red-contrib',
+      },
+    };
+  }
+
+  private getCoreModules() {
+    return [
+      {
+        name: '@node-red/nodes',
+        description: 'Core Node-RED nodes',
+        category: 'core',
+        documentation: 'https://nodered.org/docs/user-guide/nodes',
+        npm: 'https://www.npmjs.com/package/@node-red/nodes',
+      },
+    ];
+  }
+
+  private getContribModules() {
+    return [
+      {
+        name: 'node-red-contrib-*',
+        description:
+          'Community contributed nodes (use * as wildcard for search)',
+        category: 'contrib',
+        documentation: 'https://flows.nodered.org/',
+        npm: 'https://www.npmjs.com/search?q=node-red-contrib',
+      },
+    ];
+  }
+
+  private getPopularModules() {
+    return [
+      {
+        name: 'node-red-dashboard',
+        description: 'Dashboard UI for Node-RED',
+        category: 'popular',
+        documentation: 'https://github.com/node-red/node-red-dashboard',
+        npm: 'https://www.npmjs.com/package/node-red-dashboard',
+      },
+      {
+        name: 'node-red-contrib-ui-led',
+        description: 'LED indicator for dashboard',
+        category: 'popular',
+        documentation: 'https://flows.nodered.org/node/node-red-contrib-ui-led',
+        npm: 'https://www.npmjs.com/package/node-red-contrib-ui-led',
+      },
+      {
+        name: 'node-red-contrib-modbus',
+        description: 'Modbus communication nodes',
+        category: 'popular',
+        documentation: 'https://flows.nodered.org/node/node-red-contrib-modbus',
+        npm: 'https://www.npmjs.com/package/node-red-contrib-modbus',
+      },
+      {
+        name: 'node-red-contrib-mqtt-broker',
+        description: 'MQTT broker for Node-RED',
+        category: 'popular',
+        documentation:
+          'https://flows.nodered.org/node/node-red-contrib-mqtt-broker',
+        npm: 'https://www.npmjs.com/package/node-red-contrib-mqtt-broker',
+      },
+      {
+        name: 'node-red-contrib-influxdb',
+        description: 'InfluxDB nodes for time series data',
+        category: 'popular',
+        documentation:
+          'https://flows.nodered.org/node/node-red-contrib-influxdb',
+        npm: 'https://www.npmjs.com/package/node-red-contrib-influxdb',
+      },
+    ];
+  }
+
+  private getAllModules() {
+    return [
+      ...this.getCoreModules(),
+      ...this.getPopularModules(),
+      {
+        name: 'Search More',
+        description: 'Explore thousands more modules',
+        category: 'search',
+        documentation: 'https://flows.nodered.org/',
+        npm: 'https://www.npmjs.com/search?q=node-red',
+      },
+    ];
+  }
+
+  /**
    * Get the underlying server instance
    */
   getServer(): Server {
@@ -965,10 +999,10 @@ export class McpNodeRedServer {
           'Warning: Could not connect to Node-RED. Some features may not work.',
         );
       } else {
-      console.warn(
-        'Warning: Could not connect to Node-RED. Some features may not work.',
-      );
-    }
+        console.warn(
+          'Warning: Could not connect to Node-RED. Some features may not work.',
+        );
+      }
     }
 
     // Log server info to stderr in stdio mode to avoid polluting stdout
