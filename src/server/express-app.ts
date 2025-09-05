@@ -43,6 +43,7 @@ export class ExpressApp {
   private app: express.Application;
   private mcpServer: McpNodeRedServer;
   private sseHandler: SSEHandler;
+  private eventListener: NodeRedEventListener;
   private config: ExpressAppConfig;
 
   constructor(
@@ -51,6 +52,7 @@ export class ExpressApp {
   ) {
     this.mcpServer = mcpServer;
     this.sseHandler = mcpServer.getSSEHandler();
+    this.eventListener = new NodeRedEventListener(this.sseHandler, mcpServer.getNodeRedClient());
 
     this.config = {
       port: parseInt(process.env.PORT || '3000'),
@@ -828,6 +830,42 @@ export class ExpressApp {
       },
     );
 
+    // Event monitoring status
+    this.app.get(
+      '/api/events/monitoring',
+      authenticate,
+      (req: Request, res: Response) => {
+        const status = this.eventListener.getStatus();
+
+        const response: ApiResponse = {
+          success: true,
+          data: status,
+          timestamp: new Date().toISOString(),
+        };
+
+        res.json(response);
+      },
+    );
+
+    // Manually trigger flow deploy event
+    this.app.post(
+      '/api/events/trigger/deploy',
+      authenticate,
+      asyncHandler(async (req: AuthRequest, res: Response) => {
+        const { flowId } = req.body;
+        
+        this.eventListener.onFlowDeploy(flowId);
+
+        const response: ApiResponse = {
+          success: true,
+          data: { message: 'Flow deploy event triggered', flowId },
+          timestamp: new Date().toISOString(),
+        };
+
+        res.json(response);
+      }),
+    );
+
     // Node-RED proxy endpoints (optional - for direct API access)
     this.app.get(
       '/api/nodered/flows',
@@ -1105,8 +1143,26 @@ export class ExpressApp {
    * Start system monitoring (send periodic updates via SSE)
    */
   startSystemMonitoring(intervalMs: number = 30000): void {
+    // Start system info updates
     setInterval(() => {
       this.sendSystemInfo();
     }, intervalMs);
+
+    // Start Node-RED event monitoring
+    this.eventListener.startEventMonitoring(5000); // Check every 5 seconds
+  }
+
+  /**
+   * Stop system monitoring
+   */
+  stopSystemMonitoring(): void {
+    this.eventListener.stopEventMonitoring();
+  }
+
+  /**
+   * Get event listener status
+   */
+  getEventListenerStatus(): { isMonitoring: boolean; lastEventTimestamp: number } {
+    return this.eventListener.getStatus();
   }
 }
