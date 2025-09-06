@@ -141,3 +141,5 @@ playwright/.cache/
 # MCP specific
 *.mcp.log
 mcp-debug.log 
+
+/dist
