@@ -28,7 +28,7 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "verbatimModuleSyntax": true,
+    "verbatimModuleSyntax": false,
     "types": ["node"],
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "baseUrl": "./src",
