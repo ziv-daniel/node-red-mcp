@@ -39,8 +39,8 @@
 
 ### 📊 **Production Observability**
 
-- **Pino** structured logging with custom levels
-- **OpenTelemetry** distributed tracing
+- **Silent operation** in stdio mode for MCP protocol compatibility
+- **OpenTelemetry** distributed tracing (HTTP mode only)
 - **Prometheus** metrics with custom gauges and counters
 - **Grafana** dashboards for visualization
 - **Health checks** with detailed system information
@@ -81,9 +81,10 @@
 
 - **Node.js** 22+ (LTS recommended)
 - **Yarn** 4.x (automatically managed via Corepack)
+- **Claude Desktop** or other MCP client (for stdio mode)
 - **Docker** & **Docker Compose** (optional, for containerized setup)
 
-### 🚀 Option 1: Native Installation
+### 🚀 Option 1: Native Installation (For Claude Desktop)
 
 ```bash
 # Clone the repository
@@ -93,17 +94,16 @@ cd nodered-mcp
 # Install dependencies (Yarn 4 will be automatically used)
 yarn install
 
-# Copy environment template
-cp env.example .env
-
-# Build the project
+# Build the project (no .env file needed for stdio mode)
 yarn build
 
-# Start the server
-yarn start
+# Test the server (optional)
+echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}' | node dist/index.mjs
+
+# Configure in Claude Desktop (see Usage section)
 ```
 
-### 🐳 Option 2: Docker Compose (Recommended)
+### 🐳 Option 2: Docker Compose (For HTTP Mode Development)
 
 ```bash
 # Clone and start the full stack
@@ -165,22 +165,22 @@ NODE_ENV=development
 PORT=3000
 
 # MCP Configuration (2025 Update)
-MCP_TRANSPORT=stdio          # stdio | http | both
+MCP_TRANSPORT=stdio          # stdio | http | both (stdio recommended for Claude Desktop)
 HTTP_ENABLED=false           # Enable HTTP server
 
 # Node-RED Configuration
-NODERED_URL=http://localhost:1880
+NODERED_URL=https://your-nodered-instance.com
 NODERED_USERNAME=your-username
-NODERED_PASSWORD=your-password
+NODERED_PASSWORD=your-secure-password
 
-# Security (Enhanced 2025)
+# Security (Enhanced 2025) - Only needed for HTTP mode
 JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters
 CORS_ORIGIN=*
 RATE_LIMIT_WINDOW=900000     # 15 minutes
 RATE_LIMIT_MAX=100
 
-# Logging
-LOG_LEVEL=info               # error | warn | info | debug
+# Logging (Note: Disabled in stdio mode for MCP compatibility)
+LOG_LEVEL=info               # error | warn | info | debug (only applies to HTTP mode)
 ```
 
 ### Advanced Configuration
@@ -189,7 +189,28 @@ For production deployments, see [Configuration Guide](docs/CONFIGURATION.md).
 
 ## 🎯 Usage
 
-### MCP Client Integration
+### Claude Desktop Integration (Recommended)
+
+Add to your Claude Desktop configuration
+(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "nodered": {
+      "command": "node",
+      "args": ["path/to/nodered_mcp/dist/index.mjs"],
+      "env": {
+        "NODERED_URL": "https://your-nodered-instance.com",
+        "NODERED_USERNAME": "your-username",
+        "NODERED_PASSWORD": "your-secure-password"
+      }
+    }
+  }
+}
+```
+
+### MCP Client Integration (Programmatic)
 
 ```typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -199,6 +220,11 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const transport = new StdioClientTransport({
   command: 'node',
   args: ['dist/index.mjs'],
+  env: {
+    NODERED_URL: 'https://your-nodered-instance.com',
+    NODERED_USERNAME: 'your-username',
+    NODERED_PASSWORD: 'your-secure-password',
+  },
 });
 
 const client = new Client(
@@ -210,25 +236,27 @@ await client.connect(transport);
 
 // List available tools
 const tools = await client.listTools();
-console.log('Available tools:', tools);
 
 // Call a tool
 const result = await client.callTool({
-  name: 'list-flows',
+  name: 'get_flows',
   arguments: {},
 });
 ```
 
 ### Available MCP Tools
 
-| Tool          | Description                   | Arguments        |
-| ------------- | ----------------------------- | ---------------- |
-| `list-flows`  | List all Node-RED flows       | None             |
-| `get-flow`    | Get specific flow details     | `flowId: string` |
-| `deploy-flow` | Deploy flow to Node-RED       | `flow: object`   |
-| `list-nodes`  | List available Node-RED nodes | None             |
-| `get-node`    | Get node configuration        | `nodeId: string` |
-| `system-info` | Get Node-RED system info      | None             |
+| Tool                    | Description                       | Arguments                              |
+| ----------------------- | --------------------------------- | -------------------------------------- |
+| `get_flows`             | Get Node-RED flows (summary/full) | `includeDetails?: boolean`             |
+| `get_flow`              | Get specific flow details         | `flowId: string`                       |
+| `create_flow`           | Create a new Node-RED flow        | `flowData: object`                     |
+| `update_flow`           | Update an existing flow           | `flowId: string, flowData: object`     |
+| `enable_flow`           | Enable a specific flow            | `flowId: string`                       |
+| `disable_flow`          | Disable a specific flow           | `flowId: string`                       |
+| `search_modules`        | Search Node-RED palette modules   | `query: string, category?: string`     |
+| `install_module`        | Install a Node-RED module         | `moduleName: string, version?: string` |
+| `get_installed_modules` | Get installed modules             | None                                   |
 
 ## 📚 API Documentation
 
@@ -478,11 +506,11 @@ spec:
 
 ### Metrics & Observability
 
-The server exposes comprehensive metrics and observability:
+The server exposes comprehensive metrics and observability (HTTP mode only):
 
 - **Prometheus Metrics**: `/metrics` endpoint
 - **OpenTelemetry Tracing**: Distributed tracing support
-- **Structured Logging**: JSON logs with correlation IDs
+- **Silent Operation**: No logging in stdio mode for MCP protocol compatibility
 - **Health Checks**: Multiple probe endpoints
 
 ### Grafana Dashboards
@@ -523,6 +551,20 @@ for details.
 - ✅ **Prettier**: Auto-formatted code
 - ✅ **Tests**: 85%+ coverage for new code
 - ✅ **Documentation**: Update docs for new features
+
+## 🔧 Important Notes
+
+### Stdio vs HTTP Mode
+
+- **Stdio Mode** (Default): Designed for MCP clients like Claude Desktop
+  - No logging output to maintain clean JSON-RPC communication
+  - Environment variables passed via client configuration
+  - Optimized for MCP protocol compatibility
+
+- **HTTP Mode**: For web-based integrations and monitoring
+  - Full logging and observability features enabled
+  - Requires `.env` file configuration
+  - Includes health checks, metrics, and SSE endpoints
 
 ## 📄 License
 
