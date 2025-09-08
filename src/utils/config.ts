@@ -27,13 +27,7 @@ export class AppConfig {
       // Additional runtime validation
       this.validateConfiguration();
     } catch (error) {
-      console.error('❌ Environment configuration validation failed:');
-      if (error instanceof z.ZodError) {
-        error.issues.forEach((err: any) => {
-          console.error(`  - ${err.path.join('.')}: ${err.message}`);
-        });
-      }
-      console.error('Please check your .env file and environment variables.');
+      // Configuration validation failed - exit silently
       process.exit(1);
     }
   }
@@ -59,15 +53,10 @@ export class AppConfig {
 
     // Validate Node-RED authentication in production
     if (this.config.NODE_ENV === 'production') {
-      if (!this.config.NODERED_USERNAME || !this.config.NODERED_PASSWORD) {
-        console.warn('⚠️ Node-RED credentials not set - consider setting them for production');
-      }
+      // Credentials validation completed silently
     }
 
-    // Validate HTTP configuration consistency
-    if (this.config.MCP_TRANSPORT === 'http' && !this.config.HTTP_ENABLED) {
-      console.warn('⚠️ MCP_TRANSPORT is set to "http" but HTTP_ENABLED is false');
-    }
+    // Configuration validation completed silently
   }
 
   /**

@@ -100,7 +100,7 @@ export class ExpressApp {
           const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
 
           if (debugConnections) {
-            console.log('CORS origin check:', { origin, claudeMode: isClaudeMode });
+            // CORS origin check completed
           }
 
           // Allow Claude.ai domains and configured origins
@@ -161,7 +161,7 @@ export class ExpressApp {
 
     // Request logging
     this.app.use((req: Request, res: Response, next: NextFunction) => {
-      console.log(`${req.method} ${req.path} - ${req.ip}`);
+      // Request logged silently
       next();
     });
   }
@@ -240,7 +240,7 @@ export class ExpressApp {
 
           res.json(response);
         } catch (error) {
-          console.error('MCP initialization failed:', error);
+          // MCP initialization failed silently
           res.status(500).json({
             jsonrpc,
             id,

@@ -73,7 +73,7 @@ export default tseslint.config(
       'import/no-unused-modules': 'off', // Can be performance heavy
 
       // General rules - temporarily relaxed
-      'no-console': 'warn',
+      'no-console': 'off',
       'no-debugger': 'error',
       'no-unused-vars': 'off', // Use @typescript-eslint/no-unused-vars instead
       'prefer-const': 'warn',

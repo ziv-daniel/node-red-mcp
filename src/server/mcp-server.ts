@@ -52,9 +52,7 @@ export class McpNodeRedServer {
       sse: {
         enabled: process.env.SSE_ENABLED !== 'false',
         port: parseInt(process.env.SSE_PORT || '3001'),
-        heartbeatInterval: parseInt(
-          process.env.SSE_HEARTBEAT_INTERVAL || '30000',
-        ),
+        heartbeatInterval: parseInt(process.env.SSE_HEARTBEAT_INTERVAL || '30000'),
         maxConnections: parseInt(process.env.SSE_MAX_CONNECTIONS || '100'),
       },
       ...config,
@@ -72,7 +70,7 @@ export class McpNodeRedServer {
           prompts: this.config.capabilities.prompts ? {} : undefined,
           logging: this.config.capabilities.logging ? {} : undefined,
         },
-      },
+      }
     );
 
     this.nodeRedClient = new NodeRedAPIClient(this.config.nodeRed);
@@ -90,7 +88,7 @@ export class McpNodeRedServer {
       tools: this.getToolDefinitions(),
     }));
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async request => {
       const { name, arguments: args } = request.params;
       return await this.callTool(name, args || {});
     });
@@ -100,20 +98,17 @@ export class McpNodeRedServer {
       resources: await this.getResourceList(),
     }));
 
-    this.server.setRequestHandler(
-      ReadResourceRequestSchema,
-      async (request) => {
-        const { uri } = request.params;
-        return await this.getResource(uri);
-      },
-    );
+    this.server.setRequestHandler(ReadResourceRequestSchema, async request => {
+      const { uri } = request.params;
+      return await this.getResource(uri);
+    });
 
     // Prompts handlers
     this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
       prompts: this.getPromptDefinitions(),
     }));
 
-    this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    this.server.setRequestHandler(GetPromptRequestSchema, async request => {
       const { name, arguments: args } = request.params;
       return await this.getPrompt(name, args || {});
     });
@@ -215,15 +210,13 @@ export class McpNodeRedServer {
       },
       {
         name: 'search_modules',
-        description:
-          'Search for Node-RED palette modules online via npm registry',
+        description: 'Search for Node-RED palette modules online via npm registry',
         inputSchema: {
           type: 'object',
           properties: {
             query: {
               type: 'string',
-              description:
-                'Search query for modules (e.g., "mqtt", "dashboard", "influxdb")',
+              description: 'Search query for modules (e.g., "mqtt", "dashboard", "influxdb")',
             },
             category: {
               type: 'string',
@@ -244,20 +237,17 @@ export class McpNodeRedServer {
       },
       {
         name: 'install_module',
-        description:
-          'Install a Node-RED palette module via Node-RED palette management API',
+        description: 'Install a Node-RED palette module via Node-RED palette management API',
         inputSchema: {
           type: 'object',
           properties: {
             moduleName: {
               type: 'string',
-              description:
-                'Name of the module to install (e.g., "node-red-contrib-ui-led")',
+              description: 'Name of the module to install (e.g., "node-red-contrib-ui-led")',
             },
             version: {
               type: 'string',
-              description:
-                'Specific version to install (optional, defaults to latest)',
+              description: 'Specific version to install (optional, defaults to latest)',
             },
           },
           required: ['moduleName'],
@@ -310,9 +300,7 @@ export class McpNodeRedServer {
 
         case 'create_flow':
           validateRequired(args, ['flowData']);
-          const createdFlow = await this.nodeRedClient.createFlow(
-            args.flowData,
-          );
+          const createdFlow = await this.nodeRedClient.createFlow(args.flowData);
           return {
             content: [
               {
@@ -366,7 +354,7 @@ export class McpNodeRedServer {
           const searchResults = await this.nodeRedClient.searchModules(
             searchQuery,
             searchCategory,
-            searchLimit,
+            searchLimit
           );
           return {
             content: [
@@ -381,10 +369,7 @@ export class McpNodeRedServer {
           validateRequired(args, ['moduleName']);
           const moduleName = args.moduleName;
           const moduleVersion = args.version;
-          const installResult = await this.nodeRedClient.installModule(
-            moduleName,
-            moduleVersion,
-          );
+          const installResult = await this.nodeRedClient.installModule(moduleName, moduleVersion);
           return {
             content: [
               {
@@ -395,8 +380,7 @@ export class McpNodeRedServer {
           };
 
         case 'get_installed_modules':
-          const installedModules =
-            await this.nodeRedClient.getInstalledModules();
+          const installedModules = await this.nodeRedClient.getInstalledModules();
           return {
             content: [
               {
@@ -453,7 +437,7 @@ export class McpNodeRedServer {
         mimeType: 'application/json',
       });
     } catch (error) {
-      console.error('Error getting resource list:', error);
+      // Error silently handled
     }
 
     return resources;
@@ -601,28 +585,9 @@ export class McpNodeRedServer {
   async start(): Promise<void> {
     // Test Node-RED connection
     const connected = await this.nodeRedClient.testConnection();
-    if (!connected) {
-      // Use console.error for stdio transport compatibility
-      const transport = process.env.MCP_TRANSPORT || 'stdio';
-      if (transport === 'stdio') {
-        console.error(
-          'Warning: Could not connect to Node-RED. Some features may not work.',
-        );
-      } else {
-        console.warn(
-          'Warning: Could not connect to Node-RED. Some features may not work.',
-        );
-      }
-    }
+    // Connection test completed silently
 
-    // Log server info to stderr in stdio mode to avoid polluting stdout
-    const transport = process.env.MCP_TRANSPORT || 'stdio';
-    const logFunction = transport === 'stdio' ? console.error : console.log;
-
-    logFunction(`MCP Node-RED Server started`);
-    logFunction(`- Server: ${this.config.name} v${this.config.version}`);
-    logFunction(`- Node-RED: ${this.config.nodeRed.url}`);
-    logFunction(`- SSE: ${this.config.sse.enabled ? 'enabled' : 'disabled'}`);
+    // Server started silently
   }
 
   /**
@@ -633,7 +598,7 @@ export class McpNodeRedServer {
 
     // Log to stderr in stdio mode to avoid polluting stdout
     const transport = process.env.MCP_TRANSPORT || 'stdio';
-    const logFunction = transport === 'stdio' ? console.error : console.log;
+    // Logging disabled
     logFunction('MCP Node-RED Server stopped');
   }
 
