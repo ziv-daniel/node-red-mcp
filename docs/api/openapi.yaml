@@ -1,0 +1,973 @@
+openapi: 3.1.0
+
+info:
+  title: MCP Node-RED Server API
+  description: |
+    A comprehensive Model Context Protocol (MCP) server for Node-RED integration.
+
+    This API provides enterprise-grade Node-RED integration with modern security,
+    observability, and performance features built for 2025 standards.
+
+    ## Features
+
+    - 🚀 **MCP Integration**: Full Model Context Protocol support
+    - 🔒 **Enterprise Security**: JWT authentication, rate limiting, CORS
+    - 📊 **Observability**: Health checks, metrics, distributed tracing
+    - 🔄 **Real-time**: Server-Sent Events for live updates
+    - 🐳 **Cloud-Native**: Kubernetes-ready with comprehensive health checks
+
+    ## Authentication
+
+    This API supports multiple authentication methods:
+
+    - **JWT Bearer Token**: For programmatic access
+    - **API Key**: For service-to-service communication
+    - **No Auth**: For health checks and public endpoints
+
+    ## Rate Limiting
+
+    - **Window**: 15 minutes (configurable)
+    - **Max Requests**: 100 per window (configurable)
+    - **Headers**: `X-RateLimit-*` headers in responses
+
+  version: 1.0.0
+  contact:
+    name: MCP Node-RED Server Team
+    email: support@example.com
+    url: https://github.com/your-org/nodered-mcp
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+- url: http://localhost:3000
+  description: Local Development Server
+- url: https://api.example.com
+  description: Production Server
+- url: https://staging-api.example.com
+  description: Staging Server
+
+security:
+- BearerAuth: []
+- ApiKeyAuth: []
+- {}
+
+paths:
+  /health:
+    get:
+      summary: Comprehensive Health Check
+      description: |
+        Returns detailed health information about the server and its dependencies.
+
+        This endpoint provides:
+        - Overall system health status
+        - Node-RED connectivity status
+        - Resource utilization metrics
+        - Performance statistics
+        - Service availability information
+
+        Used for monitoring, alerting, and debugging.
+      operationId: getHealthStatus
+      tags:
+      - Health Checks
+      security:
+      - {}
+      responses:
+        '200':
+          description: Health check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: System is healthy
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-12-17T10:30:00Z"
+                    uptime: 3600
+                    version: "1.0.0"
+                    environment: "production"
+                    checks:
+                      system:
+                        status: "pass"
+                        time: 5
+                        output: "Memory utilization: 45% (256MB/512MB)"
+                      nodeRed:
+                        status: "pass"
+                        time: 12
+                        responseTime: 10
+                    services:
+                      nodeRed:
+                        status: "available"
+                        responseTime: 10
+                        lastCheck: "2024-12-17T10:30:00Z"
+                      mcp:
+                        connections: 2
+                        activeTools: 10
+                        lastActivity: "2024-12-17T10:29:45Z"
+                    metrics:
+                      http:
+                        requests: 1250
+                        errors: 3
+                        averageResponseTime: 45
+                degraded:
+                  summary: System is degraded
+                  value:
+                    status: "degraded"
+                    timestamp: "2024-12-17T10:30:00Z"
+                    uptime: 3600
+                    version: "1.0.0"
+                    environment: "production"
+                    checks:
+                      system:
+                        status: "pass"
+                        time: 5
+                      nodeRed:
+                        status: "warn"
+                        time: 2500
+                        responseTime: 2500
+                        output: "High response time detected"
+        '503':
+          description: Service unavailable - health check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                unhealthy:
+                  summary: System is unhealthy
+                  value:
+                    status: "unhealthy"
+                    timestamp: "2024-12-17T10:30:00Z"
+                    uptime: 3600
+                    version: "1.0.0"
+                    environment: "production"
+                    checks:
+                      system:
+                        status: "pass"
+                        time: 5
+                      nodeRed:
+                        status: "fail"
+                        time: 5000
+                        output: "Connection timeout to Node-RED"
+
+  /ready:
+    get:
+      summary: Kubernetes Readiness Probe
+      description: |
+        Kubernetes readiness probe endpoint that indicates if the service
+        is ready to receive traffic.
+
+        Returns 200 when:
+        - Server is fully initialized
+        - Dependencies are available
+        - Service can handle requests
+
+        Returns 503 when:
+        - Server is starting up
+        - Dependencies are unavailable
+        - Service cannot handle requests
+      operationId: getReadinessStatus
+      tags:
+      - Health Checks
+      security:
+      - {}
+      responses:
+        '200':
+          description: Service is ready to receive traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /alive:
+    get:
+      summary: Kubernetes Liveness Probe
+      description: |
+        Kubernetes liveness probe endpoint that indicates if the service
+        is alive and should not be restarted.
+
+        This is a lightweight check that only verifies the process is responsive.
+      operationId: getLivenessStatus
+      tags:
+      - Health Checks
+      security:
+      - {}
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+
+  /metrics:
+    get:
+      summary: Prometheus Metrics
+      description: |
+        Prometheus-compatible metrics endpoint providing detailed
+        operational metrics for monitoring and alerting.
+
+        Metrics include:
+        - HTTP request counters and histograms
+        - MCP tool call metrics
+        - Node-RED integration metrics
+        - System resource utilization
+        - Custom business metrics
+      operationId: getMetrics
+      tags:
+      - Monitoring
+      security:
+      - {}
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total number of HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",route="/health",status_code="200"} 1250
+
+                  # HELP http_request_duration_seconds HTTP request duration in seconds
+                  # TYPE http_request_duration_seconds histogram
+                  http_request_duration_seconds_bucket{method="GET",route="/health",le="0.1"} 1200
+                  http_request_duration_seconds_bucket{method="GET",route="/health",le="0.5"} 1245
+                  http_request_duration_seconds_bucket{method="GET",route="/health",le="1.0"} 1250
+                  http_request_duration_seconds_bucket{method="GET",route="/health",le="+Inf"} 1250
+                  http_request_duration_seconds_count{method="GET",route="/health"} 1250
+                  http_request_duration_seconds_sum{method="GET",route="/health"} 56.25
+
+  /metrics/reset:
+    post:
+      summary: Reset Metrics
+      description: |
+        Reset all metrics counters and histograms to zero.
+
+        **Warning**: This is primarily for testing and development.
+        Use with caution in production environments.
+      operationId: resetMetrics
+      tags:
+      - Monitoring
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Metrics reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Metrics reset successfully"
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/events:
+    get:
+      summary: Server-Sent Events Stream
+      description: |
+        Subscribe to real-time server events using Server-Sent Events (SSE).
+
+        Event types include:
+        - `mcp.tool.called`: When an MCP tool is executed
+        - `mcp.error`: When an MCP operation fails
+        - `nodered.flow.deployed`: When Node-RED flows are deployed
+        - `nodered.node.added`: When new nodes are added
+        - `system.health.changed`: When system health status changes
+        - `system.metrics.updated`: When metrics are updated
+
+        The connection will remain open and send events as they occur.
+        Clients should implement reconnection logic for production use.
+      operationId: subscribeToEvents
+      tags:
+      - Real-time
+      security:
+      - BearerAuth: []
+      - {}
+      parameters:
+      - name: types
+        in: query
+        description: Comma-separated list of event types to subscribe to
+        required: false
+        schema:
+          type: string
+          example: "mcp.tool.called,nodered.flow.deployed"
+      - name: buffer
+        in: query
+        description: Number of recent events to replay on connection
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+      responses:
+        '200':
+          description: SSE stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                mcp_tool_called:
+                  summary: MCP tool called event
+                  value: |
+                    event: mcp.tool.called
+                    data: {"toolName":"list-flows","duration":150,"success":true,"timestamp":"2024-12-17T10:30:00Z"}
+
+                nodered_flow_deployed:
+                  summary: Node-RED flow deployed event
+                  value: |
+                    event: nodered.flow.deployed
+                    data: {"flowId":"flow1","name":"HTTP API","nodeCount":5,"timestamp":"2024-12-17T10:30:00Z"}
+
+                system_health_changed:
+                  summary: System health changed event
+                  value: |
+                    event: system.health.changed
+                    data: {"status":"degraded","previousStatus":"healthy","reason":"High Node-RED response time","timestamp":"2024-12-17T10:30:00Z"}
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/mcp/tools:
+    get:
+      summary: List Available MCP Tools
+      description: |
+        Retrieve a list of all available MCP tools with their
+        descriptions, parameters, and usage examples.
+      operationId: listMcpTools
+      tags:
+      - MCP Tools
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: List of available MCP tools
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/McpTool'
+              examples:
+                tools_list:
+                  summary: Available MCP tools
+                  value:
+                    tools:
+                    - name: "list-flows"
+                      description: "List all Node-RED flows"
+                      parameters: {}
+                      examples:
+                      - description: "List all flows"
+                        arguments: {}
+                    - name: "get-flow"
+                      description: "Get specific flow details"
+                      parameters:
+                        type: "object"
+                        properties:
+                          flowId:
+                            type: "string"
+                            description: "The flow ID"
+                        required: [ "flowId" ]
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/mcp/tools/{toolName}:
+    post:
+      summary: Execute MCP Tool
+      description: |
+        Execute a specific MCP tool with the provided arguments.
+
+        This endpoint provides HTTP access to MCP tools that are normally
+        accessed via the MCP protocol. Useful for testing, debugging,
+        and web-based integrations.
+      operationId: executeMcpTool
+      tags:
+      - MCP Tools
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: toolName
+        in: path
+        required: true
+        description: Name of the MCP tool to execute
+        schema:
+          type: string
+          enum:
+          - list-flows
+          - get-flow
+          - deploy-flow
+          - list-nodes
+          - get-node
+          - system-info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                arguments:
+                  type: object
+                  description: Tool-specific arguments
+            examples:
+              list_flows:
+                summary: List flows (no arguments)
+                value:
+                  arguments: {}
+              get_flow:
+                summary: Get specific flow
+                value:
+                  arguments:
+                    flowId: "flow1"
+              deploy_flow:
+                summary: Deploy new flow
+                value:
+                  arguments:
+                    flow:
+                      id: "new-flow"
+                      label: "My API"
+                      nodes:
+                      - id: "http-in"
+                        type: "http in"
+                        method: "get"
+                        url: "/api/hello"
+      responses:
+        '200':
+          description: Tool executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpToolResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/nodered/flows:
+    get:
+      summary: List Node-RED Flows
+      description: |
+        Retrieve all Node-RED flows with optional filtering and pagination.
+
+        This is a convenience endpoint that wraps the `list-flows` MCP tool
+        with additional HTTP-specific features like filtering and pagination.
+      operationId: listNodeRedFlows
+      tags:
+      - Node-RED Integration
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: includeDisabled
+        in: query
+        description: Include disabled flows in the results
+        required: false
+        schema:
+          type: boolean
+          default: true
+      - name: search
+        in: query
+        description: Search flows by name or label
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        description: Maximum number of flows to return
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: offset
+        in: query
+        description: Number of flows to skip (for pagination)
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: List of Node-RED flows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NodeRedFlow'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '503':
+          description: Node-RED unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/nodered/system-info:
+    get:
+      summary: Node-RED System Information
+      description: |
+        Get comprehensive system information from the Node-RED instance.
+
+        Includes:
+        - Node-RED version and runtime information
+        - Available nodes and their versions
+        - System resources and performance metrics
+        - Configuration and settings
+      operationId: getNodeRedSystemInfo
+      tags:
+      - Node-RED Integration
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Node-RED system information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeRedSystemInfo'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '503':
+          description: Node-RED unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT Bearer token authentication. Include the token in the Authorization header:
+        `Authorization: Bearer <your-jwt-token>`
+
+        Tokens can be obtained through your authentication system.
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API Key authentication for service-to-service communication.
+        Include your API key in the X-API-Key header.
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Unauthorized"
+            message: "Invalid or missing authentication token"
+            code: "AUTH_REQUIRED"
+            timestamp: "2024-12-17T10:30:00Z"
+
+    BadRequestError:
+      description: Invalid request parameters or body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Bad Request"
+            message: "Validation failed: 'flowId' is required"
+            code: "VALIDATION_ERROR"
+            timestamp: "2024-12-17T10:30:00Z"
+            details:
+            - field: "flowId"
+              message: "This field is required"
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+      - status
+      - timestamp
+      - uptime
+      - version
+      - environment
+      properties:
+        status:
+          type: string
+          enum: [ healthy, degraded, unhealthy ]
+          description: Overall health status
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when health check was performed
+        uptime:
+          type: integer
+          description: Server uptime in seconds
+        version:
+          type: string
+          description: Application version
+        environment:
+          type: string
+          description: Current environment (development, staging, production)
+        checks:
+          type: object
+          description: Individual health check results
+          properties:
+            system:
+              $ref: '#/components/schemas/HealthCheck'
+            nodeRed:
+              $ref: '#/components/schemas/HealthCheck'
+        services:
+          type: object
+          description: External service status
+          properties:
+            nodeRed:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ available, unavailable, degraded ]
+                responseTime:
+                  type: integer
+                  description: Response time in milliseconds
+                lastCheck:
+                  type: string
+                  format: date-time
+            mcp:
+              type: object
+              properties:
+                connections:
+                  type: integer
+                  description: Number of active MCP connections
+                activeTools:
+                  type: integer
+                  description: Number of available tools
+                lastActivity:
+                  type: string
+                  format: date-time
+        metrics:
+          type: object
+          description: Performance metrics
+          properties:
+            http:
+              type: object
+              properties:
+                requests:
+                  type: integer
+                  description: Total HTTP requests processed
+                errors:
+                  type: integer
+                  description: Number of HTTP errors
+                averageResponseTime:
+                  type: integer
+                  description: Average response time in milliseconds
+
+    HealthCheck:
+      type: object
+      required:
+      - status
+      - time
+      properties:
+        status:
+          type: string
+          enum: [ pass, warn, fail ]
+        time:
+          type: integer
+          description: Check execution time in milliseconds
+        output:
+          type: string
+          description: Human-readable check output
+        responseTime:
+          type: integer
+          description: Response time for external services
+
+    ReadinessResponse:
+      type: object
+      required:
+      - ready
+      - timestamp
+      properties:
+        ready:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+                enum: [ ready, not_ready ]
+
+    LivenessResponse:
+      type: object
+      required:
+      - alive
+      - timestamp
+      properties:
+        alive:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: integer
+
+    McpTool:
+      type: object
+      required:
+      - name
+      - description
+      properties:
+        name:
+          type: string
+          description: Tool name/identifier
+        description:
+          type: string
+          description: Tool description
+        parameters:
+          type: object
+          description: JSON Schema for tool parameters
+        examples:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: string
+              arguments:
+                type: object
+
+    McpToolResponse:
+      type: object
+      required:
+      - success
+      - timestamp
+      properties:
+        success:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Tool execution result
+        executionTime:
+          type: integer
+          description: Execution time in milliseconds
+        error:
+          type: string
+          description: Error message if execution failed
+
+    NodeRedFlow:
+      type: object
+      required:
+      - id
+      - type
+      properties:
+        id:
+          type: string
+          description: Unique flow identifier
+        type:
+          type: string
+          enum: [ tab, subflow ]
+        label:
+          type: string
+          description: Flow label/name
+        disabled:
+          type: boolean
+          description: Whether the flow is disabled
+        info:
+          type: string
+          description: Flow description
+        env:
+          type: array
+          description: Environment variables
+          items:
+            type: object
+        nodes:
+          type: array
+          description: Nodes in this flow
+          items:
+            $ref: '#/components/schemas/NodeRedNode'
+
+    NodeRedNode:
+      type: object
+      required:
+      - id
+      - type
+      properties:
+        id:
+          type: string
+          description: Unique node identifier
+        type:
+          type: string
+          description: Node type
+        name:
+          type: string
+          description: Node name
+        x:
+          type: number
+          description: X position in flow editor
+        y:
+          type: number
+          description: Y position in flow editor
+        z:
+          type: string
+          description: Flow/tab ID this node belongs to
+        wires:
+          type: array
+          description: Node connections
+          items:
+            type: array
+            items:
+              type: string
+
+    NodeRedSystemInfo:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Node-RED version
+        node:
+          type: object
+          properties:
+            version:
+              type: string
+              description: Node.js version
+        npm:
+          type: string
+          description: npm version
+        os:
+          type: object
+          properties:
+            platform:
+              type: string
+            arch:
+              type: string
+            release:
+              type: string
+        memory:
+          type: object
+          properties:
+            rss:
+              type: integer
+            heapTotal:
+              type: integer
+            heapUsed:
+              type: integer
+
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Maximum items per page
+        offset:
+          type: integer
+          description: Number of items skipped
+        total:
+          type: integer
+          description: Total number of items
+        hasNext:
+          type: boolean
+          description: Whether there are more pages
+
+    ApiError:
+      type: object
+      required:
+      - error
+      - message
+      - timestamp
+      properties:
+        error:
+          type: string
+          description: Error type/category
+        message:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: array
+          description: Additional error details
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+tags:
+- name: Health Checks
+  description: |
+    Endpoints for monitoring server health and availability.
+    These are used by load balancers, Kubernetes, and monitoring systems.
+
+- name: Monitoring
+  description: |
+    Metrics and monitoring endpoints for observability.
+    Provides Prometheus-compatible metrics and performance data.
+
+- name: Real-time
+  description: |
+    Real-time communication endpoints using Server-Sent Events.
+    Subscribe to live updates from the server and Node-RED.
+
+- name: MCP Tools
+  description: |
+    Model Context Protocol tool execution via HTTP.
+    Provides HTTP access to MCP functionality for testing and integration.
+
+- name: Node-RED Integration
+  description: |
+    Direct Node-RED integration endpoints.
+    Convenience APIs for common Node-RED operations.
+
+externalDocs:
+  description: Find more information about MCP Node-RED Server
+  url: https://github.com/your-org/nodered-mcp

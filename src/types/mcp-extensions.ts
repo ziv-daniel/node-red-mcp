@@ -87,11 +87,11 @@ export interface NodeRedSSEResource {
   mimeType: 'application/json';
   sse: {
     stats: SSEStats;
-    activeConnections: Array<{
+    activeConnections: {
       id: string;
       connectedAt: string;
       subscriptions: string[];
-    }>;
+    }[];
     config: {
       maxConnections: number;
       heartbeatInterval: number;
@@ -103,11 +103,11 @@ export interface NodeRedSSEResource {
 export interface NodeRedPromptTemplate {
   name: string;
   description: string;
-  arguments?: Array<{
+  arguments?: {
     name: string;
     description: string;
     required?: boolean;
-  }>;
+  }[];
   template: string;
 }
 
@@ -168,17 +168,17 @@ export interface McpEventHandler<T = any> {
 
 export interface NodeRedFlowValidation {
   isValid: boolean;
-  errors: Array<{
+  errors: {
     nodeId?: string;
     type: 'error' | 'warning';
     message: string;
     code?: string;
-  }>;
-  warnings: Array<{
+  }[];
+  warnings: {
     nodeId?: string;
     message: string;
     suggestion?: string;
-  }>;
+  }[];
 }
 
 // Utility types for API responses

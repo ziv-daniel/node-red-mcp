@@ -2,8 +2,9 @@
  * Authentication utilities for JWT and API key management
  */
 
-import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+
 import {
   McpAuthContext,
   NodeRedToolPermissions,
@@ -191,7 +192,7 @@ export function authenticateClaudeCompatible(
   }
 
   // Try Bearer token
-  if (authHeader && authHeader.startsWith('Bearer ')) {
+  if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
 
     // In Claude compatible mode, accept any non-empty Bearer token

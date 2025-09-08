@@ -3,6 +3,8 @@
  */
 
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import { v4 as uuidv4 } from 'uuid';
+
 import {
   NodeRedFlow,
   NodeRedFlowSummary,
@@ -16,7 +18,6 @@ import {
 } from '../types/nodered.js';
 import { getNodeRedAuthHeader } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface NodeRedAPIConfig {
   baseURL: string;
@@ -96,7 +97,7 @@ export class NodeRedAPIClient {
         data.trim().startsWith('Node-RED') ||
         data.includes('<title>'))
     ) {
-      const preview = data.length > 100 ? data.substring(0, 100) + '...' : data;
+      const preview = data.length > 100 ? `${data.substring(0, 100)  }...` : data;
       throw new Error(
         `Node-RED returned HTML content instead of JSON for ${endpoint}. This usually indicates an authentication issue or wrong endpoint. Response preview: ${preview}`,
       );
@@ -109,10 +110,10 @@ export class NodeRedAPIClient {
   private setupInterceptors(): void {
     // Request interceptor for logging
     this.client.interceptors.request.use(
-      (config) => {
+      (config) => 
         // Silent request logging to avoid stdio interference
-        return config;
-      },
+         config
+      ,
       (error) => Promise.reject(error),
     ); // Response interceptor for validation and retry logic
     this.client.interceptors.response.use(
@@ -278,12 +279,12 @@ export class NodeRedAPIClient {
         };
 
         // Only add label if it exists and is not empty
-        if (flow.label && flow.label.trim()) {
+        if (flow.label?.trim()) {
           summary.label = flow.label;
         }
 
         // Only add info if it exists and is not empty
-        if (flow.info && flow.info.trim()) {
+        if (flow.info?.trim()) {
           summary.info = flow.info;
         }
 
@@ -604,7 +605,7 @@ export class NodeRedAPIClient {
   /**
    * Get library entries
    */
-  async getLibraryEntries(type: string = 'flows'): Promise<any[]> {
+  async getLibraryEntries(type = 'flows'): Promise<any[]> {
     try {
       const response = await this.client.get(`/library/${type}`);
       return response.data;
@@ -693,7 +694,7 @@ export class NodeRedAPIClient {
   async searchModules(
     query: string,
     category: 'all' | 'contrib' | 'dashboard' = 'all',
-    limit: number = 10,
+    limit = 10,
   ): Promise<ModuleSearchResult> {
     try {
       // Search npm registry for node-red modules
@@ -762,7 +763,7 @@ export class NodeRedAPIClient {
       return {
         success: true,
         module: moduleName,
-        version: version,
+        version,
         message: `Module ${moduleToInstall} installed successfully`,
       };
     } catch (error) {
@@ -771,7 +772,7 @@ export class NodeRedAPIClient {
       return {
         success: false,
         module: moduleName,
-        version: version,
+        version,
         message: `Failed to install ${moduleName}: ${errorMessage}`,
       };
     }

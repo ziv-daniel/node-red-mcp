@@ -143,3 +143,4 @@ playwright/.cache/
 mcp-debug.log 
 
 /dist
+/memory-bank

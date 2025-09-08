@@ -2,28 +2,24 @@
  * Express application setup for HTTP transport and SSE endpoints
  */
 
-import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import { McpNodeRedServer } from './mcp-server.js';
-import { SSEHandler } from './sse-handler.js';
+import helmet from 'helmet';
+
 import { NodeRedEventListener } from '../services/nodered-event-listener.js';
-import {
-  authenticate,
-  authenticateClaudeCompatible,
-  AuthRequest,
-  createAuthContext,
-  getRateLimitKey,
-} from '../utils/auth.js';
+import type { ApiResponse } from '../types/mcp-extensions.js';
+import { authenticate, authenticateClaudeCompatible, getRateLimitKey } from '../utils/auth.js';
+import type { AuthRequest } from '../utils/auth.js';
 import {
   errorHandler,
   requestIdMiddleware,
   asyncHandler,
-  AppError,
   ValidationError,
 } from '../utils/error-handling.js';
-import { ApiResponse } from '../types/mcp-extensions.js';
+
+import { McpNodeRedServer } from './mcp-server.js';
+import { SSEHandler } from './sse-handler.js';
 
 export interface ExpressAppConfig {
   port: number;
@@ -46,10 +42,7 @@ export class ExpressApp {
   private eventListener: NodeRedEventListener;
   private config: ExpressAppConfig;
 
-  constructor(
-    mcpServer: McpNodeRedServer,
-    config: Partial<ExpressAppConfig> = {},
-  ) {
+  constructor(mcpServer: McpNodeRedServer, config: Partial<ExpressAppConfig> = {}) {
     this.mcpServer = mcpServer;
     this.sseHandler = mcpServer.getSSEHandler();
     this.eventListener = new NodeRedEventListener(this.sseHandler, mcpServer.getNodeRedClient());
@@ -95,7 +88,7 @@ export class ExpressApp {
               connectSrc: ["'self'"],
             },
           },
-        }),
+        })
       );
     }
 
@@ -105,19 +98,19 @@ export class ExpressApp {
         origin: (origin, callback) => {
           const isClaudeMode = process.env.CLAUDE_COMPATIBLE_MODE === 'true';
           const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
-          
+
           if (debugConnections) {
             console.log('CORS origin check:', { origin, claudeMode: isClaudeMode });
           }
-          
+
           // Allow Claude.ai domains and configured origins
           const allowedOrigins = [
             'https://claude.ai',
-            'https://www.claude.ai', 
+            'https://www.claude.ai',
             'https://app.claude.ai',
-            this.config.cors.origin
+            this.config.cors.origin,
           ].filter(Boolean);
-          
+
           // In Claude mode, be more permissive
           if (isClaudeMode) {
             if (!origin || allowedOrigins.includes(origin) || origin.includes('claude')) {
@@ -125,7 +118,7 @@ export class ExpressApp {
               return;
             }
           }
-          
+
           // Standard origin check
           if (!origin || this.config.cors.origin === '*' || allowedOrigins.includes(origin)) {
             callback(null, true);
@@ -136,16 +129,16 @@ export class ExpressApp {
         credentials: this.config.cors.credentials,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: [
-          'Content-Type', 
-          'Authorization', 
+          'Content-Type',
+          'Authorization',
           'X-API-Key',
           'Cache-Control',
           'X-Requested-With',
           'Accept',
           'Origin',
-          'Mcp-Session-Id'
+          'Mcp-Session-Id',
         ],
-      }),
+      })
     );
 
     // Rate limiting
@@ -201,7 +194,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // Simple ping endpoint for Claude website
@@ -258,7 +251,7 @@ export class ExpressApp {
             },
           });
         }
-      }),
+      })
     );
 
     // API info endpoint
@@ -288,7 +281,7 @@ export class ExpressApp {
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader(
         'Access-Control-Allow-Headers',
-        'Authorization, Content-Type, Cache-Control, X-Requested-With, X-API-Key',
+        'Authorization, Content-Type, Cache-Control, X-Requested-With, X-API-Key'
       );
       res.setHeader('Access-Control-Max-Age', '86400');
       res.status(200).end();
@@ -301,7 +294,7 @@ export class ExpressApp {
       asyncHandler(async (req: AuthRequest, res: Response) => {
         try {
           const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
-          
+
           if (debugConnections) {
             console.log('Claude SSE connection established:', {
               userAgent: req.get('User-Agent'),
@@ -365,16 +358,14 @@ export class ExpressApp {
           // Send connection status
           res.write(`event: connection-status\n`);
           res.write(
-            `data: {"status": "connected", "timestamp": "${new Date().toISOString()}"}\n\n`,
+            `data: {"status": "connected", "timestamp": "${new Date().toISOString()}"}\n\n`
           );
 
           // Keep connection alive with periodic heartbeat
           const heartbeatInterval = setInterval(() => {
             try {
               res.write(`event: heartbeat\n`);
-              res.write(
-                `data: {"timestamp": "${new Date().toISOString()}"}\n\n`,
-              );
+              res.write(`data: {"timestamp": "${new Date().toISOString()}"}\n\n`);
             } catch (error) {
               clearInterval(heartbeatInterval);
             }
@@ -398,7 +389,7 @@ export class ExpressApp {
           return;
         } catch (error) {
           const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
-          
+
           if (debugConnections) {
             console.error('MCP SSE connection failed:', {
               error: error instanceof Error ? error.message : String(error),
@@ -409,16 +400,20 @@ export class ExpressApp {
           } else {
             console.error('MCP SSE connection failed:', error);
           }
-          
+
           if (!res.headersSent) {
-            res.status(500).json({ 
+            res.status(500).json({
               error: 'Failed to establish MCP SSE connection',
-              details: debugConnections ? (error instanceof Error ? error.message : String(error)) : undefined,
-              hint: 'Enable DEBUG_CLAUDE_CONNECTIONS=true for more details'
+              details: debugConnections
+                ? error instanceof Error
+                  ? error.message
+                  : String(error)
+                : undefined,
+              hint: 'Enable DEBUG_CLAUDE_CONNECTIONS=true for more details',
             });
           }
         }
-      }),
+      })
     );
 
     // MCP JSON-RPC endpoint for Claude website (standard MCP format)
@@ -426,10 +421,7 @@ export class ExpressApp {
       '/messages',
       asyncHandler(async (req: Request, res: Response) => {
         try {
-          console.log(
-            'Received MCP JSON-RPC request:',
-            JSON.stringify(req.body, null, 2),
-          );
+          console.log('Received MCP JSON-RPC request:', JSON.stringify(req.body, null, 2));
 
           const { method, params, id, jsonrpc } = req.body;
 
@@ -471,10 +463,7 @@ export class ExpressApp {
               if (!params?.name) {
                 throw new Error('Tool name is required');
               }
-              result = await this.mcpServer.callToolPublic(
-                params.name,
-                params.arguments || {},
-              );
+              result = await this.mcpServer.callToolPublic(params.name, params.arguments || {});
               break;
 
             case 'resources/list':
@@ -496,10 +485,7 @@ export class ExpressApp {
               if (!params?.name) {
                 throw new Error('Prompt name is required');
               }
-              result = await this.mcpServer.getPromptPublic(
-                params.name,
-                params.arguments || {},
-              );
+              result = await this.mcpServer.getPromptPublic(params.name, params.arguments || {});
               break;
 
             default:
@@ -512,10 +498,7 @@ export class ExpressApp {
             result,
           };
 
-          console.log(
-            'Sending MCP JSON-RPC response:',
-            JSON.stringify(response, null, 2),
-          );
+          console.log('Sending MCP JSON-RPC response:', JSON.stringify(response, null, 2));
           return res.json(response);
         } catch (error) {
           const errorResponse = {
@@ -523,14 +506,13 @@ export class ExpressApp {
             id: req.body?.id || null,
             error: {
               code: -32603,
-              message:
-                error instanceof Error ? error.message : 'Internal error',
+              message: error instanceof Error ? error.message : 'Internal error',
             },
           };
           console.error('MCP JSON-RPC error:', errorResponse);
           return res.status(500).json(errorResponse);
         }
-      }),
+      })
     );
 
     // MCP JSON-RPC endpoint for tool calls (POST requests) - legacy endpoint
@@ -578,10 +560,7 @@ export class ExpressApp {
               if (!params?.name) {
                 throw new Error('Tool name is required');
               }
-              result = await this.mcpServer.callToolPublic(
-                params.name,
-                params.arguments || {},
-              );
+              result = await this.mcpServer.callToolPublic(params.name, params.arguments || {});
               break;
 
             case 'resources/list':
@@ -603,10 +582,7 @@ export class ExpressApp {
               if (!params?.name) {
                 throw new Error('Prompt name is required');
               }
-              result = await this.mcpServer.getPromptPublic(
-                params.name,
-                params.arguments || {},
-              );
+              result = await this.mcpServer.getPromptPublic(params.name, params.arguments || {});
               break;
 
             default:
@@ -626,13 +602,12 @@ export class ExpressApp {
             id: req.body?.id || null,
             error: {
               code: -32603,
-              message:
-                error instanceof Error ? error.message : 'Internal error',
+              message: error instanceof Error ? error.message : 'Internal error',
             },
           };
           return res.status(500).json(errorResponse);
         }
-      }),
+      })
     );
 
     // Authenticated SSE connection endpoint (for secure access)
@@ -644,11 +619,7 @@ export class ExpressApp {
           const connectionId = this.sseHandler.connect(req, res);
 
           // Subscribe to default events
-          const defaultSubscriptions = [
-            'heartbeat',
-            'system-info',
-            'connection-status',
-          ];
+          const defaultSubscriptions = ['heartbeat', 'system-info', 'connection-status'];
           this.sseHandler.subscribe(connectionId, defaultSubscriptions);
 
           console.log(`SSE client connected: ${connectionId} (authenticated)`);
@@ -658,12 +629,10 @@ export class ExpressApp {
         } catch (error) {
           console.error('SSE connection failed:', error);
           if (!res.headersSent) {
-            res
-              .status(500)
-              .json({ error: 'Failed to establish SSE connection' });
+            res.status(500).json({ error: 'Failed to establish SSE connection' });
           }
         }
-      }),
+      })
     );
 
     // SSE subscription management
@@ -674,9 +643,7 @@ export class ExpressApp {
         const { connectionId, eventTypes } = req.body;
 
         if (!connectionId || !Array.isArray(eventTypes)) {
-          throw new ValidationError(
-            'connectionId and eventTypes array are required',
-          );
+          throw new ValidationError('connectionId and eventTypes array are required');
         }
 
         this.sseHandler.subscribe(connectionId, eventTypes);
@@ -688,7 +655,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // Advanced subscription management with filters
@@ -699,9 +666,7 @@ export class ExpressApp {
         const { connectionId, eventType, filter } = req.body;
 
         if (!connectionId || !eventType) {
-          throw new ValidationError(
-            'connectionId and eventType are required',
-          );
+          throw new ValidationError('connectionId and eventType are required');
         }
 
         this.sseHandler.subscribeWithFilter(connectionId, eventType, filter);
@@ -713,7 +678,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // Get subscription details
@@ -736,7 +701,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     this.app.post(
@@ -746,9 +711,7 @@ export class ExpressApp {
         const { connectionId, eventTypes } = req.body;
 
         if (!connectionId || !Array.isArray(eventTypes)) {
-          throw new ValidationError(
-            'connectionId and eventTypes array are required',
-          );
+          throw new ValidationError('connectionId and eventTypes array are required');
         }
 
         this.sseHandler.unsubscribe(connectionId, eventTypes);
@@ -760,42 +723,34 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // SSE statistics endpoint
-    this.app.get(
-      '/api/events/stats',
-      authenticate,
-      (req: Request, res: Response) => {
-        const stats = this.sseHandler.getStats();
+    this.app.get('/api/events/stats', authenticate, (req: Request, res: Response) => {
+      const stats = this.sseHandler.getStats();
 
-        const response: ApiResponse = {
-          success: true,
-          data: stats,
-          timestamp: new Date().toISOString(),
-        };
+      const response: ApiResponse = {
+        success: true,
+        data: stats,
+        timestamp: new Date().toISOString(),
+      };
 
-        res.json(response);
-      },
-    );
+      res.json(response);
+    });
 
     // SSE clients endpoint
-    this.app.get(
-      '/api/events/clients',
-      authenticate,
-      (req: Request, res: Response) => {
-        const clients = this.sseHandler.getClients();
+    this.app.get('/api/events/clients', authenticate, (req: Request, res: Response) => {
+      const clients = this.sseHandler.getClients();
 
-        const response: ApiResponse = {
-          success: true,
-          data: clients,
-          timestamp: new Date().toISOString(),
-        };
+      const response: ApiResponse = {
+        success: true,
+        data: clients,
+        timestamp: new Date().toISOString(),
+      };
 
-        res.json(response);
-      },
-    );
+      res.json(response);
+    });
 
     // Disconnect SSE client
     this.app.delete(
@@ -827,25 +782,21 @@ export class ExpressApp {
         };
 
         return res.status(disconnected ? 200 : 404).json(response);
-      },
+      }
     );
 
     // Event monitoring status
-    this.app.get(
-      '/api/events/monitoring',
-      authenticate,
-      (req: Request, res: Response) => {
-        const status = this.eventListener.getStatus();
+    this.app.get('/api/events/monitoring', authenticate, (req: Request, res: Response) => {
+      const status = this.eventListener.getStatus();
 
-        const response: ApiResponse = {
-          success: true,
-          data: status,
-          timestamp: new Date().toISOString(),
-        };
+      const response: ApiResponse = {
+        success: true,
+        data: status,
+        timestamp: new Date().toISOString(),
+      };
 
-        res.json(response);
-      },
-    );
+      res.json(response);
+    });
 
     // Manually trigger flow deploy event
     this.app.post(
@@ -853,7 +804,7 @@ export class ExpressApp {
       authenticate,
       asyncHandler(async (req: AuthRequest, res: Response) => {
         const { flowId } = req.body;
-        
+
         this.eventListener.onFlowDeploy(flowId);
 
         const response: ApiResponse = {
@@ -863,7 +814,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // Node-RED proxy endpoints (optional - for direct API access)
@@ -880,7 +831,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     this.app.get(
@@ -896,16 +847,14 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     this.app.get(
       '/api/nodered/runtime',
       authenticate,
       asyncHandler(async (req: AuthRequest, res: Response) => {
-        const runtime = await this.mcpServer
-          .getNodeRedClient()
-          .getRuntimeInfo();
+        const runtime = await this.mcpServer.getNodeRedClient().getRuntimeInfo();
 
         const response: ApiResponse = {
           success: true,
@@ -914,7 +863,7 @@ export class ExpressApp {
         };
 
         res.json(response);
-      }),
+      })
     );
 
     // MCP Server Discovery endpoint (for Claude.ai integration)
@@ -923,7 +872,7 @@ export class ExpressApp {
       asyncHandler(async (req: Request, res: Response) => {
         const isClaudeMode = process.env.CLAUDE_COMPATIBLE_MODE === 'true';
         const authRequired = process.env.CLAUDE_AUTH_REQUIRED !== 'false';
-        
+
         const serverInfo = {
           name: 'nodered-mcp-server',
           version: '1.0.0',
@@ -957,7 +906,7 @@ export class ExpressApp {
         };
 
         res.json(serverInfo);
-      }),
+      })
     );
 
     // MCP Server Info endpoint (alternative discovery)
@@ -983,7 +932,7 @@ export class ExpressApp {
         };
 
         res.json(serverInfo);
-      }),
+      })
     );
 
     // Debugging endpoint for Claude connection testing
@@ -1030,7 +979,7 @@ export class ExpressApp {
         }
 
         res.json(debugInfo);
-      }),
+      })
     );
 
     // Catch-all for undefined routes
@@ -1061,26 +1010,20 @@ export class ExpressApp {
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const server = this.app.listen(
-          this.config.port,
-          this.config.host,
-          () => {
-            console.log(
-              `Express server listening on http://${this.config.host}:${this.config.port}`,
-            );
-            console.log(`Available endpoints:`);
-            console.log(`  - Health: GET /health`);
-            console.log(`  - API Info: GET /api/info`);
-            console.log(`  - SSE Events: GET /api/events`);
-            console.log(`  - SSE Stats: GET /api/events/stats`);
-            console.log(`  - Node-RED Flows: GET /api/nodered/flows`);
-            console.log(`  - Node-RED Nodes: GET /api/nodered/nodes`);
-            console.log(`  - Node-RED Runtime: GET /api/nodered/runtime`);
-            resolve();
-          },
-        );
+        const server = this.app.listen(this.config.port, this.config.host, () => {
+          console.log(`Express server listening on http://${this.config.host}:${this.config.port}`);
+          console.log(`Available endpoints:`);
+          console.log(`  - Health: GET /health`);
+          console.log(`  - API Info: GET /api/info`);
+          console.log(`  - SSE Events: GET /api/events`);
+          console.log(`  - SSE Stats: GET /api/events/stats`);
+          console.log(`  - Node-RED Flows: GET /api/nodered/flows`);
+          console.log(`  - Node-RED Nodes: GET /api/nodered/nodes`);
+          console.log(`  - Node-RED Runtime: GET /api/nodered/runtime`);
+          resolve();
+        });
 
-        server.on('error', (error) => {
+        server.on('error', error => {
           reject(error);
         });
 
@@ -1122,27 +1065,23 @@ export class ExpressApp {
     this.mcpServer
       .getNodeRedClient()
       .healthCheck()
-      .then((health) => {
+      .then(health => {
         this.sseHandler.sendSystemInfo({
           nodeRedStatus: health.healthy ? 'connected' : 'error',
           activeFlows: health.details?.flowCount || 0,
           totalNodes: health.details?.nodeCount || 0,
         });
       })
-      .catch((error) => {
+      .catch(error => {
         console.error('Failed to get Node-RED health for SSE:', error);
-        this.sseHandler.sendError(
-          'Failed to get Node-RED status',
-          undefined,
-          'system-monitor',
-        );
+        this.sseHandler.sendError('Failed to get Node-RED status', undefined, 'system-monitor');
       });
   }
 
   /**
    * Start system monitoring (send periodic updates via SSE)
    */
-  startSystemMonitoring(intervalMs: number = 30000): void {
+  startSystemMonitoring(intervalMs = 30000): void {
     // Start system info updates
     setInterval(() => {
       this.sendSystemInfo();

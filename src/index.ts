@@ -2,13 +2,13 @@
  * Main application entry point for MCP Node-RED Server
  */
 
-import dotenv from 'dotenv';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import dotenv from 'dotenv';
 
 // Load environment variables
 dotenv.config();
-import { McpNodeRedServer } from './server/mcp-server.js';
 import { ExpressApp } from './server/express-app.js';
+import { McpNodeRedServer } from './server/mcp-server.js';
 
 // Configuration from environment variables
 const transport = process.env.MCP_TRANSPORT || 'stdio';

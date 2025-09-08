@@ -11,11 +11,11 @@ export interface NodeRedFlow {
   subflows?: NodeRedSubflow[];
   disabled?: boolean;
   info?: string;
-  env?: Array<{
+  env?: {
     name: string;
     value: string;
     type: string;
-  }>;
+  }[];
 }
 
 /**
@@ -56,22 +56,22 @@ export interface NodeRedSubflow {
   name: string;
   info?: string;
   category?: string;
-  in: Array<{
+  in: {
     x: number;
     y: number;
-    wires: Array<{
+    wires: {
       id: string;
-    }>;
-  }>;
-  out: Array<{
+    }[];
+  }[];
+  out: {
     x: number;
     y: number;
-    wires: Array<{
+    wires: {
       id: string;
       port: number;
-    }>;
-  }>;
-  env?: Array<{
+    }[];
+  }[];
+  env?: {
     name: string;
     type: string;
     value?: string;
@@ -82,7 +82,7 @@ export interface NodeRedSubflow {
       };
       type?: string;
     };
-  }>;
+  }[];
 }
 
 export interface NodeRedNodeType {
@@ -112,11 +112,11 @@ export interface NodeRedSettings {
   contextStorage?: Record<string, any>;
   adminAuth?: {
     type: string;
-    users?: Array<{
+    users?: {
       username: string;
       password: string;
       permissions: string[];
-    }>;
+    }[];
   };
   logging?: {
     console?: {
@@ -133,16 +133,12 @@ export interface NodeRedRuntimeInfo {
     total: number;
     count: number;
   };
-  nodes: {
-    [nodeType: string]: {
+  nodes: Record<string, {
       count: number;
-    };
-  };
-  modules: {
-    [moduleName: string]: {
+    }>;
+  modules: Record<string, {
       version: string;
-    };
-  };
+    }>;
   memory: {
     rss: number;
     heapTotal: number;
@@ -154,11 +150,11 @@ export interface NodeRedRuntimeInfo {
 
 export interface NodeRedFlowStatus {
   state: 'start' | 'stop' | 'safe';
-  flows: Array<{
+  flows: {
     id: string;
     type: string;
     state?: 'start' | 'stop';
-  }>;
+  }[];
 }
 
 export interface NodeRedDeploymentOptions {

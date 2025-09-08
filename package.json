@@ -2,16 +2,49 @@
   "name": "mcp-nodered-server",
   "version": "1.0.0",
   "description": "Model Context Protocol server for Node-RED integration with SSE support",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
+    "build:prod": "NODE_ENV=production tsup",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev:build": "NODE_ENV=development tsup --watch",
+    "start": "node dist/index.mjs",
+    "start:cjs": "node dist/index.cjs",
     "clean": "rimraf dist",
-    "prebuild": "npm run clean",
+    "prebuild": "yarn clean",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "quality": "yarn type-check && yarn lint && yarn format:check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui --open",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:ui": "vitest --ui --coverage --open",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
     "docker:build": "docker build -t mcp-nodered-server .",
-    "docker:run": "docker run -p 3000:3000 mcp-nodered-server"
+    "docker:run": "docker run -p 3000:3000 mcp-nodered-server",
+    "prepare": "husky"
   },
   "keywords": [
     "mcp",
@@ -25,33 +58,55 @@
   "author": "ziv-daniel",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "axios": "^1.6.0",
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.62.2",
+    "@opentelemetry/sdk-node": "^0.204.0",
+    "axios": "^1.11.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.1.5",
-    "helmet": "^7.1.0",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "uuid": "^9.0.1"
+    "pino": "^9.9.4",
+    "pino-http": "^10.5.0",
+    "pino-pretty": "^13.1.1",
+    "uuid": "^12.0.0",
+    "zod": "^4.1.5"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/node": "^20.11.24",
-    "@types/uuid": "^9.0.7",
+    "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.55.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.3.1",
+    "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "eslint": "^8.56.0",
-    "rimraf": "^5.0.5",
-    "tsx": "^4.6.2",
-    "typescript": "^5.3.3"
+    "@typescript-eslint/eslint-plugin": "^8.42.0",
+    "@typescript-eslint/parser": "^8.42.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "husky": "^9.1.7",
+    "jsdom": "^26.1.0",
+    "lint-staged": "^16.1.6",
+    "node-red": "^4.1.0",
+    "playwright": "^1.55.0",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.42.0",
+    "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
   },
   "repository": {
     "type": "git",
@@ -60,5 +115,15 @@
   "bugs": {
     "url": "https://github.com/ziv-daniel/node-red-mcp/issues"
   },
-  "homepage": "https://github.com/ziv-daniel/node-red-mcp#readme"
+  "homepage": "https://github.com/ziv-daniel/node-red-mcp#readme",
+  "packageManager": "yarn@4.9.4+sha512.7b1cb0b62abba6a537b3a2ce00811a843bea02bcf53138581a6ae5b1bf563f734872bd47de49ce32a9ca9dcaff995aa789577ffb16811da7c603dcf69e73750b",
+  "lint-staged": {
+    "*.{js,ts}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
 }

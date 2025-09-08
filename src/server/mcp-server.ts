@@ -13,7 +13,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { NodeRedAPIClient } from '../services/nodered-api.js';
-import { SSEHandler } from './sse-handler.js';
 import {
   McpServerConfig,
   McpToolResult,
@@ -26,6 +25,8 @@ import {
   NodeRedPromptTemplate,
 } from '../types/mcp-extensions.js';
 import { validateRequired, validateTypes } from '../utils/error-handling.js';
+
+import { SSEHandler } from './sse-handler.js';
 
 export class McpNodeRedServer {
   private server: Server;

@@ -4,6 +4,8 @@
 
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+
+import { NodeRedEvent } from '../types/nodered.js';
 import {
   SSEConnection,
   SSEMessage,
@@ -18,7 +20,6 @@ import {
   SSEEventType,
   SSEClientInfo,
 } from '../types/sse.js';
-import { NodeRedEvent } from '../types/nodered.js';
 import { AuthRequest } from '../utils/auth.js';
 import { SSEError as SSEErrorClass } from '../utils/error-handling.js';
 
@@ -263,7 +264,7 @@ export class SSEHandler {
    */
   sendToConnection(connectionId: string, event: SSEEvent): boolean {
     const connection = this.connections.get(connectionId);
-    if (!connection || !connection.isAlive) {
+    if (!connection?.isAlive) {
       return false;
     }
 
@@ -377,7 +378,7 @@ export class SSEHandler {
   /**
    * Start health monitoring
    */
-  startHealthMonitoring(intervalMs: number = 60000): void {
+  startHealthMonitoring(intervalMs = 60000): void {
     setInterval(() => {
       this.checkConnectionHealth();
     }, intervalMs);

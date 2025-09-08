@@ -4,7 +4,6 @@
  */
 
 import { SSEHandler } from '../server/sse-handler.js';
-import { NodeRedAPIClient } from './nodered-api.js';
 import { 
   NodeRedEvent, 
   NodeRedFlowEvent, 
@@ -14,11 +13,13 @@ import {
   NodeRedStatusEvent 
 } from '../types/nodered.js';
 
+import { NodeRedAPIClient } from './nodered-api.js';
+
 export class NodeRedEventListener {
   private sseHandler: SSEHandler;
   private nodeRedClient: NodeRedAPIClient;
   private eventPollingInterval?: NodeJS.Timeout;
-  private isMonitoring: boolean = false;
+  private isMonitoring = false;
   private lastEventTimestamp: number = Date.now();
 
   constructor(sseHandler: SSEHandler, nodeRedClient: NodeRedAPIClient) {
@@ -29,7 +30,7 @@ export class NodeRedEventListener {
   /**
    * Start monitoring Node-RED events
    */
-  startEventMonitoring(intervalMs: number = 5000): void {
+  startEventMonitoring(intervalMs = 5000): void {
     if (this.isMonitoring) {
       console.log('Node-RED event monitoring already started');
       return;

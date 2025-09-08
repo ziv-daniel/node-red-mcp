@@ -3,8 +3,9 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ApiResponse, LogEntry, LogLevel } from '../types/mcp-extensions.js';
 import { v4 as uuidv4 } from 'uuid';
+
+import { ApiResponse, LogEntry, LogLevel } from '../types/mcp-extensions.js';
 
 export class AppError extends Error {
   public readonly statusCode: number;
@@ -15,9 +16,9 @@ export class AppError extends Error {
 
   constructor(
     message: string,
-    statusCode: number = 500,
-    code: string = 'INTERNAL_ERROR',
-    isOperational: boolean = true
+    statusCode = 500,
+    code = 'INTERNAL_ERROR',
+    isOperational = true
   ) {
     super(message);
     
@@ -57,13 +58,13 @@ export class NotFoundError extends AppError {
 }
 
 export class AuthenticationError extends AppError {
-  constructor(message: string = 'Authentication failed') {
+  constructor(message = 'Authentication failed') {
     super(message, 401, 'AUTHENTICATION_ERROR');
   }
 }
 
 export class AuthorizationError extends AppError {
-  constructor(action: string, resource: string = 'resource') {
+  constructor(action: string, resource = 'resource') {
     super(`Not authorized to ${action} ${resource}`, 403, 'AUTHORIZATION_ERROR');
   }
 }
@@ -74,7 +75,7 @@ export class NodeRedError extends AppError {
 
   constructor(
     message: string, 
-    statusCode: number = 500, 
+    statusCode = 500, 
     nodeRedStatusCode?: number,
     nodeRedResponse?: any
   ) {
@@ -96,7 +97,7 @@ export class SSEError extends AppError {
 export class RateLimitError extends AppError {
   public readonly retryAfter: number;
 
-  constructor(retryAfter: number = 60) {
+  constructor(retryAfter = 60) {
     super('Rate limit exceeded', 429, 'RATE_LIMIT_ERROR');
     this.retryAfter = retryAfter;
   }
