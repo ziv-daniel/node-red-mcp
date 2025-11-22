@@ -3,8 +3,8 @@
  * 2025 Observability & Monitoring Implementation
  */
 
-import { performance } from 'perf_hooks';
 import os from 'os';
+import { performance } from 'perf_hooks';
 
 import axios from 'axios';
 import type { Request, Response } from 'express';

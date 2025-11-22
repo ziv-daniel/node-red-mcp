@@ -191,10 +191,10 @@ export async function retryWithCircuitBreaker<T>(
  * Batch retry - retry multiple operations with shared circuit breaker
  */
 export async function batchRetry<T>(
-  operations: Array<() => Promise<T>>,
+  operations: (() => Promise<T>)[],
   circuitBreaker: CircuitBreaker,
   retryOptions: RetryOptions = {}
-): Promise<Array<T | Error>> {
+): Promise<(T | Error)[]> {
   return Promise.all(
     operations.map(async (op) => {
       try {
