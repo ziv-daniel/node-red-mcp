@@ -7078,7 +7078,7 @@ __metadata:
     jsonwebtoken: "npm:^9.0.2"
     lint-staged: "npm:^16.1.6"
     node-red: "npm:^4.1.0"
-    pino: "npm:^9.9.4"
+    pino: "npm:^10.1.0"
     pino-http: "npm:^10.5.0"
     pino-pretty: "npm:^13.1.1"
     playwright: "npm:^1.55.0"
@@ -8124,7 +8124,28 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pino@npm:^9.0.0, pino@npm:^9.9.4":
+"pino@npm:^10.1.0":
+  version: 10.1.0
+  resolution: "pino@npm:10.1.0"
+  dependencies:
+    "@pinojs/redact": "npm:^0.4.0"
+    atomic-sleep: "npm:^1.0.0"
+    on-exit-leak-free: "npm:^2.1.0"
+    pino-abstract-transport: "npm:^2.0.0"
+    pino-std-serializers: "npm:^7.0.0"
+    process-warning: "npm:^5.0.0"
+    quick-format-unescaped: "npm:^4.0.3"
+    real-require: "npm:^0.2.0"
+    safe-stable-stringify: "npm:^2.3.1"
+    sonic-boom: "npm:^4.0.1"
+    thread-stream: "npm:^3.0.0"
+  bin:
+    pino: bin.js
+  checksum: 10c0/49c1dd80d5f99f02bde1acf2f60cef7686948a937f751f6cb368c2868c7e82e54aeabac63a34587e16019965cbf0eb6e609edf92c439a98a0a4fcb0add277eaf
+  languageName: node
+  linkType: hard
+
+"pino@npm:^9.0.0":
   version: 9.14.0
   resolution: "pino@npm:9.14.0"
   dependencies:
