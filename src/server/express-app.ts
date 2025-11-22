@@ -197,6 +197,56 @@ export class ExpressApp {
       })
     );
 
+    // MCP Server Discovery endpoint (.well-known/mcp.json)
+    // As per MCP November 2025 spec for server discovery
+    this.app.get('/.well-known/mcp.json', (req: Request, res: Response) => {
+      res.json({
+        name: 'nodered-mcp-server',
+        version: '1.0.0',
+        description: 'Model Context Protocol server for Node-RED integration with real-time SSE support',
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {
+            listChanged: false,
+          },
+          resources: {
+            subscribe: false,
+            listChanged: false,
+          },
+          prompts: {
+            listChanged: false,
+          },
+          logging: {},
+        },
+        endpoints: {
+          http: {
+            url: `http://${this.config.host}:${this.config.port}`,
+            methods: ['POST'],
+          },
+          sse: {
+            url: `http://${this.config.host}:${this.config.port}/sse`,
+            methods: ['GET'],
+          },
+        },
+        vendor: {
+          author: 'ziv-daniel',
+          repository: 'https://github.com/ziv-daniel/node-red-mcp',
+          documentation: 'https://github.com/ziv-daniel/node-red-mcp#readme',
+        },
+        tools: {
+          count: 9,
+          categories: ['flow-management', 'node-management', 'runtime-monitoring'],
+        },
+        resources: {
+          types: ['flow', 'system'],
+        },
+        prompts: {
+          count: 4,
+          categories: ['flow-creation', 'debugging', 'optimization', 'documentation'],
+        },
+      });
+    });
+
     // Simple ping endpoint for Claude website
     this.app.get('/ping', (req: Request, res: Response) => {
       res.json({
