@@ -18,6 +18,7 @@ import {
 } from '../types/nodered.js';
 import { getNodeRedAuthHeader } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
+import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
 export interface NodeRedAPIConfig {
   baseURL: string;
@@ -54,6 +55,8 @@ export interface ModuleInstallResult {
 export class NodeRedAPIClient {
   private client: AxiosInstance;
   private config: NodeRedAPIConfig;
+  private circuitBreaker: CircuitBreaker;
+  private retryOptions: RetryOptions;
 
   constructor(config: Partial<NodeRedAPIConfig> = {}) {
     this.config = {
@@ -61,6 +64,38 @@ export class NodeRedAPIClient {
       timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
       retries: parseInt(process.env.NODERED_RETRIES || '3'),
       ...config,
+    };
+
+    // Initialize circuit breaker
+    this.circuitBreaker = new CircuitBreaker({
+      failureThreshold: 5,
+      successThreshold: 2,
+      timeout: 60000, // 1 minute
+      onStateChange: (state) => {
+        console.error(`Node-RED API Circuit Breaker state changed to: ${state}`);
+      },
+    });
+
+    // Configure retry options
+    this.retryOptions = {
+      maxRetries: this.config.retries,
+      initialDelay: 1000,
+      maxDelay: 10000,
+      backoffMultiplier: 2,
+      timeout: this.config.timeout,
+      shouldRetry: (error: Error) => {
+        // Don't retry on 4xx errors (except 429 rate limit)
+        if (axios.isAxiosError(error) && error.response) {
+          const status = error.response.status;
+          if (status >= 400 && status < 500 && status !== 429) {
+            return false;
+          }
+        }
+        return true;
+      },
+      onRetry: (error, attempt, delay) => {
+        console.warn(`Node-RED API request failed (attempt ${attempt}), retrying in ${delay}ms:`, error.message);
+      },
     };
 
     this.client = axios.create({
@@ -159,6 +194,27 @@ export class NodeRedAPIClient {
         return Promise.reject(error);
       },
     );
+  }
+
+  /**
+   * Wrapper for API calls with circuit breaker and retry logic
+   */
+  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+    return retryWithCircuitBreaker(operation, this.circuitBreaker, this.retryOptions);
+  }
+
+  /**
+   * Get circuit breaker stats
+   */
+  getCircuitBreakerStats() {
+    return this.circuitBreaker.getStats();
+  }
+
+  /**
+   * Reset circuit breaker
+   */
+  resetCircuitBreaker(): void {
+    this.circuitBreaker.reset();
   }
 
   /**
