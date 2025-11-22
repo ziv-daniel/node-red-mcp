@@ -56,12 +56,14 @@ describe('retryWithBackoff', () => {
     const promise = retryWithBackoff(fn, {
       maxRetries: 2,
       initialDelay: 100,
-    });
+    }).catch(error => error); // Catch to prevent unhandled rejection
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.advanceTimersByTimeAsync(200);
 
-    await expect(promise).rejects.toThrow('persistent failure');
+    const result = await promise;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('persistent failure');
     expect(fn).toHaveBeenCalledTimes(3); // Initial + 2 retries
   });
 
@@ -74,13 +76,15 @@ describe('retryWithBackoff', () => {
       initialDelay: 1000,
       backoffMultiplier: 2,
       onRetry,
-    });
+    }).catch(error => error); // Catch to prevent unhandled rejection
 
     await vi.advanceTimersByTimeAsync(1000); // 1st retry: 1000ms
     await vi.advanceTimersByTimeAsync(2000); // 2nd retry: 2000ms
     await vi.advanceTimersByTimeAsync(4000); // 3rd retry: 4000ms
 
-    await expect(promise).rejects.toThrow('fail');
+    const result = await promise;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('fail');
 
     expect(onRetry).toHaveBeenCalledTimes(3);
     expect(onRetry).toHaveBeenNthCalledWith(1, expect.any(Error), 1, 1000);
@@ -98,13 +102,15 @@ describe('retryWithBackoff', () => {
       backoffMultiplier: 10,
       maxDelay: 3000,
       onRetry,
-    });
+    }).catch(error => error); // Catch to prevent unhandled rejection
 
     await vi.advanceTimersByTimeAsync(1000); // 1st retry: 1000ms
     await vi.advanceTimersByTimeAsync(3000); // 2nd retry: capped at 3000ms
     await vi.advanceTimersByTimeAsync(3000); // 3rd retry: capped at 3000ms
 
-    await expect(promise).rejects.toThrow('fail');
+    const result = await promise;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('fail');
 
     expect(onRetry).toHaveBeenNthCalledWith(2, expect.any(Error), 2, 3000);
     expect(onRetry).toHaveBeenNthCalledWith(3, expect.any(Error), 3, 3000);
@@ -124,11 +130,13 @@ describe('retryWithBackoff', () => {
       maxRetries: 5,
       initialDelay: 100,
       shouldRetry,
-    });
+    }).catch(error => error); // Catch to prevent unhandled rejection
 
     await vi.advanceTimersByTimeAsync(100);
 
-    await expect(promise).rejects.toThrow('non-retryable');
+    const result = await promise;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('non-retryable');
     expect(fn).toHaveBeenCalledTimes(2);
     expect(shouldRetry).toHaveBeenCalledTimes(2);
   });
