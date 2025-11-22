@@ -203,7 +203,8 @@ export class ExpressApp {
       res.json({
         name: 'nodered-mcp-server',
         version: '1.0.0',
-        description: 'Model Context Protocol server for Node-RED integration with real-time SSE support',
+        description:
+          'Model Context Protocol server for Node-RED integration with real-time SSE support',
         protocolVersion: '2024-11-05',
         capabilities: {
           tools: {

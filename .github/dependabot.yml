@@ -1,32 +1,32 @@
 # GitHub Dependabot configuration for automated dependency management
 version: 2
 updates:
-# Package ecosystem updates
-- package-ecosystem: "npm"
-  directory: "/"
-  schedule:
-    interval: "weekly"
-    day: "monday"
-    time: "09:00"
+  # Package ecosystem updates
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
 
-  # Pull request configuration
-  open-pull-requests-limit: 10
+    # Pull request configuration
+    open-pull-requests-limit: 10
 
-  # Version strategy
-  versioning-strategy: "widen"
+    # Version strategy
+    versioning-strategy: 'widen'
 
-  # Commit message configuration
-  commit-message:
-    prefix: "chore(deps)"
-    prefix-development: "chore(dev-deps)"
+    # Commit message configuration
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(dev-deps)'
 
-# GitHub Actions workflow updates
-- package-ecosystem: "github-actions"
-  directory: "/"
-  schedule:
-    interval: "weekly"
-    day: "monday"
-    time: "10:00"
-  open-pull-requests-limit: 5
-  commit-message:
-    prefix: "chore(ci)"
+  # GitHub Actions workflow updates
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '10:00'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(ci)'

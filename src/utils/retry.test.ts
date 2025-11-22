@@ -261,10 +261,7 @@ describe('CircuitBreaker', () => {
 describe('retryWithCircuitBreaker', () => {
   it('should combine retry and circuit breaker', async () => {
     const cb = new CircuitBreaker({ failureThreshold: 10 });
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue('success');
+    const fn = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValue('success');
 
     vi.useFakeTimers();
     const promise = retryWithCircuitBreaker(fn, cb, { initialDelay: 100 });
@@ -319,7 +316,7 @@ describe('withTimeout', () => {
   });
 
   it('should resolve if promise completes before timeout', async () => {
-    const promise = new Promise((resolve) => setTimeout(() => resolve('success'), 100));
+    const promise = new Promise(resolve => setTimeout(() => resolve('success'), 100));
 
     const timeoutPromise = withTimeout(promise, 1000);
 
@@ -330,7 +327,7 @@ describe('withTimeout', () => {
   });
 
   it('should reject if promise exceeds timeout', async () => {
-    const promise = new Promise((resolve) => setTimeout(() => resolve('too late'), 2000));
+    const promise = new Promise(resolve => setTimeout(() => resolve('too late'), 2000));
 
     const timeoutPromise = withTimeout(promise, 1000, 'Custom timeout message');
 

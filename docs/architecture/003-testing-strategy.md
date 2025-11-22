@@ -237,14 +237,12 @@ e2e/
 ### Test Categories
 
 1. **Unit Tests** (Fast, Isolated)
-
    - Validation schemas
    - Utility functions
    - Business logic
    - Error handling
 
 2. **Integration Tests** (Medium, Controlled)
-
    - MCP transport layers
    - Node-RED API calls
    - Database operations

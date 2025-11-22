@@ -82,7 +82,7 @@ export async function retryWithBackoff<T>(
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -196,7 +196,7 @@ export async function batchRetry<T>(
   retryOptions: RetryOptions = {}
 ): Promise<(T | Error)[]> {
   return Promise.all(
-    operations.map(async (op) => {
+    operations.map(async op => {
       try {
         return await retryWithCircuitBreaker(op, circuitBreaker, retryOptions);
       } catch (error) {
@@ -228,8 +228,6 @@ export function withTimeout<T>(
 ): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMessage)), timeoutMs)),
   ]);
 }

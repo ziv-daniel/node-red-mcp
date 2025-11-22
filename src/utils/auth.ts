@@ -5,10 +5,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-import {
-  McpAuthContext,
-  NodeRedToolPermissions,
-} from '../types/mcp-extensions.js';
+import { McpAuthContext, NodeRedToolPermissions } from '../types/mcp-extensions.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const API_KEY = process.env.API_KEY || 'your-api-key';
@@ -27,9 +24,7 @@ export interface AuthRequest extends Request {
 /**
  * Generate JWT token for user authentication
  */
-export function generateToken(
-  payload: Omit<AuthPayload, 'iat' | 'exp'>,
-): string {
+export function generateToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
     algorithm: 'HS256',
@@ -66,11 +61,7 @@ export function extractToken(authHeader: string): string | null {
 /**
  * Middleware for JWT authentication
  */
-export function authenticateJWT(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-): void {
+export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -103,11 +94,7 @@ export function authenticateJWT(
 /**
  * Middleware for API key authentication
  */
-export function authenticateAPIKey(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-): void {
+export function authenticateAPIKey(req: AuthRequest, res: Response, next: NextFunction): void {
   const apiKey = req.headers['x-api-key'] as string;
 
   if (!apiKey) {
@@ -131,11 +118,7 @@ export function authenticateAPIKey(
 /**
  * Flexible authentication middleware (JWT or API key)
  */
-export function authenticate(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-): void {
+export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const apiKey = req.headers['x-api-key'] as string;
 
@@ -156,7 +139,7 @@ export function authenticate(
 export function authenticateClaudeCompatible(
   req: AuthRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ): void {
   const isClaudeMode = process.env.CLAUDE_COMPATIBLE_MODE === 'true';
   const authRequired = process.env.CLAUDE_AUTH_REQUIRED !== 'false';
@@ -253,10 +236,7 @@ export function authenticateClaudeCompatible(
 /**
  * Check if user has specific permission
  */
-export function hasPermission(
-  auth: McpAuthContext,
-  permission: string,
-): boolean {
+export function hasPermission(auth: McpAuthContext, permission: string): boolean {
   if (!auth.isAuthenticated) return false;
   if (auth.permissions.includes('*')) return true;
   return auth.permissions.includes(permission);
@@ -265,22 +245,15 @@ export function hasPermission(
 /**
  * Check Node-RED specific permissions
  */
-export function getNodeRedPermissions(
-  auth: McpAuthContext,
-): NodeRedToolPermissions {
+export function getNodeRedPermissions(auth: McpAuthContext): NodeRedToolPermissions {
   return {
     canReadFlows: hasPermission(auth, 'flows:read') || hasPermission(auth, '*'),
-    canWriteFlows:
-      hasPermission(auth, 'flows:write') || hasPermission(auth, '*'),
-    canDeployFlows:
-      hasPermission(auth, 'flows:deploy') || hasPermission(auth, '*'),
-    canManageNodes:
-      hasPermission(auth, 'nodes:manage') || hasPermission(auth, '*'),
-    canAccessRuntime:
-      hasPermission(auth, 'runtime:access') || hasPermission(auth, '*'),
+    canWriteFlows: hasPermission(auth, 'flows:write') || hasPermission(auth, '*'),
+    canDeployFlows: hasPermission(auth, 'flows:deploy') || hasPermission(auth, '*'),
+    canManageNodes: hasPermission(auth, 'nodes:manage') || hasPermission(auth, '*'),
+    canAccessRuntime: hasPermission(auth, 'runtime:access') || hasPermission(auth, '*'),
     canViewLogs: hasPermission(auth, 'logs:view') || hasPermission(auth, '*'),
-    canManageSettings:
-      hasPermission(auth, 'settings:manage') || hasPermission(auth, '*'),
+    canManageSettings: hasPermission(auth, 'settings:manage') || hasPermission(auth, '*'),
   };
 }
 
@@ -361,7 +334,7 @@ export function getNodeRedAuthHeader(): Record<string, string> {
 
     case 'basic': {
       const credentials = Buffer.from(
-        `${authConfig.credentials!.username}:${authConfig.credentials!.password}`,
+        `${authConfig.credentials!.username}:${authConfig.credentials!.password}`
       ).toString('base64');
       return {
         Authorization: `Basic ${credentials}`,

@@ -103,7 +103,8 @@ export const logger = createLogger();
 export const createChildLogger = (
   context: string,
   additionalFields: Record<string, unknown> = {}
-) => logger.child({
+) =>
+  logger.child({
     context,
     ...additionalFields,
   });
@@ -139,7 +140,8 @@ export const httpLogger = createChildLogger('http', {
 /**
  * Request ID generator for tracing
  */
-export const generateRequestId = () => `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+export const generateRequestId = () =>
+  `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
 /**
  * Enhanced error logging with context

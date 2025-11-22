@@ -2,12 +2,12 @@ name: 🚀 CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   schedule:
-  # Run nightly builds at 2 AM UTC
-  - cron: '0 2 * * *'
+    # Run nightly builds at 2 AM UTC
+    - cron: '0 2 * * *'
 
 # Allow only one concurrent deployment per branch
 concurrency:
@@ -27,55 +27,55 @@ jobs:
     timeout-minutes: 15
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 # Full history for SonarCloud
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for SonarCloud
 
-    - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        registry-url: 'https://registry.npmjs.org'
+      - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
 
-    - name: 🧶 Enable Corepack
-      run: corepack enable
+      - name: 🧶 Enable Corepack
+        run: corepack enable
 
-    - name: 📦 Get yarn cache directory path
-      id: yarn-cache-dir-path
-      run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+      - name: 📦 Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
 
-    - name: 📦 Cache yarn dependencies
-      uses: actions/cache@v4
-      with:
-        path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-yarn-
+      - name: 📦 Cache yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
-    - name: 📥 Install dependencies
-      run: yarn install --immutable
+      - name: 📥 Install dependencies
+        run: yarn install --immutable
 
-    - name: 🔍 Type checking
-      run: yarn type-check
+      - name: 🔍 Type checking
+        run: yarn type-check
 
-    - name: 🔧 Lint code
-      run: yarn lint
+      - name: 🔧 Lint code
+        run: yarn lint
 
-    - name: 🎨 Check code formatting
-      run: yarn format:check
+      - name: 🎨 Check code formatting
+        run: yarn format:check
 
-    - name: 🔒 Security audit
-      run: yarn audit --groups dependencies
-      continue-on-error: true
+      - name: 🔒 Security audit
+        run: yarn audit --groups dependencies
+        continue-on-error: true
 
-    - name: 🔍 SonarCloud Scan
-      uses: SonarSource/sonarcloud-github-action@master
-      if: github.actor != 'dependabot[bot]'
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      continue-on-error: true
+      - name: 🔍 SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        if: github.actor != 'dependabot[bot]'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        continue-on-error: true
 
   # Job 2: Build & Unit Tests
   test:
@@ -85,119 +85,119 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [ '20', '22' ]
+        node-version: ['20', '22']
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🟢 Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: 🟢 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
-    - name: 🧶 Enable Corepack
-      run: corepack enable
+      - name: 🧶 Enable Corepack
+        run: corepack enable
 
-    - name: 📦 Cache yarn dependencies
-      uses: actions/cache@v4
-      with:
-        path: .yarn/cache
-        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-yarn-
+      - name: 📦 Cache yarn dependencies
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
-    - name: 📥 Install dependencies
-      run: yarn install --immutable
+      - name: 📥 Install dependencies
+        run: yarn install --immutable
 
-    - name: 🏗️ Build project
-      run: yarn build
+      - name: 🏗️ Build project
+        run: yarn build
 
-    - name: 🧪 Run unit tests
-      run: yarn test --reporter=verbose --coverage
-      env:
-        NODE_ENV: test
+      - name: 🧪 Run unit tests
+        run: yarn test --reporter=verbose --coverage
+        env:
+          NODE_ENV: test
 
-    - name: 📊 Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      if: matrix.node-version == '22'
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage/lcov.info
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
+      - name: 📊 Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: matrix.node-version == '22'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
 
   # Job 3: End-to-End Tests
   e2e:
     name: 🎭 E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [ quality ]
+    needs: [quality]
 
     services:
       # Node-RED service for E2E testing
       node-red:
         image: nodered/node-red:latest
         ports:
-        - 1880:1880
+          - 1880:1880
         env:
           NODE_ENV: development
         options: >-
           --health-cmd "curl -f http://localhost:1880 || exit 1" --health-interval 30s --health-timeout 10s --health-retries 3
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+      - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    - name: 🧶 Enable Corepack
-      run: corepack enable
+      - name: 🧶 Enable Corepack
+        run: corepack enable
 
-    - name: 📥 Install dependencies
-      run: yarn install --immutable
+      - name: 📥 Install dependencies
+        run: yarn install --immutable
 
-    - name: 🏗️ Build project
-      run: yarn build:prod
+      - name: 🏗️ Build project
+        run: yarn build:prod
 
-    - name: 🎭 Install Playwright browsers
-      run: yarn playwright install --with-deps chromium
+      - name: 🎭 Install Playwright browsers
+        run: yarn playwright install --with-deps chromium
 
-    - name: 🚀 Start MCP server in background
-      run: yarn start &
-      env:
-        NODE_ENV: test
-        PORT: 3000
-        MCP_TRANSPORT: http
-        HTTP_ENABLED: true
-        NODERED_URL: http://localhost:1880
+      - name: 🚀 Start MCP server in background
+        run: yarn start &
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          MCP_TRANSPORT: http
+          HTTP_ENABLED: true
+          NODERED_URL: http://localhost:1880
 
-    - name: ⏳ Wait for services to be ready
-      run: |
-        # Wait for MCP server
-        timeout 60s bash -c 'until curl -f http://localhost:3000/health; do sleep 2; done'
-        # Wait for Node-RED
-        timeout 60s bash -c 'until curl -f http://localhost:1880; do sleep 2; done'
+      - name: ⏳ Wait for services to be ready
+        run: |
+          # Wait for MCP server
+          timeout 60s bash -c 'until curl -f http://localhost:3000/health; do sleep 2; done'
+          # Wait for Node-RED
+          timeout 60s bash -c 'until curl -f http://localhost:1880; do sleep 2; done'
 
-    - name: 🧪 Run E2E tests
-      run: yarn test:e2e
-      env:
-        BASE_URL: http://localhost:3000
-        NODERED_URL: http://localhost:1880
+      - name: 🧪 Run E2E tests
+        run: yarn test:e2e
+        env:
+          BASE_URL: http://localhost:3000
+          NODERED_URL: http://localhost:1880
 
-    - name: 📊 Upload E2E test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: e2e-results-${{ github.run_id }}
-        path: |
-          e2e-results/
-          test-results/
-        retention-days: 7
+      - name: 📊 Upload E2E test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results-${{ github.run_id }}
+          path: |
+            e2e-results/
+            test-results/
+          retention-days: 7
 
   # Job 4: Security Scanning
   security:
@@ -212,29 +212,29 @@ jobs:
       contents: read
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🔍 Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: javascript
-        queries: security-and-quality
+      - name: 🔍 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-and-quality
 
-    - name: 📦 Autobuild
-      uses: github/codeql-action/autobuild@v3
+      - name: 📦 Autobuild
+        uses: github/codeql-action/autobuild@v3
 
-    - name: 🔍 Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:javascript"
+      - name: 🔍 Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript'
 
   # Job 5: Docker Build & Push
   docker:
     name: 🐳 Docker Build & Push
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [ quality, test ]
+    needs: [quality, test]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
 
     permissions:
@@ -242,96 +242,96 @@ jobs:
       packages: write
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🐳 Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: 🔑 Login to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY_URL }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🔑 Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_URL }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: 🏷️ Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY_URL }}/${{ github.repository }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_URL }}/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: 🏗️ Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./docker/Dockerfile
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        build-args: |
-          NODE_VERSION=${{ env.NODE_VERSION }}
-          YARN_VERSION=${{ env.YARN_VERSION }}
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            YARN_VERSION=${{ env.YARN_VERSION }}
 
   # Job 6: Performance Testing
   performance:
     name: ⚡ Performance Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [ test ]
+    needs: [test]
     if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'performance')
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+      - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    - name: 📥 Install dependencies
-      run: |
-        corepack enable
-        yarn install --immutable
+      - name: 📥 Install dependencies
+        run: |
+          corepack enable
+          yarn install --immutable
 
-    - name: 🏗️ Build project
-      run: yarn build:prod
+      - name: 🏗️ Build project
+        run: yarn build:prod
 
-    - name: ⚡ Run performance benchmarks
-      run: |
-        # Start server in background
-        yarn start &
-        SERVER_PID=$!
+      - name: ⚡ Run performance benchmarks
+        run: |
+          # Start server in background
+          yarn start &
+          SERVER_PID=$!
 
-        # Wait for server to be ready
-        timeout 30s bash -c 'until curl -f http://localhost:3000/health; do sleep 1; done'
+          # Wait for server to be ready
+          timeout 30s bash -c 'until curl -f http://localhost:3000/health; do sleep 1; done'
 
-        # Run performance tests (example with curl - replace with proper tool)
-        echo "Running performance benchmarks..."
-        for i in {1..100}; do
-          curl -s http://localhost:3000/health > /dev/null
-        done
+          # Run performance tests (example with curl - replace with proper tool)
+          echo "Running performance benchmarks..."
+          for i in {1..100}; do
+            curl -s http://localhost:3000/health > /dev/null
+          done
 
-        # Cleanup
-        kill $SERVER_PID
-      env:
-        NODE_ENV: production
+          # Cleanup
+          kill $SERVER_PID
+        env:
+          NODE_ENV: production
 
   # Job 7: Deployment
   deploy:
     name: 🚀 Deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [ quality, test, e2e, docker ]
+    needs: [quality, test, e2e, docker]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     environment:
@@ -339,33 +339,33 @@ jobs:
       url: https://mcp-nodered-server.example.com
 
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-    - name: 🚀 Deploy to production
-      run: |
-        echo "Deploying to production..."
-        # Add your deployment logic here
-        # Example: kubectl, helm, or cloud provider CLI commands
-      env:
-        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      - name: 🚀 Deploy to production
+        run: |
+          echo "Deploying to production..."
+          # Add your deployment logic here
+          # Example: kubectl, helm, or cloud provider CLI commands
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
   # Job 8: Notify
   notify:
     name: 📢 Notify
     runs-on: ubuntu-latest
-    needs: [ quality, test, e2e, docker, deploy ]
+    needs: [quality, test, e2e, docker, deploy]
     if: always()
 
     steps:
-    - name: 📢 Notify on success
-      if: needs.deploy.result == 'success'
-      run: |
-        echo "✅ Deployment successful!"
-        # Add notification logic (Slack, Discord, email, etc.)
+      - name: 📢 Notify on success
+        if: needs.deploy.result == 'success'
+        run: |
+          echo "✅ Deployment successful!"
+          # Add notification logic (Slack, Discord, email, etc.)
 
-    - name: 📢 Notify on failure
-      if: failure()
-      run: |
-        echo "❌ Pipeline failed!"
-        # Add failure notification logic 
+      - name: 📢 Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Pipeline failed!"
+          # Add failure notification logic

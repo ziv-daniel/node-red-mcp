@@ -71,7 +71,7 @@ export class NodeRedAPIClient {
       failureThreshold: 5,
       successThreshold: 2,
       timeout: 60000, // 1 minute
-      onStateChange: (state) => {
+      onStateChange: state => {
         console.error(`Node-RED API Circuit Breaker state changed to: ${state}`);
       },
     });
@@ -94,7 +94,10 @@ export class NodeRedAPIClient {
         return true;
       },
       onRetry: (error, attempt, delay) => {
-        console.warn(`Node-RED API request failed (attempt ${attempt}), retrying in ${delay}ms:`, error.message);
+        console.warn(
+          `Node-RED API request failed (attempt ${attempt}), retrying in ${delay}ms:`,
+          error.message
+        );
       },
     };
 
@@ -120,7 +123,7 @@ export class NodeRedAPIClient {
     // Check if content-type indicates HTML
     if (contentType.includes('text/html')) {
       throw new Error(
-        `Node-RED returned HTML instead of JSON for ${endpoint}. This usually indicates an authentication redirect or wrong endpoint. Content-Type: ${contentType}`,
+        `Node-RED returned HTML instead of JSON for ${endpoint}. This usually indicates an authentication redirect or wrong endpoint. Content-Type: ${contentType}`
       );
     }
 
@@ -132,9 +135,9 @@ export class NodeRedAPIClient {
         data.trim().startsWith('Node-RED') ||
         data.includes('<title>'))
     ) {
-      const preview = data.length > 100 ? `${data.substring(0, 100)  }...` : data;
+      const preview = data.length > 100 ? `${data.substring(0, 100)}...` : data;
       throw new Error(
-        `Node-RED returned HTML content instead of JSON for ${endpoint}. This usually indicates an authentication issue or wrong endpoint. Response preview: ${preview}`,
+        `Node-RED returned HTML content instead of JSON for ${endpoint}. This usually indicates an authentication issue or wrong endpoint. Response preview: ${preview}`
       );
     }
   }
@@ -145,21 +148,17 @@ export class NodeRedAPIClient {
   private setupInterceptors(): void {
     // Request interceptor for logging
     this.client.interceptors.request.use(
-      (config) => 
+      config =>
         // Silent request logging to avoid stdio interference
-         config
-      ,
-      (error) => Promise.reject(error),
+        config,
+      error => Promise.reject(error)
     ); // Response interceptor for validation and retry logic
     this.client.interceptors.response.use(
-      (response) => {
+      response => {
         // Skip validation for root endpoint (which returns HTML by design)
         if (!response.config.url?.endsWith('/')) {
           try {
-            this.validateJsonResponse(
-              response,
-              response.config.url || 'unknown',
-            );
+            this.validateJsonResponse(response, response.config.url || 'unknown');
           } catch (validationError: any) {
             // Silent validation warning to avoid stdio interference
             // For HTML responses on API endpoints, we'll retry once more
@@ -177,7 +176,7 @@ export class NodeRedAPIClient {
         }
         return response;
       },
-      async (error) => {
+      async error => {
         const config = error.config;
 
         if (!config._retry && config._retryCount < this.config.retries) {
@@ -186,13 +185,13 @@ export class NodeRedAPIClient {
 
           // Exponential backoff
           const delay = Math.pow(2, config._retryCount) * 1000;
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await new Promise(resolve => setTimeout(resolve, delay));
 
           return this.client(config);
         }
 
         return Promise.reject(error);
-      },
+      }
     );
   }
 
@@ -234,13 +233,11 @@ export class NodeRedAPIClient {
   /**
    * Ensure all nodes in a flow have unique IDs
    */
-  private ensureUniqueNodeIds(
-    flowData: Partial<NodeRedFlow>,
-  ): Partial<NodeRedFlow> {
+  private ensureUniqueNodeIds(flowData: Partial<NodeRedFlow>): Partial<NodeRedFlow> {
     const updatedFlow = { ...flowData };
 
     if (updatedFlow.nodes && Array.isArray(updatedFlow.nodes)) {
-      updatedFlow.nodes = updatedFlow.nodes.map((node) => ({
+      updatedFlow.nodes = updatedFlow.nodes.map(node => ({
         ...node,
         id: node.id || this.generateUniqueNodeId(),
       }));
@@ -271,12 +268,9 @@ export class NodeRedAPIClient {
 
       // Additional validation for the flows response
       if (!Array.isArray(response.data)) {
-        if (
-          typeof response.data === 'string' &&
-          response.data.includes('Node-RED')
-        ) {
+        if (typeof response.data === 'string' && response.data.includes('Node-RED')) {
           throw new Error(
-            'Node-RED returned HTML content instead of flow data. Check authentication and endpoint configuration.',
+            'Node-RED returned HTML content instead of flow data. Check authentication and endpoint configuration.'
           );
         }
       }
@@ -290,15 +284,13 @@ export class NodeRedAPIClient {
    * Only returns specified flow types, filtering out system flows and config nodes
    * @param types - Array of flow types to include (default: ['tab', 'subflow'])
    */
-  async getFlowSummaries(
-    types: string[] = ['tab', 'subflow'],
-  ): Promise<NodeRedFlowSummary[]> {
+  async getFlowSummaries(types: string[] = ['tab', 'subflow']): Promise<NodeRedFlowSummary[]> {
     try {
       const [fullFlows, flowStatus] = await Promise.all([
         this.getFlows(),
         this.getFlowStatus().catch(() => null), // Graceful fallback if flow status not available
       ]); // Filter flows based on requested types
-      const userFlows = fullFlows.filter((flow) => {
+      const userFlows = fullFlows.filter(flow => {
         // Determine the flow type (tab, subflow, or config node type)
         const hasNodes = Array.isArray(flow.nodes);
         const flowType = flow.type || (hasNodes ? 'tab' : 'unknown');
@@ -307,31 +299,21 @@ export class NodeRedAPIClient {
         const isRequestedType = types.includes(flowType);
 
         // Exclude config nodes unless specifically requested
-        const isConfigNode =
-          !hasNodes && flow.type && !['tab', 'subflow'].includes(flow.type);
-        const shouldExcludeConfig =
-          isConfigNode && flow.type && !types.includes(flow.type);
+        const isConfigNode = !hasNodes && flow.type && !['tab', 'subflow'].includes(flow.type);
+        const shouldExcludeConfig = isConfigNode && flow.type && !types.includes(flow.type);
 
         // Include flows that match requested types and have nodes (or are specifically config types if requested)
-        return (
-          isRequestedType &&
-          !shouldExcludeConfig &&
-          (hasNodes || types.includes(flowType))
-        );
+        return isRequestedType && !shouldExcludeConfig && (hasNodes || types.includes(flowType));
       });
 
-      return userFlows.map((flow) => {
-        const status = flowStatus?.flows?.find((f) => f.id === flow.id);
+      return userFlows.map(flow => {
+        const status = flowStatus?.flows?.find(f => f.id === flow.id);
 
         // Build summary object with only meaningful properties
         const summary: NodeRedFlowSummary = {
           id: flow.id,
           disabled: flow.disabled || false,
-          status: flow.disabled
-            ? 'inactive'
-            : status?.state === 'stop'
-              ? 'inactive'
-              : 'active',
+          status: flow.disabled ? 'inactive' : status?.state === 'stop' ? 'inactive' : 'active',
         };
 
         // Only add label if it exists and is not empty
@@ -394,10 +376,7 @@ export class NodeRedAPIClient {
   /**
    * Update existing flow
    */
-  async updateFlow(
-    flowId: string,
-    flowData: Partial<NodeRedFlow>,
-  ): Promise<NodeRedFlow> {
+  async updateFlow(flowId: string, flowData: Partial<NodeRedFlow>): Promise<NodeRedFlow> {
     try {
       const response = await this.client.put(`/flow/${flowId}`, flowData);
       return response.data;
@@ -420,9 +399,7 @@ export class NodeRedAPIClient {
   /**
    * Deploy flows
    */
-  async deployFlows(
-    options: NodeRedDeploymentOptions = { type: 'full' },
-  ): Promise<void> {
+  async deployFlows(options: NodeRedDeploymentOptions = { type: 'full' }): Promise<void> {
     try {
       await this.client.post('/flows', null, {
         headers: {
@@ -635,9 +612,7 @@ export class NodeRedAPIClient {
    */
   async getFlowContext(flowId: string, key?: string): Promise<any> {
     try {
-      const url = key
-        ? `/context/flow/${flowId}/${key}`
-        : `/context/flow/${flowId}`;
+      const url = key ? `/context/flow/${flowId}/${key}` : `/context/flow/${flowId}`;
       const response = await this.client.get(url);
       return response.data;
     } catch (error) {
@@ -698,10 +673,7 @@ export class NodeRedAPIClient {
   /**
    * Login to Node-RED (if auth is enabled)
    */
-  async login(
-    username: string,
-    password: string,
-  ): Promise<{ access_token: string }> {
+  async login(username: string, password: string): Promise<{ access_token: string }> {
     try {
       const response = await this.client.post('/auth/token', {
         client_id: 'node-red-admin',
@@ -750,7 +722,7 @@ export class NodeRedAPIClient {
   async searchModules(
     query: string,
     category: 'all' | 'contrib' | 'dashboard' = 'all',
-    limit = 10,
+    limit = 10
   ): Promise<ModuleSearchResult> {
     try {
       // Search npm registry for node-red modules
@@ -761,25 +733,22 @@ export class NodeRedAPIClient {
             ? `node-red-dashboard ${query}`
             : `node-red ${query}`;
 
-      const response = await axios.get(
-        `https://registry.npmjs.org/-/v1/search`,
-        {
-          params: {
-            text: searchQuery,
-            size: limit,
-            quality: 0.65,
-            popularity: 0.98,
-            maintenance: 0.5,
-          },
-          timeout: 10000,
+      const response = await axios.get(`https://registry.npmjs.org/-/v1/search`, {
+        params: {
+          text: searchQuery,
+          size: limit,
+          quality: 0.65,
+          popularity: 0.98,
+          maintenance: 0.5,
         },
-      );
+        timeout: 10000,
+      });
 
       const modules: NodeRedModule[] = response.data.objects
         .filter(
           (pkg: any) =>
             pkg.package.name.startsWith('node-red') ||
-            pkg.package.keywords?.some((k: string) => k.includes('node-red')),
+            pkg.package.keywords?.some((k: string) => k.includes('node-red'))
         )
         .map((pkg: any) => ({
           name: pkg.package.name,
@@ -805,10 +774,7 @@ export class NodeRedAPIClient {
   /**
    * Install a Node-RED module via palette management
    */
-  async installModule(
-    moduleName: string,
-    version?: string,
-  ): Promise<ModuleInstallResult> {
+  async installModule(moduleName: string, version?: string): Promise<ModuleInstallResult> {
     try {
       const moduleToInstall = version ? `${moduleName}@${version}` : moduleName;
 
@@ -823,8 +789,7 @@ export class NodeRedAPIClient {
         message: `Module ${moduleToInstall} installed successfully`,
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
         success: false,
         module: moduleName,

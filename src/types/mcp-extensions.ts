@@ -2,12 +2,7 @@
  * Custom MCP type extensions for Node-RED integration
  */
 
-import {
-  NodeRedFlow,
-  NodeRedNode,
-  NodeRedNodeType,
-  NodeRedRuntimeInfo,
-} from './nodered.js';
+import { NodeRedFlow, NodeRedNode, NodeRedNodeType, NodeRedRuntimeInfo } from './nodered.js';
 import { SSEStats, SSEEventFilter } from './sse.js';
 
 // MCP Tool definitions for Node-RED operations

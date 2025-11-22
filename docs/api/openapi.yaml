@@ -40,17 +40,17 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-- url: http://localhost:3000
-  description: Local Development Server
-- url: https://api.example.com
-  description: Production Server
-- url: https://staging-api.example.com
-  description: Staging Server
+  - url: http://localhost:3000
+    description: Local Development Server
+  - url: https://api.example.com
+    description: Production Server
+  - url: https://staging-api.example.com
+    description: Staging Server
 
 security:
-- BearerAuth: []
-- ApiKeyAuth: []
-- {}
+  - BearerAuth: []
+  - ApiKeyAuth: []
+  - {}
 
 paths:
   /health:
@@ -69,9 +69,9 @@ paths:
         Used for monitoring, alerting, and debugging.
       operationId: getHealthStatus
       tags:
-      - Health Checks
+        - Health Checks
       security:
-      - {}
+        - {}
       responses:
         '200':
           description: Health check completed successfully
@@ -83,29 +83,29 @@ paths:
                 healthy:
                   summary: System is healthy
                   value:
-                    status: "healthy"
-                    timestamp: "2024-12-17T10:30:00Z"
+                    status: 'healthy'
+                    timestamp: '2024-12-17T10:30:00Z'
                     uptime: 3600
-                    version: "1.0.0"
-                    environment: "production"
+                    version: '1.0.0'
+                    environment: 'production'
                     checks:
                       system:
-                        status: "pass"
+                        status: 'pass'
                         time: 5
-                        output: "Memory utilization: 45% (256MB/512MB)"
+                        output: 'Memory utilization: 45% (256MB/512MB)'
                       nodeRed:
-                        status: "pass"
+                        status: 'pass'
                         time: 12
                         responseTime: 10
                     services:
                       nodeRed:
-                        status: "available"
+                        status: 'available'
                         responseTime: 10
-                        lastCheck: "2024-12-17T10:30:00Z"
+                        lastCheck: '2024-12-17T10:30:00Z'
                       mcp:
                         connections: 2
                         activeTools: 10
-                        lastActivity: "2024-12-17T10:29:45Z"
+                        lastActivity: '2024-12-17T10:29:45Z'
                     metrics:
                       http:
                         requests: 1250
@@ -114,20 +114,20 @@ paths:
                 degraded:
                   summary: System is degraded
                   value:
-                    status: "degraded"
-                    timestamp: "2024-12-17T10:30:00Z"
+                    status: 'degraded'
+                    timestamp: '2024-12-17T10:30:00Z'
                     uptime: 3600
-                    version: "1.0.0"
-                    environment: "production"
+                    version: '1.0.0'
+                    environment: 'production'
                     checks:
                       system:
-                        status: "pass"
+                        status: 'pass'
                         time: 5
                       nodeRed:
-                        status: "warn"
+                        status: 'warn'
                         time: 2500
                         responseTime: 2500
-                        output: "High response time detected"
+                        output: 'High response time detected'
         '503':
           description: Service unavailable - health check failed
           content:
@@ -138,19 +138,19 @@ paths:
                 unhealthy:
                   summary: System is unhealthy
                   value:
-                    status: "unhealthy"
-                    timestamp: "2024-12-17T10:30:00Z"
+                    status: 'unhealthy'
+                    timestamp: '2024-12-17T10:30:00Z'
                     uptime: 3600
-                    version: "1.0.0"
-                    environment: "production"
+                    version: '1.0.0'
+                    environment: 'production'
                     checks:
                       system:
-                        status: "pass"
+                        status: 'pass'
                         time: 5
                       nodeRed:
-                        status: "fail"
+                        status: 'fail'
                         time: 5000
-                        output: "Connection timeout to Node-RED"
+                        output: 'Connection timeout to Node-RED'
 
   /ready:
     get:
@@ -170,9 +170,9 @@ paths:
         - Service cannot handle requests
       operationId: getReadinessStatus
       tags:
-      - Health Checks
+        - Health Checks
       security:
-      - {}
+        - {}
       responses:
         '200':
           description: Service is ready to receive traffic
@@ -197,9 +197,9 @@ paths:
         This is a lightweight check that only verifies the process is responsive.
       operationId: getLivenessStatus
       tags:
-      - Health Checks
+        - Health Checks
       security:
-      - {}
+        - {}
       responses:
         '200':
           description: Service is alive
@@ -223,9 +223,9 @@ paths:
         - Custom business metrics
       operationId: getMetrics
       tags:
-      - Monitoring
+        - Monitoring
       security:
-      - {}
+        - {}
       responses:
         '200':
           description: Prometheus metrics
@@ -257,9 +257,9 @@ paths:
         Use with caution in production environments.
       operationId: resetMetrics
       tags:
-      - Monitoring
+        - Monitoring
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       responses:
         '200':
           description: Metrics reset successfully
@@ -270,7 +270,7 @@ paths:
                 properties:
                   message:
                     type: string
-                    example: "Metrics reset successfully"
+                    example: 'Metrics reset successfully'
                   timestamp:
                     type: string
                     format: date-time
@@ -295,27 +295,27 @@ paths:
         Clients should implement reconnection logic for production use.
       operationId: subscribeToEvents
       tags:
-      - Real-time
+        - Real-time
       security:
-      - BearerAuth: []
-      - {}
+        - BearerAuth: []
+        - {}
       parameters:
-      - name: types
-        in: query
-        description: Comma-separated list of event types to subscribe to
-        required: false
-        schema:
-          type: string
-          example: "mcp.tool.called,nodered.flow.deployed"
-      - name: buffer
-        in: query
-        description: Number of recent events to replay on connection
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          maximum: 100
-          default: 0
+        - name: types
+          in: query
+          description: Comma-separated list of event types to subscribe to
+          required: false
+          schema:
+            type: string
+            example: 'mcp.tool.called,nodered.flow.deployed'
+        - name: buffer
+          in: query
+          description: Number of recent events to replay on connection
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 0
       responses:
         '200':
           description: SSE stream established
@@ -352,9 +352,9 @@ paths:
         descriptions, parameters, and usage examples.
       operationId: listMcpTools
       tags:
-      - MCP Tools
+        - MCP Tools
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       responses:
         '200':
           description: List of available MCP tools
@@ -372,21 +372,21 @@ paths:
                   summary: Available MCP tools
                   value:
                     tools:
-                    - name: "list-flows"
-                      description: "List all Node-RED flows"
-                      parameters: {}
-                      examples:
-                      - description: "List all flows"
-                        arguments: {}
-                    - name: "get-flow"
-                      description: "Get specific flow details"
-                      parameters:
-                        type: "object"
-                        properties:
-                          flowId:
-                            type: "string"
-                            description: "The flow ID"
-                        required: [ "flowId" ]
+                      - name: 'list-flows'
+                        description: 'List all Node-RED flows'
+                        parameters: {}
+                        examples:
+                          - description: 'List all flows'
+                            arguments: {}
+                      - name: 'get-flow'
+                        description: 'Get specific flow details'
+                        parameters:
+                          type: 'object'
+                          properties:
+                            flowId:
+                              type: 'string'
+                              description: 'The flow ID'
+                          required: ['flowId']
         '401':
           $ref: '#/components/responses/UnauthorizedError'
 
@@ -401,23 +401,23 @@ paths:
         and web-based integrations.
       operationId: executeMcpTool
       tags:
-      - MCP Tools
+        - MCP Tools
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       parameters:
-      - name: toolName
-        in: path
-        required: true
-        description: Name of the MCP tool to execute
-        schema:
-          type: string
-          enum:
-          - list-flows
-          - get-flow
-          - deploy-flow
-          - list-nodes
-          - get-node
-          - system-info
+        - name: toolName
+          in: path
+          required: true
+          description: Name of the MCP tool to execute
+          schema:
+            type: string
+            enum:
+              - list-flows
+              - get-flow
+              - deploy-flow
+              - list-nodes
+              - get-node
+              - system-info
       requestBody:
         required: true
         content:
@@ -437,19 +437,19 @@ paths:
                 summary: Get specific flow
                 value:
                   arguments:
-                    flowId: "flow1"
+                    flowId: 'flow1'
               deploy_flow:
                 summary: Deploy new flow
                 value:
                   arguments:
                     flow:
-                      id: "new-flow"
-                      label: "My API"
+                      id: 'new-flow'
+                      label: 'My API'
                       nodes:
-                      - id: "http-in"
-                        type: "http in"
-                        method: "get"
-                        url: "/api/hello"
+                        - id: 'http-in'
+                          type: 'http in'
+                          method: 'get'
+                          url: '/api/hello'
       responses:
         '200':
           description: Tool executed successfully
@@ -478,40 +478,40 @@ paths:
         with additional HTTP-specific features like filtering and pagination.
       operationId: listNodeRedFlows
       tags:
-      - Node-RED Integration
+        - Node-RED Integration
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       parameters:
-      - name: includeDisabled
-        in: query
-        description: Include disabled flows in the results
-        required: false
-        schema:
-          type: boolean
-          default: true
-      - name: search
-        in: query
-        description: Search flows by name or label
-        required: false
-        schema:
-          type: string
-      - name: limit
-        in: query
-        description: Maximum number of flows to return
-        required: false
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 100
-          default: 50
-      - name: offset
-        in: query
-        description: Number of flows to skip (for pagination)
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
+        - name: includeDisabled
+          in: query
+          description: Include disabled flows in the results
+          required: false
+          schema:
+            type: boolean
+            default: true
+        - name: search
+          in: query
+          description: Search flows by name or label
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of flows to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of flows to skip (for pagination)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: List of Node-RED flows
@@ -548,9 +548,9 @@ paths:
         - Configuration and settings
       operationId: getNodeRedSystemInfo
       tags:
-      - Node-RED Integration
+        - Node-RED Integration
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       responses:
         '200':
           description: Node-RED system information
@@ -595,10 +595,10 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
           example:
-            error: "Unauthorized"
-            message: "Invalid or missing authentication token"
-            code: "AUTH_REQUIRED"
-            timestamp: "2024-12-17T10:30:00Z"
+            error: 'Unauthorized'
+            message: 'Invalid or missing authentication token'
+            code: 'AUTH_REQUIRED'
+            timestamp: '2024-12-17T10:30:00Z'
 
     BadRequestError:
       description: Invalid request parameters or body
@@ -607,27 +607,27 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
           example:
-            error: "Bad Request"
+            error: 'Bad Request'
             message: "Validation failed: 'flowId' is required"
-            code: "VALIDATION_ERROR"
-            timestamp: "2024-12-17T10:30:00Z"
+            code: 'VALIDATION_ERROR'
+            timestamp: '2024-12-17T10:30:00Z'
             details:
-            - field: "flowId"
-              message: "This field is required"
+              - field: 'flowId'
+                message: 'This field is required'
 
   schemas:
     HealthResponse:
       type: object
       required:
-      - status
-      - timestamp
-      - uptime
-      - version
-      - environment
+        - status
+        - timestamp
+        - uptime
+        - version
+        - environment
       properties:
         status:
           type: string
-          enum: [ healthy, degraded, unhealthy ]
+          enum: [healthy, degraded, unhealthy]
           description: Overall health status
         timestamp:
           type: string
@@ -659,7 +659,7 @@ components:
               properties:
                 status:
                   type: string
-                  enum: [ available, unavailable, degraded ]
+                  enum: [available, unavailable, degraded]
                 responseTime:
                   type: integer
                   description: Response time in milliseconds
@@ -698,12 +698,12 @@ components:
     HealthCheck:
       type: object
       required:
-      - status
-      - time
+        - status
+        - time
       properties:
         status:
           type: string
-          enum: [ pass, warn, fail ]
+          enum: [pass, warn, fail]
         time:
           type: integer
           description: Check execution time in milliseconds
@@ -717,8 +717,8 @@ components:
     ReadinessResponse:
       type: object
       required:
-      - ready
-      - timestamp
+        - ready
+        - timestamp
       properties:
         ready:
           type: boolean
@@ -736,13 +736,13 @@ components:
                 type: string
               status:
                 type: string
-                enum: [ ready, not_ready ]
+                enum: [ready, not_ready]
 
     LivenessResponse:
       type: object
       required:
-      - alive
-      - timestamp
+        - alive
+        - timestamp
       properties:
         alive:
           type: boolean
@@ -755,8 +755,8 @@ components:
     McpTool:
       type: object
       required:
-      - name
-      - description
+        - name
+        - description
       properties:
         name:
           type: string
@@ -780,8 +780,8 @@ components:
     McpToolResponse:
       type: object
       required:
-      - success
-      - timestamp
+        - success
+        - timestamp
       properties:
         success:
           type: boolean
@@ -801,15 +801,15 @@ components:
     NodeRedFlow:
       type: object
       required:
-      - id
-      - type
+        - id
+        - type
       properties:
         id:
           type: string
           description: Unique flow identifier
         type:
           type: string
-          enum: [ tab, subflow ]
+          enum: [tab, subflow]
         label:
           type: string
           description: Flow label/name
@@ -833,8 +833,8 @@ components:
     NodeRedNode:
       type: object
       required:
-      - id
-      - type
+        - id
+        - type
       properties:
         id:
           type: string
@@ -915,9 +915,9 @@ components:
     ApiError:
       type: object
       required:
-      - error
-      - message
-      - timestamp
+        - error
+        - message
+        - timestamp
       properties:
         error:
           type: string
@@ -943,30 +943,30 @@ components:
                 type: string
 
 tags:
-- name: Health Checks
-  description: |
-    Endpoints for monitoring server health and availability.
-    These are used by load balancers, Kubernetes, and monitoring systems.
+  - name: Health Checks
+    description: |
+      Endpoints for monitoring server health and availability.
+      These are used by load balancers, Kubernetes, and monitoring systems.
 
-- name: Monitoring
-  description: |
-    Metrics and monitoring endpoints for observability.
-    Provides Prometheus-compatible metrics and performance data.
+  - name: Monitoring
+    description: |
+      Metrics and monitoring endpoints for observability.
+      Provides Prometheus-compatible metrics and performance data.
 
-- name: Real-time
-  description: |
-    Real-time communication endpoints using Server-Sent Events.
-    Subscribe to live updates from the server and Node-RED.
+  - name: Real-time
+    description: |
+      Real-time communication endpoints using Server-Sent Events.
+      Subscribe to live updates from the server and Node-RED.
 
-- name: MCP Tools
-  description: |
-    Model Context Protocol tool execution via HTTP.
-    Provides HTTP access to MCP functionality for testing and integration.
+  - name: MCP Tools
+    description: |
+      Model Context Protocol tool execution via HTTP.
+      Provides HTTP access to MCP functionality for testing and integration.
 
-- name: Node-RED Integration
-  description: |
-    Direct Node-RED integration endpoints.
-    Convenience APIs for common Node-RED operations.
+  - name: Node-RED Integration
+    description: |
+      Direct Node-RED integration endpoints.
+      Convenience APIs for common Node-RED operations.
 
 externalDocs:
   description: Find more information about MCP Node-RED Server

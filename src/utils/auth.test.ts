@@ -12,7 +12,7 @@ describe('Auth Utils', () => {
   const mockSecret = 'test-secret-key';
   const mockPayload: Omit<AuthPayload, 'iat' | 'exp'> = {
     userId: 'user123',
-    permissions: ['read', 'write']
+    permissions: ['read', 'write'],
   };
 
   beforeEach(() => {
@@ -120,12 +120,7 @@ describe('Auth Utils Edge Cases', () => {
   });
 
   it('should handle malformed JWT tokens', () => {
-    const malformedTokens = [
-      'not.a.jwt',
-      'too.few.parts',
-      'too.many.parts.here.invalid',
-      '',
-    ];
+    const malformedTokens = ['not.a.jwt', 'too.few.parts', 'too.many.parts.here.invalid', ''];
 
     malformedTokens.forEach(token => {
       const result = verifyToken(token);

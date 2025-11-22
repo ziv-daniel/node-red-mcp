@@ -61,9 +61,9 @@ export interface SSESubscription {
   subscribedAt: Date;
 }
 
-export type SSEEventType = 
+export type SSEEventType =
   | 'node-event'
-  | 'flow-event' 
+  | 'flow-event'
   | 'runtime-event'
   | 'status-event'
   | 'error-event'
@@ -115,12 +115,7 @@ export interface SSEError {
   };
 }
 
-export type SSEEvent = 
-  | NodeRedEvent 
-  | SSEHeartbeat 
-  | SSESystemInfo 
-  | SSEConnectionStatus 
-  | SSEError;
+export type SSEEvent = NodeRedEvent | SSEHeartbeat | SSESystemInfo | SSEConnectionStatus | SSEError;
 
 export interface SSEMiddlewareOptions {
   auth?: (req: any) => Promise<boolean> | boolean;
@@ -140,4 +135,4 @@ export interface SSEClientInfo {
   messageCount: number;
   lastActivity: Date;
   isAlive: boolean;
-} 
+}

@@ -30,10 +30,10 @@ export default defineConfig({
       // Coverage thresholds for quality gates
       // Note: Set to current baseline levels. Gradually increase as more tests are added.
       thresholds: {
-        branches: 95,    // Current: 96.96%
-        functions: 70,   // Current: 71.42%
-        lines: 4,        // Current: 4.24%
-        statements: 4,   // Current: 4.24%
+        branches: 95, // Current: 96.96%
+        functions: 70, // Current: 71.42%
+        lines: 4, // Current: 4.24%
+        statements: 4, // Current: 4.24%
       },
     },
 
