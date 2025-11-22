@@ -47,7 +47,7 @@ export interface ModuleSearchResult {
 export interface ModuleInstallResult {
   success: boolean;
   module: string;
-  version?: string;
+  version?: string | undefined;
   message: string;
 }
 
@@ -763,7 +763,7 @@ export class NodeRedAPIClient {
       return {
         success: true,
         module: moduleName,
-        version,
+        version: version ?? undefined,
         message: `Module ${moduleToInstall} installed successfully`,
       };
     } catch (error) {
@@ -772,7 +772,7 @@ export class NodeRedAPIClient {
       return {
         success: false,
         module: moduleName,
-        version,
+        version: version ?? undefined,
         message: `Failed to install ${moduleName}: ${errorMessage}`,
       };
     }

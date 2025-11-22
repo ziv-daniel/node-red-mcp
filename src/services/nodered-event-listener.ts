@@ -18,7 +18,7 @@ import { NodeRedAPIClient } from './nodered-api.js';
 export class NodeRedEventListener {
   private sseHandler: SSEHandler;
   private nodeRedClient: NodeRedAPIClient;
-  private eventPollingInterval?: NodeJS.Timeout;
+  private eventPollingInterval?: NodeJS.Timeout | undefined;
   private isMonitoring = false;
   private lastEventTimestamp: number = Date.now();
 
@@ -204,7 +204,7 @@ export class NodeRedEventListener {
         status: {
           fill: status.fill as any,
           shape: status.shape as any,
-          text: status.text
+          text: status.text ?? undefined
         }
       }
     };

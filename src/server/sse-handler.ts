@@ -27,7 +27,7 @@ export class SSEHandler {
   private connections = new Map<string, SSEConnection>();
   private config: SSEConfig;
   private stats: SSEStats;
-  private heartbeatInterval?: NodeJS.Timeout;
+  private heartbeatInterval?: NodeJS.Timeout | undefined;
 
   constructor(config: Partial<SSEConfig> = {}) {
     this.config = {

@@ -191,7 +191,7 @@ export interface ApiResponse<T = any> {
     details?: any;
   };
   timestamp: string;
-  requestId?: string;
+  requestId?: string | undefined;
 }
 
 export interface PaginatedResponse<T = any> extends ApiResponse<T[]> {
@@ -220,6 +220,6 @@ export interface LogEntry {
   message: string;
   timestamp: string;
   source: string;
-  context?: Record<string, any>;
-  error?: Error;
+  context?: Record<string, any> | undefined;
+  error?: Error | undefined;
 }

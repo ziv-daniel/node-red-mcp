@@ -38,12 +38,12 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-  public readonly field?: string;
+  public readonly field?: string | undefined;
   public readonly value?: any;
 
   constructor(message: string, field?: string, value?: any) {
     super(message, 400, 'VALIDATION_ERROR');
-    this.field = field;
+    this.field = field ?? undefined;
     this.value = value;
   }
 }
@@ -70,27 +70,27 @@ export class AuthorizationError extends AppError {
 }
 
 export class NodeRedError extends AppError {
-  public readonly nodeRedStatusCode?: number;
+  public readonly nodeRedStatusCode?: number | undefined;
   public readonly nodeRedResponse?: any;
 
   constructor(
-    message: string, 
-    statusCode = 500, 
+    message: string,
+    statusCode = 500,
     nodeRedStatusCode?: number,
     nodeRedResponse?: any
   ) {
     super(message, statusCode, 'NODERED_ERROR');
-    this.nodeRedStatusCode = nodeRedStatusCode;
+    this.nodeRedStatusCode = nodeRedStatusCode ?? undefined;
     this.nodeRedResponse = nodeRedResponse;
   }
 }
 
 export class SSEError extends AppError {
-  public readonly connectionId?: string;
+  public readonly connectionId?: string | undefined;
 
   constructor(message: string, connectionId?: string) {
     super(message, 500, 'SSE_ERROR');
-    this.connectionId = connectionId;
+    this.connectionId = connectionId ?? undefined;
   }
 }
 
@@ -134,7 +134,7 @@ export function createErrorResponse<T = never>(
         } : undefined
       },
       timestamp,
-      requestId: requestId || error.requestId
+      requestId: requestId ?? error.requestId ?? undefined
     };
   }
 
@@ -143,15 +143,15 @@ export function createErrorResponse<T = never>(
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
-      message: process.env.NODE_ENV === 'development' 
-        ? error.message 
+      message: process.env.NODE_ENV === 'development'
+        ? error.message
         : 'An unexpected error occurred',
       details: process.env.NODE_ENV === 'development' ? {
         stack: error.stack
       } : undefined
     },
     timestamp,
-    requestId
+    requestId: requestId ?? undefined
   };
 }
 
@@ -295,7 +295,7 @@ export function logError(error: Error, context?: Record<string, any>): void {
     timestamp: new Date().toISOString(),
     source: 'error-handler',
     error,
-    context
+    context: context ?? undefined
   };
 
   if (process.env.NODE_ENV === 'development') {
