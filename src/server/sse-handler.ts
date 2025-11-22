@@ -27,13 +27,11 @@ export class SSEHandler {
   private connections = new Map<string, SSEConnection>();
   private config: SSEConfig;
   private stats: SSEStats;
-  private heartbeatInterval?: NodeJS.Timeout;
+  private heartbeatInterval?: NodeJS.Timeout | undefined;
 
   constructor(config: Partial<SSEConfig> = {}) {
     this.config = {
-      heartbeatInterval: parseInt(
-        process.env.SSE_HEARTBEAT_INTERVAL || '30000',
-      ),
+      heartbeatInterval: parseInt(process.env.SSE_HEARTBEAT_INTERVAL || '30000'),
       maxConnections: parseInt(process.env.SSE_MAX_CONNECTIONS || '100'),
       retryTimeout: parseInt(process.env.SSE_RETRY_TIMEOUT || '5000'),
       compression: true,
@@ -77,8 +75,7 @@ export class SSEHandler {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
       'Access-Control-Allow-Origin': this.config.cors.origin,
-      'Access-Control-Allow-Credentials':
-        this.config.cors.credentials.toString(),
+      'Access-Control-Allow-Credentials': this.config.cors.credentials.toString(),
       'Access-Control-Allow-Headers': 'Cache-Control',
     });
 
@@ -149,10 +146,7 @@ export class SSEHandler {
     this.connections.delete(connectionId);
 
     // Update stats
-    this.stats.activeConnections = Math.max(
-      0,
-      this.stats.activeConnections - 1,
-    );
+    this.stats.activeConnections = Math.max(0, this.stats.activeConnections - 1);
 
     console.log(`SSE connection closed: ${connectionId}`);
   }
@@ -163,10 +157,7 @@ export class SSEHandler {
   subscribe(connectionId: string, eventTypes: string[]): void {
     const connection = this.connections.get(connectionId);
     if (!connection) {
-      throw new SSEErrorClass(
-        `Connection ${connectionId} not found`,
-        connectionId,
-      );
+      throw new SSEErrorClass(`Connection ${connectionId} not found`, connectionId);
     }
 
     for (const eventType of eventTypes) {
@@ -183,17 +174,10 @@ export class SSEHandler {
   /**
    * Subscribe connection with advanced filtering
    */
-  subscribeWithFilter(
-    connectionId: string,
-    eventType: string,
-    filter?: SSEEventFilter,
-  ): void {
+  subscribeWithFilter(connectionId: string, eventType: string, filter?: SSEEventFilter): void {
     const connection = this.connections.get(connectionId);
     if (!connection) {
-      throw new SSEErrorClass(
-        `Connection ${connectionId} not found`,
-        connectionId,
-      );
+      throw new SSEErrorClass(`Connection ${connectionId} not found`, connectionId);
     }
 
     // Add to basic subscriptions
@@ -209,19 +193,20 @@ export class SSEHandler {
 
     // Update stats
     this.stats.connectionsByEventType[eventType] =
-      (this.stats.connectionsByEventType[eventType] || 0) + 1;    connection.clientInfo.lastActivity = new Date();
+      (this.stats.connectionsByEventType[eventType] || 0) + 1;
+    connection.clientInfo.lastActivity = new Date();
   }
 
   /**
    * Get subscription details for a connection
    */
-  getSubscriptions(connectionId: string): { eventTypes: string[], filters: Record<string, SSEEventFilter> } {
+  getSubscriptions(connectionId: string): {
+    eventTypes: string[];
+    filters: Record<string, SSEEventFilter>;
+  } {
     const connection = this.connections.get(connectionId);
     if (!connection) {
-      throw new SSEErrorClass(
-        `Connection ${connectionId} not found`,
-        connectionId,
-      );
+      throw new SSEErrorClass(`Connection ${connectionId} not found`, connectionId);
     }
 
     const filters: Record<string, SSEEventFilter> = {};
@@ -233,7 +218,7 @@ export class SSEHandler {
 
     return {
       eventTypes: Array.from(connection.subscriptions),
-      filters
+      filters,
     };
   }
 
@@ -289,10 +274,7 @@ export class SSEHandler {
 
     for (const [connectionId, connection] of this.connections) {
       // Check if connection is subscribed to this event type
-      if (
-        !connection.subscriptions.has(event.type) &&
-        !connection.subscriptions.has('*')
-      ) {
+      if (!connection.subscriptions.has(event.type) && !connection.subscriptions.has('*')) {
         continue;
       }
 
@@ -333,10 +315,7 @@ export class SSEHandler {
 
     // Send to connections subscribed to heartbeat
     for (const [connectionId, connection] of this.connections) {
-      if (
-        connection.subscriptions.has('heartbeat') ||
-        connection.subscriptions.has('*')
-      ) {
+      if (connection.subscriptions.has('heartbeat') || connection.subscriptions.has('*')) {
         if (this.sendToConnection(connectionId, heartbeat)) {
           // Update last activity for successful heartbeat
           connection.clientInfo.lastActivity = new Date();
@@ -355,7 +334,7 @@ export class SSEHandler {
 
     for (const [connectionId, connection] of this.connections) {
       const timeSinceLastActivity = now.getTime() - connection.clientInfo.lastActivity.getTime();
-      
+
       // Mark connections as dead if they haven't been active
       if (timeSinceLastActivity > connectionTimeoutMs) {
         connection.isAlive = false;
@@ -387,9 +366,7 @@ export class SSEHandler {
   /**
    * Send system information
    */
-  sendSystemInfo(
-    systemInfo: Omit<SSESystemInfo['data'], 'memory' | 'uptime'>,
-  ): void {
+  sendSystemInfo(systemInfo: Omit<SSESystemInfo['data'], 'memory' | 'uptime'>): void {
     const memoryUsage = process.memoryUsage();
     const event: SSESystemInfo = {
       type: 'system-info',
@@ -446,7 +423,7 @@ export class SSEHandler {
    * Get connected clients information
    */
   getClients(): SSEClientInfo[] {
-    return Array.from(this.connections.values()).map((conn) => ({
+    return Array.from(this.connections.values()).map(conn => ({
       connectionId: conn.id,
       userId: conn.userId,
       connectedAt: conn.clientInfo.connectedAt,
@@ -523,7 +500,7 @@ export class SSEHandler {
   private matchesFilter(
     event: SSEEvent,
     filter: SSEEventFilter,
-    connection: SSEConnection,
+    connection: SSEConnection
   ): boolean {
     // Filter by user ID
     if (filter.userId && connection.userId !== filter.userId) {
@@ -540,20 +517,12 @@ export class SSEHandler {
       const eventData = event.data;
 
       // Filter by node IDs
-      if (
-        filter.nodeIds &&
-        eventData.id &&
-        !filter.nodeIds.includes(eventData.id)
-      ) {
+      if (filter.nodeIds && eventData.id && !filter.nodeIds.includes(eventData.id)) {
         return false;
       }
 
       // Filter by flow IDs
-      if (
-        filter.flowIds &&
-        eventData.flowId &&
-        !filter.flowIds.includes(eventData.flowId)
-      ) {
+      if (filter.flowIds && eventData.flowId && !filter.flowIds.includes(eventData.flowId)) {
         return false;
       }
     }

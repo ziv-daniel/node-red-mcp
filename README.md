@@ -28,6 +28,23 @@
 - **Admin API** integration for flow management
 - **WebSocket** support for live updates
 
+### 🛡️ **Reliability & Resilience (2025 Updates)**
+
+- **Circuit Breaker Pattern** for fault tolerance
+- **Exponential Backoff Retry** with smart failure handling
+- **Request Timeout Management** with proper cleanup
+- **Server Discovery** via `.well-known/mcp.json` (November 2025 spec)
+- **MCP SDK 1.22.0** with latest protocol enhancements
+- **Comprehensive Error Handling** with 19 test cases
+
+### 📊 **Observability**
+
+- **Structured Logging** with Pino
+- **OpenTelemetry Integration** for distributed tracing
+- **Circuit Breaker Metrics** and health monitoring
+- **Request Correlation IDs** for debugging
+- **Performance Metrics** collection
+
 ## 📋 Table of Contents
 
 - [Quick Start](#-quick-start)

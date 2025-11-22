@@ -7,16 +7,16 @@ import { NodeRedEvent } from './nodered.js';
 export interface SSEConnection {
   id: string;
   response: any; // Express Response object
-  userId?: string;
+  userId?: string | undefined;
   clientInfo: {
-    userAgent?: string;
-    ip?: string;
+    userAgent?: string | undefined;
+    ip?: string | undefined;
     connectedAt: Date;
     lastActivity: Date;
   };
   subscriptions: Set<string>; // Event types the client is subscribed to
-  filters?: Map<string, SSEEventFilter>; // Advanced filters per event type
-  heartbeatInterval?: NodeJS.Timeout;
+  filters?: Map<string, SSEEventFilter> | undefined; // Advanced filters per event type
+  heartbeatInterval?: NodeJS.Timeout | undefined;
   isAlive: boolean;
 }
 
@@ -61,9 +61,9 @@ export interface SSESubscription {
   subscribedAt: Date;
 }
 
-export type SSEEventType = 
+export type SSEEventType =
   | 'node-event'
-  | 'flow-event' 
+  | 'flow-event'
   | 'runtime-event'
   | 'status-event'
   | 'error-event'
@@ -109,18 +109,13 @@ export interface SSEError {
   timestamp: string;
   data: {
     error: string;
-    code?: string;
-    source?: string;
-    connectionId?: string;
+    code?: string | undefined;
+    source?: string | undefined;
+    connectionId?: string | undefined;
   };
 }
 
-export type SSEEvent = 
-  | NodeRedEvent 
-  | SSEHeartbeat 
-  | SSESystemInfo 
-  | SSEConnectionStatus 
-  | SSEError;
+export type SSEEvent = NodeRedEvent | SSEHeartbeat | SSESystemInfo | SSEConnectionStatus | SSEError;
 
 export interface SSEMiddlewareOptions {
   auth?: (req: any) => Promise<boolean> | boolean;
@@ -134,10 +129,10 @@ export interface SSEMiddlewareOptions {
 
 export interface SSEClientInfo {
   connectionId: string;
-  userId?: string;
+  userId?: string | undefined;
   connectedAt: Date;
   subscriptions: string[];
   messageCount: number;
   lastActivity: Date;
   isAlive: boolean;
-} 
+}

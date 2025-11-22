@@ -5,7 +5,6 @@
 
 import { trace, metrics, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 
 import { appConfig } from './config.js';
@@ -26,9 +25,6 @@ export function initializeTelemetry(): NodeSDK | null {
     }
 
     const sdk = new NodeSDK({
-      serviceName: SERVICE_NAME,
-      serviceVersion: SERVICE_VERSION,
-
       // Auto-instrumentations for common libraries
       instrumentations: [
         getNodeAutoInstrumentations({
@@ -58,20 +54,6 @@ export function initializeTelemetry(): NodeSDK | null {
           },
         }),
       ],
-
-      // Resource attributes
-      resource: new Resource({
-        'service.name': SERVICE_NAME,
-        'service.version': SERVICE_VERSION,
-        'service.environment': appConfig.app.nodeEnv,
-        'deployment.environment': appConfig.app.nodeEnv,
-      }),
-
-      // Tracing configuration
-      tracing: {
-        // Export spans to console in development
-        exporter: appConfig.app.isDevelopment ? { type: 'console' } : { type: 'jaeger' }, // Use Jaeger in production
-      },
     });
 
     // Initialize the SDK

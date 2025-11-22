@@ -4,7 +4,7 @@
 
 export interface NodeRedFlow {
   id: string;
-  type?: string;        // Type of flow: 'tab', 'subflow', or config node types
+  type?: string; // Type of flow: 'tab', 'subflow', or config node types
   label?: string;
   nodes: NodeRedNode[];
   configs?: NodeRedConfig[];
@@ -24,11 +24,11 @@ export interface NodeRedFlow {
  */
 export interface NodeRedFlowSummary {
   id: string;
-  label?: string;           // Only included if not empty
+  label?: string; // Only included if not empty
   disabled?: boolean;
   status?: 'active' | 'inactive' | 'error';
-  nodeCount?: number;       // Only included if > 0
-  info?: string;           // Only included if not empty
+  nodeCount?: number; // Only included if > 0
+  info?: string; // Only included if not empty
 }
 
 export interface NodeRedNode {
@@ -133,12 +133,18 @@ export interface NodeRedRuntimeInfo {
     total: number;
     count: number;
   };
-  nodes: Record<string, {
+  nodes: Record<
+    string,
+    {
       count: number;
-    }>;
-  modules: Record<string, {
+    }
+  >;
+  modules: Record<
+    string,
+    {
       version: string;
-    }>;
+    }
+  >;
   memory: {
     rss: number;
     heapTotal: number;
@@ -214,9 +220,9 @@ export interface NodeRedStatusEvent extends NodeRedEvent {
   data: {
     id: string;
     status: {
-      fill?: 'red' | 'green' | 'yellow' | 'blue' | 'grey';
-      shape?: 'ring' | 'dot';
-      text?: string;
+      fill?: 'red' | 'green' | 'yellow' | 'blue' | 'grey' | undefined;
+      shape?: 'ring' | 'dot' | undefined;
+      text?: string | undefined;
     };
   };
 }

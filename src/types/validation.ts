@@ -191,12 +191,12 @@ export class ValidationError extends Error {
 }
 
 export const createValidationErrorHandler = (schema: z.ZodSchema) => (data: unknown) => {
-    try {
-      return schema.parse(data);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        throw new ValidationError('Input validation failed', error, 400);
-      }
-      throw error;
+  try {
+    return schema.parse(data);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new ValidationError('Input validation failed', error, 400);
     }
-  };
+    throw error;
+  }
+};

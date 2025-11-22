@@ -14,20 +14,15 @@ export class AppError extends Error {
   public readonly timestamp: string;
   public readonly requestId?: string;
 
-  constructor(
-    message: string,
-    statusCode = 500,
-    code = 'INTERNAL_ERROR',
-    isOperational = true
-  ) {
+  constructor(message: string, statusCode = 500, code = 'INTERNAL_ERROR', isOperational = true) {
     super(message);
-    
+
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.code = code;
     this.isOperational = isOperational;
     this.timestamp = new Date().toISOString();
-    
+
     Error.captureStackTrace(this, this.constructor);
   }
 
@@ -38,21 +33,19 @@ export class AppError extends Error {
 }
 
 export class ValidationError extends AppError {
-  public readonly field?: string;
+  public readonly field?: string | undefined;
   public readonly value?: any;
 
   constructor(message: string, field?: string, value?: any) {
     super(message, 400, 'VALIDATION_ERROR');
-    this.field = field;
+    this.field = field ?? undefined;
     this.value = value;
   }
 }
 
 export class NotFoundError extends AppError {
   constructor(resource: string, id?: string) {
-    const message = id 
-      ? `${resource} with id '${id}' not found`
-      : `${resource} not found`;
+    const message = id ? `${resource} with id '${id}' not found` : `${resource} not found`;
     super(message, 404, 'NOT_FOUND');
   }
 }
@@ -70,27 +63,27 @@ export class AuthorizationError extends AppError {
 }
 
 export class NodeRedError extends AppError {
-  public readonly nodeRedStatusCode?: number;
+  public readonly nodeRedStatusCode?: number | undefined;
   public readonly nodeRedResponse?: any;
 
   constructor(
-    message: string, 
-    statusCode = 500, 
+    message: string,
+    statusCode = 500,
     nodeRedStatusCode?: number,
     nodeRedResponse?: any
   ) {
     super(message, statusCode, 'NODERED_ERROR');
-    this.nodeRedStatusCode = nodeRedStatusCode;
+    this.nodeRedStatusCode = nodeRedStatusCode ?? undefined;
     this.nodeRedResponse = nodeRedResponse;
   }
 }
 
 export class SSEError extends AppError {
-  public readonly connectionId?: string;
+  public readonly connectionId?: string | undefined;
 
   constructor(message: string, connectionId?: string) {
     super(message, 500, 'SSE_ERROR');
-    this.connectionId = connectionId;
+    this.connectionId = connectionId ?? undefined;
   }
 }
 
@@ -111,30 +104,33 @@ export function createErrorResponse<T = never>(
   requestId?: string
 ): ApiResponse<T> {
   const timestamp = new Date().toISOString();
-  
+
   if (error instanceof AppError) {
     return {
       success: false,
       error: {
         code: error.code,
         message: error.message,
-        details: process.env.NODE_ENV === 'development' ? {
-          stack: error.stack,
-          ...(error instanceof NodeRedError && {
-            nodeRedStatusCode: error.nodeRedStatusCode,
-            nodeRedResponse: error.nodeRedResponse
-          }),
-          ...(error instanceof ValidationError && {
-            field: error.field,
-            value: error.value
-          }),
-          ...(error instanceof SSEError && {
-            connectionId: error.connectionId
-          })
-        } : undefined
+        details:
+          process.env.NODE_ENV === 'development'
+            ? {
+                stack: error.stack,
+                ...(error instanceof NodeRedError && {
+                  nodeRedStatusCode: error.nodeRedStatusCode,
+                  nodeRedResponse: error.nodeRedResponse,
+                }),
+                ...(error instanceof ValidationError && {
+                  field: error.field,
+                  value: error.value,
+                }),
+                ...(error instanceof SSEError && {
+                  connectionId: error.connectionId,
+                }),
+              }
+            : undefined,
       },
       timestamp,
-      requestId: requestId || error.requestId
+      requestId: requestId ?? error.requestId ?? undefined,
     };
   }
 
@@ -143,47 +139,44 @@ export function createErrorResponse<T = never>(
     success: false,
     error: {
       code: 'INTERNAL_ERROR',
-      message: process.env.NODE_ENV === 'development' 
-        ? error.message 
-        : 'An unexpected error occurred',
-      details: process.env.NODE_ENV === 'development' ? {
-        stack: error.stack
-      } : undefined
+      message:
+        process.env.NODE_ENV === 'development' ? error.message : 'An unexpected error occurred',
+      details:
+        process.env.NODE_ENV === 'development'
+          ? {
+              stack: error.stack,
+            }
+          : undefined,
     },
     timestamp,
-    requestId
+    requestId: requestId ?? undefined,
   };
 }
 
 /**
  * Express error handling middleware
  */
-export function errorHandler(
-  error: Error,
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
+export function errorHandler(error: Error, req: Request, res: Response, next: NextFunction): void {
   const requestId = (req as any).requestId || uuidv4();
-  
+
   // Log the error
   logError(error, {
     requestId,
     method: req.method,
     url: req.url,
     userAgent: req.get('User-Agent'),
-    ip: req.ip
+    ip: req.ip,
   });
 
   // Handle specific error types
   if (error instanceof AppError) {
     const response = createErrorResponse(error, requestId);
-    
+
     // Add rate limit headers for rate limit errors
     if (error instanceof RateLimitError) {
       res.set('Retry-After', error.retryAfter.toString());
     }
-    
+
     res.status(error.statusCode).json(response);
     return;
   }
@@ -211,7 +204,7 @@ export function handleNodeRedError(error: any, context: string): never {
   if (error.response) {
     // Axios error with response
     const { status, data } = error.response;
-    
+
     // Check if this is a JSON parse error due to HTML response
     const contentType = error.response.headers['content-type'] || '';
     if (error.message?.includes('Unexpected token') && contentType.includes('text/html')) {
@@ -219,10 +212,14 @@ export function handleNodeRedError(error: any, context: string): never {
         `Node-RED returned HTML instead of JSON in ${context}. This usually indicates an authentication redirect or configuration issue. Check your Node-RED admin settings and authentication.`,
         502,
         status,
-        { originalError: error.message, contentType, responsePreview: typeof data === 'string' ? data.substring(0, 200) : data }
+        {
+          originalError: error.message,
+          contentType,
+          responsePreview: typeof data === 'string' ? data.substring(0, 200) : data,
+        }
       );
     }
-    
+
     throw new NodeRedError(
       `Node-RED API error in ${context}: ${data?.message || data?.error || 'Unknown error'}`,
       status >= 500 ? 502 : status, // Bad Gateway for server errors
@@ -243,20 +240,14 @@ export function handleNodeRedError(error: any, context: string): never {
     );
   } else {
     // Other error
-    throw new NodeRedError(
-      `Error in ${context}: ${error.message}`,
-      500
-    );
+    throw new NodeRedError(`Error in ${context}: ${error.message}`, 500);
   }
 }
 
 /**
  * Validate required fields
  */
-export function validateRequired(
-  data: Record<string, any>,
-  requiredFields: string[]
-): void {
+export function validateRequired(data: Record<string, any>, requiredFields: string[]): void {
   for (const field of requiredFields) {
     if (data[field] === undefined || data[field] === null || data[field] === '') {
       throw new ValidationError(`Field '${field}' is required`, field, data[field]);
@@ -267,10 +258,7 @@ export function validateRequired(
 /**
  * Validate field types
  */
-export function validateTypes(
-  data: Record<string, any>,
-  fieldTypes: Record<string, string>
-): void {
+export function validateTypes(data: Record<string, any>, fieldTypes: Record<string, string>): void {
   for (const [field, expectedType] of Object.entries(fieldTypes)) {
     if (data[field] !== undefined) {
       const actualType = typeof data[field];
@@ -295,13 +283,13 @@ export function logError(error: Error, context?: Record<string, any>): void {
     timestamp: new Date().toISOString(),
     source: 'error-handler',
     error,
-    context
+    context: context ?? undefined,
   };
 
   if (process.env.NODE_ENV === 'development') {
     console.error('Error:', {
       ...logEntry,
-      stack: error.stack
+      stack: error.stack,
     });
   } else {
     // In production, use structured logging
@@ -327,14 +315,14 @@ export function sanitizeError(error: any): any {
     return {
       code: error.code,
       message: error.message,
-      statusCode: error.statusCode
+      statusCode: error.statusCode,
     };
   }
 
   return {
     code: 'INTERNAL_ERROR',
     message: 'An unexpected error occurred',
-    statusCode: 500
+    statusCode: 500,
   };
 }
 
@@ -353,17 +341,21 @@ export function isOperationalError(error: Error): boolean {
  */
 export function safeStringify(obj: any): string {
   try {
-    return JSON.stringify(obj, (key, value) => {
-      if (value instanceof Error) {
-        return {
-          name: value.name,
-          message: value.message,
-          stack: value.stack
-        };
-      }
-      return value;
-    }, 2);
+    return JSON.stringify(
+      obj,
+      (key, value) => {
+        if (value instanceof Error) {
+          return {
+            name: value.name,
+            message: value.message,
+            stack: value.stack,
+          };
+        }
+        return value;
+      },
+      2
+    );
   } catch (error) {
     return '[Unable to stringify object]';
   }
-} 
+}

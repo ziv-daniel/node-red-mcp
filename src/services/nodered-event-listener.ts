@@ -4,13 +4,13 @@
  */
 
 import { SSEHandler } from '../server/sse-handler.js';
-import { 
-  NodeRedEvent, 
-  NodeRedFlowEvent, 
-  NodeRedNodeEvent, 
-  NodeRedRuntimeEvent, 
+import {
+  NodeRedEvent,
+  NodeRedFlowEvent,
+  NodeRedNodeEvent,
+  NodeRedRuntimeEvent,
   NodeRedErrorEvent,
-  NodeRedStatusEvent 
+  NodeRedStatusEvent,
 } from '../types/nodered.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
@@ -18,7 +18,7 @@ import { NodeRedAPIClient } from './nodered-api.js';
 export class NodeRedEventListener {
   private sseHandler: SSEHandler;
   private nodeRedClient: NodeRedAPIClient;
-  private eventPollingInterval?: NodeJS.Timeout;
+  private eventPollingInterval?: NodeJS.Timeout | undefined;
   private isMonitoring = false;
   private lastEventTimestamp: number = Date.now();
 
@@ -46,7 +46,10 @@ export class NodeRedEventListener {
         await this.checkFlowEvents();
       } catch (error) {
         console.error('Error checking Node-RED events:', error);
-        this.broadcastError('Failed to check Node-RED events', error instanceof Error ? error.message : 'Unknown error');
+        this.broadcastError(
+          'Failed to check Node-RED events',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
       }
     }, intervalMs);
 
@@ -77,7 +80,7 @@ export class NodeRedEventListener {
   private async checkRuntimeEvents(): Promise<void> {
     try {
       const health = await this.nodeRedClient.healthCheck();
-      
+
       // Broadcast system status if it changed
       const statusEvent: NodeRedRuntimeEvent = {
         type: 'runtime',
@@ -85,13 +88,16 @@ export class NodeRedEventListener {
         data: {
           event: health.healthy ? 'start' : 'error',
           message: health.healthy ? 'Node-RED is running' : 'Node-RED connection error',
-          memory: process.memoryUsage()
-        }
+          memory: process.memoryUsage(),
+        },
       };
 
       this.sseHandler.broadcast(statusEvent);
     } catch (error) {
-      this.broadcastError('Runtime health check failed', error instanceof Error ? error.message : 'Unknown error');
+      this.broadcastError(
+        'Runtime health check failed',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     }
   }
 
@@ -102,7 +108,7 @@ export class NodeRedEventListener {
     try {
       // For now, we'll simulate flow events based on API calls
       // In a real implementation, this would connect to Node-RED's event system
-      
+
       // Check if flows have been deployed recently
       const flows = await this.nodeRedClient.getFlows();
       const currentTimestamp = Date.now();
@@ -114,12 +120,13 @@ export class NodeRedEventListener {
         data: {
           id: 'global',
           event: 'start',
-          message: `${flows.length} flows are active`
-        }
+          message: `${flows.length} flows are active`,
+        },
       };
 
       // Only broadcast if significant time has passed since last event
-      if (currentTimestamp - this.lastEventTimestamp > 60000) { // 1 minute
+      if (currentTimestamp - this.lastEventTimestamp > 60000) {
+        // 1 minute
         this.sseHandler.broadcast(flowEvent);
         this.lastEventTimestamp = currentTimestamp;
       }
@@ -130,8 +137,8 @@ export class NodeRedEventListener {
         data: {
           id: 'global',
           event: 'error',
-          message: 'Failed to get flow status'
-        }
+          message: 'Failed to get flow status',
+        },
       };
       this.sseHandler.broadcast(errorEvent);
     }
@@ -140,15 +147,18 @@ export class NodeRedEventListener {
   /**
    * Broadcast Node-RED runtime event
    */
-  private broadcastRuntimeEvent(event: 'start' | 'stop' | 'restart' | 'error', message: string): void {
+  private broadcastRuntimeEvent(
+    event: 'start' | 'stop' | 'restart' | 'error',
+    message: string
+  ): void {
     const runtimeEvent: NodeRedRuntimeEvent = {
       type: 'runtime',
       timestamp: new Date().toISOString(),
       data: {
         event,
         message,
-        memory: process.memoryUsage()
-      }
+        memory: process.memoryUsage(),
+      },
     };
 
     this.sseHandler.broadcast(runtimeEvent);
@@ -166,9 +176,9 @@ export class NodeRedEventListener {
         source: {
           id: 'event-listener',
           type: 'service',
-          name: 'NodeRedEventListener'
-        }
-      }
+          name: 'NodeRedEventListener',
+        },
+      },
     };
 
     this.sseHandler.broadcast(errorEvent);
@@ -185,8 +195,8 @@ export class NodeRedEventListener {
       data: {
         id: flowId || 'global',
         event: 'deploy',
-        message: flowId ? `Flow ${flowId} deployed` : 'All flows deployed'
-      }
+        message: flowId ? `Flow ${flowId} deployed` : 'All flows deployed',
+      },
     };
 
     this.sseHandler.broadcast(deployEvent);
@@ -204,9 +214,9 @@ export class NodeRedEventListener {
         status: {
           fill: status.fill as any,
           shape: status.shape as any,
-          text: status.text
-        }
-      }
+          text: status.text ?? undefined,
+        },
+      },
     };
 
     this.sseHandler.broadcast(statusEvent);
@@ -218,7 +228,7 @@ export class NodeRedEventListener {
   getStatus(): { isMonitoring: boolean; lastEventTimestamp: number } {
     return {
       isMonitoring: this.isMonitoring,
-      lastEventTimestamp: this.lastEventTimestamp
+      lastEventTimestamp: this.lastEventTimestamp,
     };
   }
 }

@@ -2,13 +2,15 @@
 
 ## Overview
 
-This document describes the new features and fixes added to the MCP Node-RED Server to enhance module management and resolve flow creation issues.
+This document describes the new features and fixes added to the MCP Node-RED
+Server to enhance module management and resolve flow creation issues.
 
 ## 🔧 Fixed Issues
 
 ### Duplicate ID Issue in Flow Creation
 
-**Problem**: The `create_flow` tool was failing with "duplicate id" errors because it wasn't generating unique IDs for flows and nodes.
+**Problem**: The `create_flow` tool was failing with "duplicate id" errors
+because it wasn't generating unique IDs for flows and nodes.
 
 **Solution**:
 
@@ -39,8 +41,10 @@ Search for Node-RED palette modules online via npm registry.
 
 **Parameters**:
 
-- `query` (required): Search query for modules (e.g., "mqtt", "dashboard", "influxdb")
-- `category` (optional): Module category - "all", "contrib", "dashboard" (default: "all")
+- `query` (required): Search query for modules (e.g., "mqtt", "dashboard",
+  "influxdb")
+- `category` (optional): Module category - "all", "contrib", "dashboard"
+  (default: "all")
 - `limit` (optional): Maximum results to return, 1-50 (default: 10)
 
 **Example Usage**:
@@ -83,7 +87,8 @@ Install a Node-RED palette module via Node-RED's palette management API.
 
 **Parameters**:
 
-- `moduleName` (required): Name of the module to install (e.g., "node-red-contrib-ui-led")
+- `moduleName` (required): Name of the module to install (e.g.,
+  "node-red-contrib-ui-led")
 - `version` (optional): Specific version to install (defaults to latest)
 
 **Example Usage**:
@@ -145,16 +150,22 @@ Get a list of currently installed Node-RED palette modules.
 
 ### For LLM Interactions
 
-1. **Reduced API Calls**: Unique ID generation prevents failed flow creation attempts
-2. **Module Discovery**: Can search and discover relevant modules for specific use cases
-3. **Dynamic Installation**: Can install required modules during conversation flow
+1. **Reduced API Calls**: Unique ID generation prevents failed flow creation
+   attempts
+2. **Module Discovery**: Can search and discover relevant modules for specific
+   use cases
+3. **Dynamic Installation**: Can install required modules during conversation
+   flow
 4. **Environment Awareness**: Can check what modules are already available
 
 ### For Development Workflow
 
-1. **Automated Module Management**: Search, install, and manage palette modules programmatically
-2. **Better Error Prevention**: Unique ID generation prevents common flow creation errors
-3. **Enhanced Capabilities**: Can dynamically extend Node-RED functionality as needed
+1. **Automated Module Management**: Search, install, and manage palette modules
+   programmatically
+2. **Better Error Prevention**: Unique ID generation prevents common flow
+   creation errors
+3. **Enhanced Capabilities**: Can dynamically extend Node-RED functionality as
+   needed
 
 ## 🧪 Testing
 
@@ -173,7 +184,8 @@ The test covers:
 
 ## 🔗 Integration
 
-These tools work seamlessly with existing MCP tools and can be combined for powerful workflows:
+These tools work seamlessly with existing MCP tools and can be combined for
+powerful workflows:
 
 1. **Search** for relevant modules
 2. **Install** required modules

@@ -3,8 +3,8 @@
  * 2025 Observability & Monitoring Implementation
  */
 
-import { performance } from 'perf_hooks';
 import os from 'os';
+import { performance } from 'perf_hooks';
 
 import axios from 'axios';
 import type { Request, Response } from 'express';
@@ -286,12 +286,12 @@ export async function healthCheckHandler(req: Request, res: Response): Promise<v
       services: {
         nodeRed: {
           status:
-            checks.nodeRed.status === 'pass'
+            checks.nodeRed?.status === 'pass'
               ? 'available'
-              : checks.nodeRed.status === 'warn'
+              : checks.nodeRed?.status === 'warn'
                 ? 'available'
                 : 'unavailable',
-          responseTime: checks.nodeRed.time,
+          responseTime: checks.nodeRed?.time ?? 0,
           lastCheck: new Date().toISOString(),
         },
         mcp: {
@@ -443,7 +443,7 @@ export function resetMetricsHandler(req: Request, res: Response): void {
     lastApiCall: new Date().toISOString(),
   };
 
-  logger.info('Metrics reset', { resetAt: new Date().toISOString() });
+  logger.info({ resetAt: new Date().toISOString() }, 'Metrics reset');
 
   res.json({
     message: 'Metrics reset successfully',

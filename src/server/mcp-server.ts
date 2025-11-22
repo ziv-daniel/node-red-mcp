@@ -117,7 +117,7 @@ export class McpNodeRedServer {
   /**
    * Get tool definitions
    */
-  private getToolDefinitions() {
+  public getToolDefinitions() {
     return [
       // Core Flow Management Tools (Optimized)
       {
@@ -268,7 +268,7 @@ export class McpNodeRedServer {
   /**
    * Call a specific tool
    */
-  private async callTool(name: string, args: any): Promise<{ content: any[] }> {
+  public async callTool(name: string, args: any): Promise<{ content: any[] }> {
     const timestamp = new Date().toISOString();
     let result: McpToolResult;
 
@@ -414,7 +414,7 @@ export class McpNodeRedServer {
   /**
    * Get list of available resources
    */
-  private async getResourceList() {
+  public async getResourceList() {
     const resources = [];
 
     try {
@@ -446,7 +446,7 @@ export class McpNodeRedServer {
   /**
    * Get specific resource
    */
-  private async getResource(uri: string) {
+  public async getResource(uri: string) {
     const [protocol, path] = uri.split('://');
 
     switch (protocol) {
@@ -595,11 +595,7 @@ export class McpNodeRedServer {
    */
   async stop(): Promise<void> {
     this.sseHandler.destroy();
-
-    // Log to stderr in stdio mode to avoid polluting stdout
-    const transport = process.env.MCP_TRANSPORT || 'stdio';
-    // Logging disabled
-    logFunction('MCP Node-RED Server stopped');
+    // Server stopped - logging disabled in stdio mode
   }
 
   /**
