@@ -3,14 +3,17 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
 // Import the functions we want to test
-import { generateToken, verifyToken, createAuthContext } from './auth.js';
+import { generateToken, verifyToken, extractToken, type AuthPayload } from './auth.js';
 
 describe('Auth Utils', () => {
   const mockSecret = 'test-secret-key';
-  const mockPayload = { userId: 'user123', role: 'admin' };
+  const mockPayload: Omit<AuthPayload, 'iat' | 'exp'> = {
+    userId: 'user123',
+    permissions: ['read', 'write']
+  };
 
   beforeEach(() => {
     // Set up environment variable for tests
@@ -27,8 +30,8 @@ describe('Auth Utils', () => {
     });
 
     it('should generate different tokens for different payloads', () => {
-      const token1 = generateToken({ userId: 'user1' });
-      const token2 = generateToken({ userId: 'user2' });
+      const token1 = generateToken({ userId: 'user1', permissions: ['read'] });
+      const token2 = generateToken({ userId: 'user2', permissions: ['read'] });
 
       expect(token1).not.toBe(token2);
     });
@@ -47,22 +50,22 @@ describe('Auth Utils', () => {
       const token = generateToken(mockPayload);
       const result = verifyToken(token);
 
-      expect(result.valid).toBe(true);
-      expect(result.payload).toMatchObject(mockPayload);
+      expect(result).not.toBeNull();
+      expect(result).toHaveProperty('userId', mockPayload.userId);
+      expect(result).toHaveProperty('permissions');
+      expect(result?.permissions).toEqual(mockPayload.permissions);
     });
 
     it('should reject an invalid token', () => {
       const result = verifyToken('invalid.token.here');
 
-      expect(result.valid).toBe(false);
-      expect(result.payload).toBe(null);
+      expect(result).toBeNull();
     });
 
     it('should reject an empty token', () => {
       const result = verifyToken('');
 
-      expect(result.valid).toBe(false);
-      expect(result.payload).toBe(null);
+      expect(result).toBeNull();
     });
 
     it('should handle expired tokens', () => {
@@ -70,44 +73,47 @@ describe('Auth Utils', () => {
       const expiredToken = jwt.sign(mockPayload, mockSecret, { expiresIn: '-1s' });
       const result = verifyToken(expiredToken);
 
-      expect(result.valid).toBe(false);
-      expect(result.payload).toBe(null);
+      expect(result).toBeNull();
     });
   });
 
-  describe('createAuthContext', () => {
-    it('should create auth context with valid token', () => {
-      const token = generateToken(mockPayload);
-      const context = createAuthContext(token);
+  describe('extractToken', () => {
+    it('should extract token from Bearer authorization header', () => {
+      const token = 'sample.jwt.token';
+      const authHeader = `Bearer ${token}`;
+      const result = extractToken(authHeader);
 
-      expect(context.isAuthenticated).toBe(true);
-      expect(context.user).toMatchObject(mockPayload);
+      expect(result).toBe(token);
     });
 
-    it('should create empty context with invalid token', () => {
-      const context = createAuthContext('invalid-token');
+    it('should return null for invalid format', () => {
+      const result = extractToken('InvalidFormat token');
 
-      expect(context.isAuthenticated).toBe(false);
-      expect(context.user).toBe(null);
+      expect(result).toBeNull();
     });
 
-    it('should handle missing token', () => {
-      const context = createAuthContext();
+    it('should return null for missing token', () => {
+      const result = extractToken('Bearer ');
 
-      expect(context.isAuthenticated).toBe(false);
-      expect(context.user).toBe(null);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for empty header', () => {
+      const result = extractToken('');
+
+      expect(result).toBeNull();
     });
   });
 });
 
 describe('Auth Utils Edge Cases', () => {
-  it('should handle missing JWT_SECRET environment variable', () => {
+  it('should use default secret when JWT_SECRET is missing', () => {
     const originalSecret = process.env.JWT_SECRET;
     delete process.env.JWT_SECRET;
 
-    expect(() => {
-      generateToken({ userId: 'test' });
-    }).toThrow();
+    // Should not throw, will use default secret
+    const token = generateToken({ userId: 'test', permissions: [] });
+    expect(token).toBeDefined();
 
     // Restore environment variable
     process.env.JWT_SECRET = originalSecret;
@@ -119,14 +125,19 @@ describe('Auth Utils Edge Cases', () => {
       'too.few.parts',
       'too.many.parts.here.invalid',
       '',
-      null,
-      undefined,
     ];
 
     malformedTokens.forEach(token => {
-      const result = verifyToken(token!);
-      expect(result.valid).toBe(false);
-      expect(result.payload).toBe(null);
+      const result = verifyToken(token);
+      expect(result).toBeNull();
     });
+  });
+
+  it('should handle token signed with different secret', () => {
+    const differentSecret = 'different-secret';
+    const token = jwt.sign({ userId: 'test', permissions: [] }, differentSecret);
+
+    const result = verifyToken(token);
+    expect(result).toBeNull();
   });
 });

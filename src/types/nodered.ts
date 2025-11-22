@@ -214,9 +214,9 @@ export interface NodeRedStatusEvent extends NodeRedEvent {
   data: {
     id: string;
     status: {
-      fill?: 'red' | 'green' | 'yellow' | 'blue' | 'grey';
-      shape?: 'ring' | 'dot';
-      text?: string;
+      fill?: 'red' | 'green' | 'yellow' | 'blue' | 'grey' | undefined;
+      shape?: 'ring' | 'dot' | undefined;
+      text?: string | undefined;
     };
   };
 }
