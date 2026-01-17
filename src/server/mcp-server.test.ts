@@ -1,19 +1,165 @@
 /**
  * Tests for MCP Server functionality
  *
- * Note: These tests are currently skipped due to MCP SDK 1.22.0 API changes.
- * The Server class API has changed and requires proper mocking of the new SDK.
- * TODO: Update tests to work with MCP SDK 1.22.0 API
+ * Updated for MCP SDK 1.24.x compatibility
  */
 
-import { describe, it, expect } from 'vitest';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-describe.skip('McpNodeRedServer', () => {
-  it('placeholder test', () => {
-    expect(true).toBe(true);
-  });
+import { NodeRedAPIClient } from '../services/nodered-api.js';
+
+import { McpNodeRedServer } from './mcp-server.js';
+import { SSEHandler } from './sse-handler.js';
+
+// Mock dependencies
+vi.mock('../services/nodered-api.js');
+vi.mock('./sse-handler.js');
+vi.mock('@modelcontextprotocol/sdk/server/index.js', () => {
+  return {
+    Server: vi.fn().mockImplementation(() => {
+      const handlers = new Map();
+      return {
+        setRequestHandler: vi.fn((schema, handler) => {
+          handlers.set(schema, handler);
+        }),
+        connect: vi.fn(),
+        handlers,
+      };
+    }),
+  };
 });
 
-// These tests will be re-enabled once we properly mock the MCP SDK 1.22.0 API
-// The issue is that setRequestHandler is not being mocked correctly
-// See: https://github.com/modelcontextprotocol/typescript-sdk/releases for API changes
+describe('McpNodeRedServer', () => {
+  let mcpServer: McpNodeRedServer;
+  let mockNodeRedClient: any;
+  let mockSSEHandler: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Setup environment variables
+    process.env.NODERED_URL = 'http://localhost:1880';
+    process.env.MCP_SERVER_NAME = 'test-server';
+    process.env.MCP_SERVER_VERSION = '1.0.0';
+
+    // Mock NodeRedAPIClient
+    mockNodeRedClient = {
+      getFlows: vi.fn(),
+      getFlow: vi.fn(),
+      createFlow: vi.fn(),
+      updateFlow: vi.fn(),
+      enableFlow: vi.fn(),
+      disableFlow: vi.fn(),
+      searchModules: vi.fn(),
+      installModule: vi.fn(),
+      getInstalledModules: vi.fn(),
+      testConnection: vi.fn().mockResolvedValue(true),
+    };
+
+    // Mock SSEHandler
+    mockSSEHandler = {
+      start: vi.fn(),
+      stop: vi.fn(),
+      broadcast: vi.fn(),
+    };
+
+    vi.mocked(NodeRedAPIClient).mockImplementation(() => mockNodeRedClient);
+    vi.mocked(SSEHandler).mockImplementation(() => mockSSEHandler);
+
+    mcpServer = new McpNodeRedServer();
+  });
+
+  describe('Initialization', () => {
+    it('should create server with default configuration', () => {
+      expect(Server).toHaveBeenCalled();
+      expect(mcpServer).toBeDefined();
+    });
+
+    it('should create server with custom configuration', () => {
+      const customConfig = {
+        name: 'custom-server',
+        version: '2.0.0',
+        nodeRed: {
+          url: 'http://custom:1880',
+          timeout: 10000,
+          retries: 5,
+        },
+      };
+
+      const customServer = new McpNodeRedServer(customConfig);
+      expect(customServer).toBeDefined();
+    });
+
+    it('should initialize NodeRedAPIClient', () => {
+      expect(NodeRedAPIClient).toHaveBeenCalled();
+    });
+
+    it('should initialize SSEHandler', () => {
+      expect(SSEHandler).toHaveBeenCalled();
+    });
+  });
+
+  describe('Tool Definitions', () => {
+    it('should return tool definitions', () => {
+      const tools = mcpServer.getToolDefinitions();
+      expect(tools).toBeDefined();
+      expect(Array.isArray(tools)).toBe(true);
+      expect(tools.length).toBeGreaterThan(0);
+    });
+
+    it('should include get_flows tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const getFlowsTool = tools.find(t => t.name === 'get_flows');
+      expect(getFlowsTool).toBeDefined();
+      expect(getFlowsTool?.description).toBeDefined();
+      expect(getFlowsTool?.inputSchema).toBeDefined();
+    });
+
+    it('should include get_flow tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const getFlowTool = tools.find(t => t.name === 'get_flow');
+      expect(getFlowTool).toBeDefined();
+    });
+
+    it('should include create_flow tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const createFlowTool = tools.find(t => t.name === 'create_flow');
+      expect(createFlowTool).toBeDefined();
+    });
+
+    it('should include search_modules tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const searchModulesTool = tools.find(t => t.name === 'search_modules');
+      expect(searchModulesTool).toBeDefined();
+    });
+  });
+
+  describe('Server Methods', () => {
+    it('should expose getServer method', () => {
+      const server = mcpServer.getServer();
+      expect(server).toBeDefined();
+    });
+
+    it('should expose start method', async () => {
+      expect(typeof mcpServer.start).toBe('function');
+      await expect(mcpServer.start()).resolves.not.toThrow();
+      expect(mockNodeRedClient.testConnection).toHaveBeenCalled();
+    });
+
+    it('should expose stop method', async () => {
+      expect(typeof mcpServer.stop).toBe('function');
+      await expect(mcpServer.stop()).resolves.not.toThrow();
+    });
+
+    it('should expose getSSEHandler method', () => {
+      const handler = mcpServer.getSSEHandler();
+      expect(handler).toBeDefined();
+    });
+
+    it('should expose getNodeRedClient method', () => {
+      const client = mcpServer.getNodeRedClient();
+      expect(client).toBeDefined();
+    });
+  });
+});
