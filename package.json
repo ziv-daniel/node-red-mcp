@@ -72,7 +72,7 @@
     "pino": "^9.9.4",
     "pino-http": "^10.5.0",
     "pino-pretty": "^13.1.1",
-    "uuid": "^12.0.0",
+    "uuid": "^13.0.0",
     "zod": "^4.1.13"
   },
   "devDependencies": {
@@ -92,7 +92,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
     "husky": "^9.1.7",
-    "jsdom": "^26.1.0",
+    "jsdom": "^27.2.0",
     "lint-staged": "^16.1.6",
     "node-red": "^4.1.1",
     "playwright": "^1.57.0",
