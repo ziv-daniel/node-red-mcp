@@ -238,13 +238,15 @@ jobs:
         with:
           category: '/language:javascript'
 
-  # Job 5: Docker Build & Push
+  # Job 5: Docker Build & Push (Disabled - Yarn 4.9.4 + Node 22 compatibility issue in Docker)
+  # Issue: Yarn 4.9.4 has dynamic require() calls that fail in Node.js 22 ESM mode within Docker
+  # TODO: Re-enable when Yarn Berry + Node 22 Docker compatibility is resolved or downgrade to Yarn 1.x for Docker
   docker:
-    name: 🐳 Docker Build & Push
+    name: 🐳 Docker Build & Push (Disabled)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [quality, test]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: false # Temporarily disabled due to Yarn 4/Node 22 Docker incompatibility
 
     permissions:
       contents: read
