@@ -12,28 +12,64 @@ import { NodeRedAPIClient } from '../services/nodered-api.js';
 import { McpNodeRedServer } from './mcp-server.js';
 import { SSEHandler } from './sse-handler.js';
 
-// Mock dependencies
-vi.mock('../services/nodered-api.js');
-vi.mock('./sse-handler.js');
+// Create mock instances that will be returned by the mocked constructors
+const mockNodeRedClient = {
+  getFlows: vi.fn(),
+  getFlow: vi.fn(),
+  createFlow: vi.fn(),
+  updateFlow: vi.fn(),
+  enableFlow: vi.fn(),
+  disableFlow: vi.fn(),
+  searchModules: vi.fn(),
+  installModule: vi.fn(),
+  getInstalledModules: vi.fn(),
+  testConnection: vi.fn().mockResolvedValue(true),
+};
+
+const mockSSEHandler = {
+  start: vi.fn(),
+  stop: vi.fn(),
+  broadcast: vi.fn(),
+  destroy: vi.fn(),
+};
+
+// Mock NodeRedAPIClient with a class
+vi.mock('../services/nodered-api.js', () => {
+  return {
+    NodeRedAPIClient: class {
+      constructor() {
+        return mockNodeRedClient;
+      }
+    },
+  };
+});
+
+// Mock SSEHandler with a class
+vi.mock('./sse-handler.js', () => {
+  return {
+    SSEHandler: class {
+      constructor() {
+        return mockSSEHandler;
+      }
+    },
+  };
+});
+
+// Mock MCP SDK Server
 vi.mock('@modelcontextprotocol/sdk/server/index.js', () => {
   return {
-    Server: vi.fn().mockImplementation(() => {
-      const handlers = new Map();
-      return {
-        setRequestHandler: vi.fn((schema, handler) => {
-          handlers.set(schema, handler);
-        }),
-        connect: vi.fn(),
-        handlers,
-      };
-    }),
+    Server: class {
+      handlers = new Map();
+      setRequestHandler = vi.fn((schema: any, handler: any) => {
+        this.handlers.set(schema, handler);
+      });
+      connect = vi.fn();
+    },
   };
 });
 
 describe('McpNodeRedServer', () => {
   let mcpServer: McpNodeRedServer;
-  let mockNodeRedClient: any;
-  let mockSSEHandler: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,37 +79,16 @@ describe('McpNodeRedServer', () => {
     process.env.MCP_SERVER_NAME = 'test-server';
     process.env.MCP_SERVER_VERSION = '1.0.0';
 
-    // Mock NodeRedAPIClient
-    mockNodeRedClient = {
-      getFlows: vi.fn(),
-      getFlow: vi.fn(),
-      createFlow: vi.fn(),
-      updateFlow: vi.fn(),
-      enableFlow: vi.fn(),
-      disableFlow: vi.fn(),
-      searchModules: vi.fn(),
-      installModule: vi.fn(),
-      getInstalledModules: vi.fn(),
-      testConnection: vi.fn().mockResolvedValue(true),
-    };
-
-    // Mock SSEHandler
-    mockSSEHandler = {
-      start: vi.fn(),
-      stop: vi.fn(),
-      broadcast: vi.fn(),
-    };
-
-    vi.mocked(NodeRedAPIClient).mockImplementation(() => mockNodeRedClient);
-    vi.mocked(SSEHandler).mockImplementation(() => mockSSEHandler);
+    // Reset mock implementation functions
+    mockNodeRedClient.testConnection.mockResolvedValue(true);
 
     mcpServer = new McpNodeRedServer();
   });
 
   describe('Initialization', () => {
     it('should create server with default configuration', () => {
-      expect(Server).toHaveBeenCalled();
       expect(mcpServer).toBeDefined();
+      expect(mcpServer.getServer()).toBeDefined();
     });
 
     it('should create server with custom configuration', () => {
@@ -89,14 +104,17 @@ describe('McpNodeRedServer', () => {
 
       const customServer = new McpNodeRedServer(customConfig);
       expect(customServer).toBeDefined();
+      expect(customServer.getServer()).toBeDefined();
     });
 
     it('should initialize NodeRedAPIClient', () => {
-      expect(NodeRedAPIClient).toHaveBeenCalled();
+      expect(mcpServer.getNodeRedClient()).toBeDefined();
+      expect(mcpServer.getNodeRedClient()).toBe(mockNodeRedClient);
     });
 
     it('should initialize SSEHandler', () => {
-      expect(SSEHandler).toHaveBeenCalled();
+      expect(mcpServer.getSSEHandler()).toBeDefined();
+      expect(mcpServer.getSSEHandler()).toBe(mockSSEHandler);
     });
   });
 
