@@ -7027,8 +7027,8 @@ __metadata:
     jsonwebtoken: "npm:^9.0.2"
     lint-staged: "npm:^16.1.6"
     node-red: "npm:^4.1.1"
-    pino: "npm:^9.9.4"
-    pino-http: "npm:^10.5.0"
+    pino: "npm:^10.1.0"
+    pino-http: "npm:^11.0.0"
     pino-pretty: "npm:^13.1.1"
     playwright: "npm:^1.57.0"
     prettier: "npm:^3.6.2"
@@ -8021,15 +8021,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pino-http@npm:^10.5.0":
-  version: 10.5.0
-  resolution: "pino-http@npm:10.5.0"
+"pino-abstract-transport@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "pino-abstract-transport@npm:3.0.0"
+  dependencies:
+    split2: "npm:^4.0.0"
+  checksum: 10c0/4486e1b9508110aaf963d07741ac98d660b974dd51d8ad42077d215118e27cda20c64da46c07c926898d52540aab7c6b9c37dc0f5355c203bb1d6a72b5bd8d6c
+  languageName: node
+  linkType: hard
+
+"pino-http@npm:^11.0.0":
+  version: 11.0.0
+  resolution: "pino-http@npm:11.0.0"
   dependencies:
     get-caller-file: "npm:^2.0.5"
-    pino: "npm:^9.0.0"
+    pino: "npm:^10.0.0"
     pino-std-serializers: "npm:^7.0.0"
     process-warning: "npm:^5.0.0"
-  checksum: 10c0/17597d653a4088f7faed4d58500a5ef51d4d05247307696760006313c33c1d23177af98fb902e15b8e2cd92d81306c884673f841ba5b9bf0c064802f3c0bd775
+  checksum: 10c0/75110c7a7f1b1c4eadfbff3b87599ef9d100c20c3ffd19541f0cb37cd11285a3f221bb90d33df0772ed94a3f7d5b2007bd7365c5f5525cff2178d4deef140ee5
   languageName: node
   linkType: hard
 
@@ -8063,24 +8072,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pino@npm:^9.0.0, pino@npm:^9.9.4":
-  version: 9.14.0
-  resolution: "pino@npm:9.14.0"
+"pino@npm:^10.0.0, pino@npm:^10.1.0":
+  version: 10.2.0
+  resolution: "pino@npm:10.2.0"
   dependencies:
     "@pinojs/redact": "npm:^0.4.0"
     atomic-sleep: "npm:^1.0.0"
     on-exit-leak-free: "npm:^2.1.0"
-    pino-abstract-transport: "npm:^2.0.0"
+    pino-abstract-transport: "npm:^3.0.0"
     pino-std-serializers: "npm:^7.0.0"
     process-warning: "npm:^5.0.0"
     quick-format-unescaped: "npm:^4.0.3"
     real-require: "npm:^0.2.0"
     safe-stable-stringify: "npm:^2.3.1"
     sonic-boom: "npm:^4.0.1"
-    thread-stream: "npm:^3.0.0"
+    thread-stream: "npm:^4.0.0"
   bin:
     pino: bin.js
-  checksum: 10c0/9a10d9bf820a585eae9bc270fb4e55c895e48280d54adbbb4063ec061694b22d8809c80203cf5fe9f920a54c832b0b8dfb67cb28a04baa13abebaf261a9c9f3e
+  checksum: 10c0/8f88a2e205508d47ef04d2a6ec26ec450abb4b344d2d998d2e24b9e624e1a1ef7184f260ca5be06bc3733aa1ad76704657e373b359c7b71489a11709227e26da
   languageName: node
   linkType: hard
 
@@ -9409,12 +9418,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"thread-stream@npm:^3.0.0":
-  version: 3.1.0
-  resolution: "thread-stream@npm:3.1.0"
+"thread-stream@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "thread-stream@npm:4.0.0"
   dependencies:
     real-require: "npm:^0.2.0"
-  checksum: 10c0/c36118379940b77a6ef3e6f4d5dd31e97b8210c3f7b9a54eb8fe6358ab173f6d0acfaf69b9c3db024b948c0c5fd2a7df93e2e49151af02076b35ada3205ec9a6
+  checksum: 10c0/f0a47a673af574062df20140ec3e857d679365253fcaa98a76c167c9a053ee03291f4b25bd89b078c7f6a48f07f49d5a49e4f5598bb1c8a263ec15955a018fbd
   languageName: node
   linkType: hard
 
