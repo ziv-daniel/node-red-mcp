@@ -27,15 +27,22 @@ We follow the standard ADR format:
 
 ## ADR List
 
-| ADR                                       | Title                                    | Status   | Date       |
-| ----------------------------------------- | ---------------------------------------- | -------- | ---------- |
-| [001](./001-mcp-transport-selection.md)   | MCP Transport Layer Selection            | Accepted | 2024-12-17 |
-| [002](./002-typescript-build-system.md)   | TypeScript Build System with tsup        | Accepted | 2024-12-17 |
-| [003](./003-testing-strategy.md)          | Comprehensive Testing Strategy           | Accepted | 2024-12-17 |
-| [004](./004-observability-stack.md)       | Observability Stack Selection            | Accepted | 2024-12-17 |
-| [005](./005-security-architecture.md)     | Security Architecture and Validation     | Accepted | 2024-12-17 |
-| [006](./006-containerization-strategy.md) | Containerization and Deployment Strategy | Accepted | 2024-12-17 |
-| [007](./007-package-manager-migration.md) | Package Manager Migration to Yarn 4      | Accepted | 2024-12-17 |
+| ADR                                                                 | Title                                           | Status   | Date       |
+| ------------------------------------------------------------------- | ----------------------------------------------- | -------- | ---------- |
+| [001](./001-mcp-transport-selection.md)                             | MCP Transport Layer Selection                   | Accepted | 2024-12-17 |
+| [002](./002-typescript-build-system.md)                             | TypeScript Build System with tsup               | Accepted | 2024-12-17 |
+| [003](./003-testing-strategy.md)                                    | Comprehensive Testing Strategy                  | Accepted | 2024-12-17 |
+| [004](./004-observability-stack.md)                                 | Observability Stack Selection                   | Accepted | 2024-12-17 |
+| [005](./005-security-architecture.md)                               | Security Architecture and Validation            | Accepted | 2024-12-17 |
+| [006](./006-containerization-strategy.md)                           | Containerization and Deployment Strategy        | Accepted | 2024-12-17 |
+| [007](./007-package-manager-migration.md)                           | Package Manager Migration to Yarn 4             | Accepted | 2024-12-17 |
+| [008](./008-testing-coverage-enhancement.md)                        | Testing Coverage Enhancement                    | Proposed | 2026-01-20 |
+| [009](./009-production-observability-strategy.md)                   | Production Observability Strategy               | Proposed | 2026-01-20 |
+| [010](./010-docker-deployment-fix.md)                               | Docker Deployment Fix for Yarn 4 and Node 22    | Proposed | 2026-01-20 |
+| [011](./011-sse-implementation-completion.md)                       | SSE Implementation Completion                   | Proposed | 2026-01-20 |
+| [012](./012-security-layer-finalization.md)                         | Security Layer Finalization                     | Proposed | 2026-01-20 |
+| [013](./013-error-handling-recovery-enhancement.md)                 | Error Handling & Recovery Enhancement           | Proposed | 2026-01-20 |
+| [014](./014-api-documentation-strategy.md)                          | API Documentation Strategy                      | Proposed | 2026-01-20 |
 
 ## Contributing to ADRs
 
@@ -98,6 +105,24 @@ Use this template for new ADRs:
 - [External links and resources]
 ```
 
+## Status Summary
+
+### Foundation (Accepted)
+Core architectural decisions that form the foundation of the system:
+- ADR-001 through ADR-007: Completed and accepted
+
+### Enhancements (Proposed)
+Improvements and completion of ongoing work:
+- **ADR-008**: Testing Coverage - Achieve 80%+ coverage for production readiness
+- **ADR-009**: Observability - Comprehensive logging, metrics, and tracing
+- **ADR-010**: Docker Fix - Resolve Yarn 4/Node 22 compatibility issues
+- **ADR-011**: SSE Completion - Finish real-time event streaming features
+- **ADR-012**: Security - Implement RBAC and complete authorization layer
+- **ADR-013**: Error Handling - Enhanced retry logic and graceful degradation
+- **ADR-014**: Documentation - Comprehensive API and integration documentation
+
+These proposed ADRs address the identified gaps and provide a roadmap for completing the production-ready system.
+
 ---
 
-_Last Updated: 2024-12-17_
+_Last Updated: 2026-01-20_

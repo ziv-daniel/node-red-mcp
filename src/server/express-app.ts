@@ -1247,6 +1247,7 @@ export class ExpressApp {
     );
 
     // Catch-all for undefined routes
+    // Catch-all for undefined routes (Express 5 with path-to-regexp v8 requires named wildcard)
     this.app.use('/{*splat}', (req: Request, res: Response) => {
       const response: ApiResponse = {
         success: false,
