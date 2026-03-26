@@ -19,6 +19,8 @@ import {
 } from '../utils/error-handling.js';
 
 import { McpNodeRedServer } from './mcp-server.js';
+import { OAuthServer } from './oauth-server.js';
+import { SessionManager } from './session-manager.js';
 import { SSEHandler } from './sse-handler.js';
 
 export interface ExpressAppConfig {
@@ -40,12 +42,16 @@ export class ExpressApp {
   private mcpServer: McpNodeRedServer;
   private sseHandler: SSEHandler;
   private eventListener: NodeRedEventListener;
+  private oauthServer: OAuthServer;
+  private sessionManager: SessionManager;
   private config: ExpressAppConfig;
 
   constructor(mcpServer: McpNodeRedServer, config: Partial<ExpressAppConfig> = {}) {
     this.mcpServer = mcpServer;
     this.sseHandler = mcpServer.getSSEHandler();
     this.eventListener = new NodeRedEventListener(this.sseHandler, mcpServer.getNodeRedClient());
+    this.oauthServer = new OAuthServer();
+    this.sessionManager = new SessionManager();
 
     this.config = {
       port: parseInt(process.env.PORT || '3000'),
@@ -170,6 +176,133 @@ export class ExpressApp {
    * Setup API routes
    */
   private setupRoutes(): void {
+    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────
+    const baseUrl =
+      process.env.PUBLIC_URL ||
+      `http://${this.config.host}:${this.config.port}`;
+    this.app.use(this.oauthServer.createRouter(baseUrl));
+
+    // ── MCP Streamable HTTP Transport (spec 2025-03-26) ───────────────────
+    // Single endpoint handles initialize, tools/list, tools/call etc.
+    this.app.post(
+      '/mcp',
+      asyncHandler(async (req: Request, res: Response) => {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+        // Resolve or create session
+        let session = sessionId ? this.sessionManager.get(sessionId) : undefined;
+        const isNewSession = !session;
+        if (!session) {
+          // Validate Bearer token if present
+          const auth = req.headers.authorization;
+          let userId: string | undefined;
+          if (auth?.startsWith('Bearer ')) {
+            const token = auth.slice(7);
+            const tokenData = this.oauthServer.validateToken(token);
+            if (tokenData) userId = tokenData.userId;
+          }
+          session = this.sessionManager.create(userId);
+        }
+
+        const { method, params, id, jsonrpc } = req.body as {
+          method: string;
+          params?: Record<string, unknown>;
+          id?: string | number;
+          jsonrpc: string;
+        };
+
+        if (jsonrpc !== '2.0') {
+          return res.status(400).json({
+            jsonrpc: '2.0',
+            id: id ?? null,
+            error: { code: -32600, message: 'Invalid Request — jsonrpc must be 2.0' },
+          });
+        }
+
+        // Always attach session ID to response
+        res.setHeader('Mcp-Session-Id', session.id);
+        if (isNewSession) {
+          res.setHeader('X-Mcp-Session-Created', 'true');
+        }
+
+        let result: unknown;
+        try {
+          switch (method) {
+            case 'initialize':
+              this.sessionManager.markInitialized(session.id);
+              result = {
+                protocolVersion: '2025-03-26',
+                capabilities: { tools: {}, resources: {}, prompts: {}, logging: {} },
+                serverInfo: { name: 'nodered-mcp-server', version: '1.0.0' },
+              };
+              break;
+
+            case 'notifications/initialized':
+              // Client acknowledgement — no response body needed
+              return res.status(202).end();
+
+            case 'tools/list':
+              result = await this.mcpServer.listTools();
+              break;
+
+            case 'tools/call':
+              if (!params?.name) throw new Error('Tool name required');
+              result = await this.mcpServer.callToolPublic(
+                params.name as string,
+                (params.arguments as Record<string, unknown>) || {}
+              );
+              break;
+
+            case 'resources/list':
+              result = await this.mcpServer.listResources();
+              break;
+
+            case 'resources/read':
+              if (!params?.uri) throw new Error('Resource URI required');
+              result = await this.mcpServer.readResource(params.uri as string);
+              break;
+
+            case 'prompts/list':
+              result = await this.mcpServer.listPrompts();
+              break;
+
+            case 'prompts/get':
+              if (!params?.name) throw new Error('Prompt name required');
+              result = await this.mcpServer.getPromptPublic(
+                params.name as string,
+                (params.arguments as Record<string, unknown>) || {}
+              );
+              break;
+
+            default:
+              return res.status(200).json({
+                jsonrpc: '2.0',
+                id: id ?? null,
+                error: { code: -32601, message: `Method not found: ${method}` },
+              });
+          }
+        } catch (err) {
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id: id ?? null,
+            error: {
+              code: -32603,
+              message: err instanceof Error ? err.message : 'Internal error',
+            },
+          });
+        }
+
+        return res.json({ jsonrpc: '2.0', id: id ?? null, result });
+      })
+    );
+
+    // DELETE /mcp — session teardown
+    this.app.delete('/mcp', (req: Request, res: Response) => {
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      if (sessionId) this.sessionManager.delete(sessionId);
+      res.status(204).end();
+    });
+
     // Health check endpoint (public)
     this.app.get(
       '/health',
@@ -205,7 +338,7 @@ export class ExpressApp {
         version: '1.0.0',
         description:
           'Model Context Protocol server for Node-RED integration with real-time SSE support',
-        protocolVersion: '2024-11-05',
+        protocolVersion: '2025-03-26',
         capabilities: {
           tools: {
             listChanged: false,
@@ -272,7 +405,7 @@ export class ExpressApp {
             jsonrpc,
             id,
             result: {
-              protocolVersion: '2024-11-05',
+              protocolVersion: '2025-03-26',
               capabilities: {
                 tools: {},
                 resources: {},
@@ -366,7 +499,7 @@ export class ExpressApp {
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'X-MCP-Server': 'nodered-mcp-server',
             'X-MCP-Version': '1.0.0',
-            'X-MCP-Protocol': '2024-11-05',
+            'X-MCP-Protocol': '2025-03-26',
           });
 
           console.log(`MCP SSE client connected (Claude ${req.auth?.userId || 'unknown'})`);
@@ -378,7 +511,7 @@ export class ExpressApp {
             params: {
               name: 'nodered-mcp-server',
               version: '1.0.0',
-              protocolVersion: '2024-11-05',
+              protocolVersion: '2025-03-26',
               capabilities: {
                 tools: {},
                 resources: {},
@@ -492,7 +625,7 @@ export class ExpressApp {
           switch (method) {
             case 'initialize':
               result = {
-                protocolVersion: '2024-11-05',
+                protocolVersion: '2025-03-26',
                 capabilities: {
                   tools: {},
                   resources: {},
@@ -589,7 +722,7 @@ export class ExpressApp {
           switch (method) {
             case 'initialize':
               result = {
-                protocolVersion: '2024-11-05',
+                protocolVersion: '2025-03-26',
                 capabilities: {
                   tools: {},
                   resources: {},
@@ -928,7 +1061,7 @@ export class ExpressApp {
           name: 'nodered-mcp-server',
           version: '1.0.0',
           description: 'Node-RED MCP Server for flow and node management',
-          protocolVersion: '2024-11-05',
+          protocolVersion: '2025-03-26',
           capabilities: {
             tools: {},
             resources: {},
@@ -947,7 +1080,7 @@ export class ExpressApp {
           },
           transport: {
             type: 'sse',
-            version: '2024-11-05',
+            version: '2025-03-26',
           },
           server: {
             vendor: 'nodered-mcp-sse',
@@ -967,7 +1100,7 @@ export class ExpressApp {
         const serverInfo = {
           jsonrpc: '2.0',
           result: {
-            protocolVersion: '2024-11-05',
+            protocolVersion: '2025-03-26',
             capabilities: {
               tools: {},
               resources: {},
