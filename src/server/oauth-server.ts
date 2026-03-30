@@ -182,9 +182,13 @@ export class OAuthServer {
         scope,
         code_challenge,
         code_challenge_method,
-      } = req.query as Record<string, string>;
+      } = req.query as Record<string, string | undefined>;
 
-      // Validate
+      // Validate required params
+      if (!client_id) {
+        res.status(400).json({ error: 'invalid_request', error_description: 'client_id required' });
+        return;
+      }
       if (response_type !== 'code') {
         res.status(400).json({ error: 'unsupported_response_type' });
         return;
@@ -214,8 +218,8 @@ export class OAuthServer {
       // In production this would show a consent screen
       const userId = 'mcp-user';
       const authCode = this.createAuthorizationCode({
-        clientId: client_id,
-        redirectUri: redirect_uri || '',
+        clientId: client_id, // narrowed to string above
+        redirectUri: redirect_uri ?? '',
         userId,
         scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
         codeChallenge: code_challenge,

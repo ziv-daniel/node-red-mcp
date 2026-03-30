@@ -36,8 +36,8 @@ export class SessionManager {
       id: randomUUID(),
       createdAt: Date.now(),
       lastActivity: Date.now(),
-      userId,
-      clientInfo,
+      ...(userId !== undefined ? { userId } : {}),
+      ...(clientInfo !== undefined ? { clientInfo } : {}),
       initialized: false,
     };
     this.sessions.set(session.id, session);
