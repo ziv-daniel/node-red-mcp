@@ -108,7 +108,8 @@ function buildApp() {
 
     if (jsonrpc !== '2.0') {
       return res.status(400).json({
-        jsonrpc: '2.0', id: id ?? null,
+        jsonrpc: '2.0',
+        id: id ?? null,
         error: { code: -32600, message: 'Invalid Request' },
       });
     }
@@ -117,7 +118,8 @@ function buildApp() {
       case 'initialize':
         sessionManager.markInitialized(session.id);
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0',
+          id,
           result: {
             protocolVersion: '2025-03-26',
             capabilities: { tools: {}, resources: {}, prompts: {}, logging: {} },
@@ -128,7 +130,8 @@ function buildApp() {
         return res.json({ jsonrpc: '2.0', id, result: { tools: [] } });
       default:
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0',
+          id,
           error: { code: -32601, message: `Method not found: ${method}` },
         });
     }
@@ -152,7 +155,9 @@ describe('POST /mcp — MCP Protocol contract', () => {
 
   it('returns 400 when jsonrpc is not 2.0', async () => {
     const { status, body } = await postMcp(app, {
-      jsonrpc: '1.0', method: 'initialize', id: 1,
+      jsonrpc: '1.0',
+      method: 'initialize',
+      id: 1,
     });
     expect(status).toBe(400);
     expect(body.error?.code).toBe(-32600);
@@ -175,8 +180,14 @@ describe('POST /mcp — MCP Protocol contract', () => {
 
   it('initialize response includes capabilities and serverInfo', async () => {
     const { body } = await postMcp(app, {
-      jsonrpc: '2.0', method: 'initialize', id: 2,
-      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'x', version: '1' } },
+      jsonrpc: '2.0',
+      method: 'initialize',
+      id: 2,
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'x', version: '1' },
+      },
     });
     expect(body.result?.capabilities).toBeDefined();
     expect((body.result?.serverInfo as { name: string })?.name).toBe('nodered-mcp-server');
@@ -184,23 +195,41 @@ describe('POST /mcp — MCP Protocol contract', () => {
 
   it('response includes Mcp-Session-Id header', async () => {
     const { headers } = await postMcp(app, {
-      jsonrpc: '2.0', method: 'initialize', id: 3,
-      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'x', version: '1' } },
+      jsonrpc: '2.0',
+      method: 'initialize',
+      id: 3,
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'x', version: '1' },
+      },
     });
     expect(headers['mcp-session-id']).toBeTruthy();
   });
 
   it('second request with same session ID does not create new session', async () => {
     const first = await postMcp(app, {
-      jsonrpc: '2.0', method: 'initialize', id: 4,
-      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'x', version: '1' } },
+      jsonrpc: '2.0',
+      method: 'initialize',
+      id: 4,
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'x', version: '1' },
+      },
     });
     const sessionId = first.headers['mcp-session-id'];
     expect(first.headers['x-mcp-session-created']).toBe('true');
 
-    const second = await postMcp(app, {
-      jsonrpc: '2.0', method: 'tools/list', id: 5,
-    }, { 'mcp-session-id': sessionId });
+    const second = await postMcp(
+      app,
+      {
+        jsonrpc: '2.0',
+        method: 'tools/list',
+        id: 5,
+      },
+      { 'mcp-session-id': sessionId }
+    );
     // Session should be reused, not recreated
     expect(second.headers['mcp-session-id']).toBe(sessionId);
     expect(second.headers['x-mcp-session-created']).toBeUndefined();

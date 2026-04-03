@@ -4,11 +4,7 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     // Test files location
-    include: [
-      'src/**/*.test.{js,ts}',
-      'test/**/*.test.{js,ts}',
-      'tests/**/*.spec.{js,ts}',
-    ],
+    include: ['src/**/*.test.{js,ts}', 'test/**/*.test.{js,ts}', 'tests/**/*.spec.{js,ts}'],
     exclude: ['node_modules', 'dist', '.git', '.husky', '.yarn'],
 
     // Test environment

@@ -44,8 +44,17 @@ function makeChallenge(verifier: string): string {
 
 function request(
   url: string,
-  options: { method?: string; headers?: Record<string, string>; body?: string; followRedirects?: false }
-): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    followRedirects?: false;
+  }
+): Promise<{
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const lib = parsed.protocol === 'https:' ? https : http;

@@ -59,19 +59,24 @@ function buildTestApp(oauthServer: OAuthServer, sessionManager: SessionManager, 
     if (isNew) res.setHeader('X-Mcp-Session-Created', 'true');
 
     const { method, id, jsonrpc, params } = req.body as {
-      method: string; id?: unknown; jsonrpc: string;
+      method: string;
+      id?: unknown;
+      jsonrpc: string;
       params?: { clientInfo?: { name: string; version: string } };
     };
 
     if (jsonrpc !== '2.0') {
-      return res.status(400).json({ jsonrpc: '2.0', id, error: { code: -32600, message: 'Invalid Request' } });
+      return res
+        .status(400)
+        .json({ jsonrpc: '2.0', id, error: { code: -32600, message: 'Invalid Request' } });
     }
 
     switch (method) {
       case 'initialize':
         sessionManager.markInitialized(session.id);
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0',
+          id,
           result: {
             protocolVersion: '2025-03-26',
             capabilities: { tools: {}, resources: {}, prompts: {}, logging: {} },
@@ -80,15 +85,24 @@ function buildTestApp(oauthServer: OAuthServer, sessionManager: SessionManager, 
         });
       case 'tools/list':
         return res.json({
-          jsonrpc: '2.0', id,
+          jsonrpc: '2.0',
+          id,
           result: {
             tools: [
-              { name: 'get_flows', description: 'Get Node-RED flows', inputSchema: { type: 'object', properties: {} } },
+              {
+                name: 'get_flows',
+                description: 'Get Node-RED flows',
+                inputSchema: { type: 'object', properties: {} },
+              },
             ],
           },
         });
       default:
-        return res.json({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });
+        return res.json({
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32601, message: `Method not found: ${method}` },
+        });
     }
   });
 

@@ -57,7 +57,11 @@ describe('OAuthServer', () => {
     });
 
     it('registered client is retrievable', () => {
-      const client = server.registerClient({ name: 'X', redirectUris: ['https://x.com'], scopes: [] });
+      const client = server.registerClient({
+        name: 'X',
+        redirectUris: ['https://x.com'],
+        scopes: [],
+      });
       const found = server.getClient(client.clientId);
       expect(found?.name).toBe('X');
     });
@@ -71,12 +75,20 @@ describe('OAuthServer', () => {
       const challenge = makeCodeChallenge(verifier);
 
       const a = server.createAuthorizationCode({
-        clientId: 'c1', redirectUri: 'https://cb.com', userId: 'u1',
-        scopes: ['mcp:read'], codeChallenge: challenge, codeChallengeMethod: 'S256',
+        clientId: 'c1',
+        redirectUri: 'https://cb.com',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+        codeChallenge: challenge,
+        codeChallengeMethod: 'S256',
       });
       const b = server.createAuthorizationCode({
-        clientId: 'c1', redirectUri: 'https://cb.com', userId: 'u1',
-        scopes: ['mcp:read'], codeChallenge: challenge, codeChallengeMethod: 'S256',
+        clientId: 'c1',
+        redirectUri: 'https://cb.com',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+        codeChallenge: challenge,
+        codeChallengeMethod: 'S256',
       });
 
       expect(a.code).not.toBe(b.code);
@@ -86,8 +98,12 @@ describe('OAuthServer', () => {
       const verifier = makeCodeVerifier();
       const challenge = makeCodeChallenge(verifier);
       const { code } = server.createAuthorizationCode({
-        clientId: 'c1', redirectUri: 'https://cb.com', userId: 'u1',
-        scopes: ['mcp:read'], codeChallenge: challenge, codeChallengeMethod: 'S256',
+        clientId: 'c1',
+        redirectUri: 'https://cb.com',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+        codeChallenge: challenge,
+        codeChallengeMethod: 'S256',
       });
 
       expect(server.consumeAuthorizationCode(code)).not.toBeNull();
@@ -129,13 +145,21 @@ describe('OAuthServer', () => {
 
   describe('Access Token', () => {
     it('creates a valid token', () => {
-      const token = server.createAccessToken({ clientId: 'c1', userId: 'u1', scopes: ['mcp:read'] });
+      const token = server.createAccessToken({
+        clientId: 'c1',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+      });
       expect(token.token).toBeTruthy();
       expect(token.expiresAt).toBeGreaterThan(Date.now());
     });
 
     it('validates a created token', () => {
-      const { token } = server.createAccessToken({ clientId: 'c1', userId: 'u1', scopes: ['mcp:read'] });
+      const { token } = server.createAccessToken({
+        clientId: 'c1',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+      });
       const validated = server.validateToken(token);
       expect(validated?.userId).toBe('u1');
     });

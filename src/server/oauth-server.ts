@@ -66,7 +66,9 @@ export class OAuthServer {
 
   // ── Authorization Code ────────────────────────────────────────────────────
 
-  createAuthorizationCode(params: Omit<AuthorizationCode, 'code' | 'expiresAt'>): AuthorizationCode {
+  createAuthorizationCode(
+    params: Omit<AuthorizationCode, 'code' | 'expiresAt'>
+  ): AuthorizationCode {
     const code: AuthorizationCode = {
       ...params,
       code: randomBytes(32).toString('hex'),
@@ -108,15 +110,9 @@ export class OAuthServer {
 
   // ── PKCE ─────────────────────────────────────────────────────────────────
 
-  verifyCodeChallenge(
-    verifier: string,
-    challenge: string,
-    method: 'S256' | 'plain'
-  ): boolean {
+  verifyCodeChallenge(verifier: string, challenge: string, method: 'S256' | 'plain'): boolean {
     if (method === 'S256') {
-      const computed = createHash('sha256')
-        .update(verifier)
-        .digest('base64url');
+      const computed = createHash('sha256').update(verifier).digest('base64url');
       return computed === challenge;
     }
     // plain
@@ -153,7 +149,9 @@ export class OAuthServer {
       };
 
       if (!redirect_uris?.length) {
-        res.status(400).json({ error: 'invalid_client_metadata', error_description: 'redirect_uris required' });
+        res
+          .status(400)
+          .json({ error: 'invalid_client_metadata', error_description: 'redirect_uris required' });
         return;
       }
 
@@ -236,13 +234,10 @@ export class OAuthServer {
 
     // ── Token Endpoint ────────────────────────────────────────────────────
     router.post('/oauth/token', (req: Request, res: Response) => {
-      const {
-        grant_type,
-        code,
-        redirect_uri,
-        client_id,
-        code_verifier,
-      } = req.body as Record<string, string>;
+      const { grant_type, code, redirect_uri, client_id, code_verifier } = req.body as Record<
+        string,
+        string
+      >;
 
       if (grant_type !== 'authorization_code') {
         res.status(400).json({ error: 'unsupported_grant_type' });
@@ -256,7 +251,9 @@ export class OAuthServer {
 
       const authCode = this.consumeAuthorizationCode(code);
       if (!authCode) {
-        res.status(400).json({ error: 'invalid_grant', error_description: 'Code invalid or expired' });
+        res
+          .status(400)
+          .json({ error: 'invalid_grant', error_description: 'Code invalid or expired' });
         return;
       }
 
@@ -267,7 +264,9 @@ export class OAuthServer {
 
       // PKCE verification
       if (authCode.codeChallenge && !code_verifier) {
-        res.status(400).json({ error: 'invalid_grant', error_description: 'code_verifier required' });
+        res
+          .status(400)
+          .json({ error: 'invalid_grant', error_description: 'code_verifier required' });
         return;
       }
 
@@ -278,13 +277,17 @@ export class OAuthServer {
           authCode.codeChallengeMethod
         );
         if (!valid) {
-          res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
+          res
+            .status(400)
+            .json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
           return;
         }
       }
 
       if (redirect_uri && authCode.redirectUri && authCode.redirectUri !== redirect_uri) {
-        res.status(400).json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
+        res
+          .status(400)
+          .json({ error: 'invalid_grant', error_description: 'redirect_uri mismatch' });
         return;
       }
 

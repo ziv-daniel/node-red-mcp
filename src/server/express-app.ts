@@ -177,9 +177,7 @@ export class ExpressApp {
    */
   private setupRoutes(): void {
     // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────
-    const baseUrl =
-      process.env.PUBLIC_URL ||
-      `http://${this.config.host}:${this.config.port}`;
+    const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
     // ── MCP Streamable HTTP Transport (spec 2025-03-26) ───────────────────
