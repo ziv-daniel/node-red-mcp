@@ -136,16 +136,13 @@ jobs:
 
   # Job 3: End-to-End Tests
   # TODO: Re-enable after fixing silent error handling in src/index.ts
-  # The server crashes silently during startup, making E2E tests fail without useful error messages
   e2e:
-    name: 🎭 E2E Tests (Disabled)
+    name: 🎭 E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [quality]
-    if: false # Temporarily disabled
 
     services:
-      # Node-RED service for E2E testing
       node-red:
         image: nodered/node-red:latest
         ports:
@@ -164,26 +161,24 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: 🧶 Enable Corepack
-        run: corepack enable
-
       - name: 📥 Install dependencies
-        run: yarn install --immutable
+        run: node .yarn/releases/yarn-stable-temp.cjs install --immutable
 
       - name: 🏗️ Build project
-        run: yarn build:prod
+        run: node .yarn/releases/yarn-stable-temp.cjs build:prod
 
       - name: 🎭 Install Playwright browsers
-        run: yarn playwright install --with-deps chromium
+        run: node .yarn/releases/yarn-stable-temp.cjs playwright install --with-deps chromium
 
       - name: 🚀 Start MCP server in background
-        run: yarn start &
+        run: node dist/index.mjs &
         env:
           NODE_ENV: test
           PORT: 3000
           MCP_TRANSPORT: http
           HTTP_ENABLED: true
           NODERED_URL: http://localhost:1880
+          JWT_SECRET: ci-test-secret-minimum-32-characters-ok
 
       - name: ⏳ Wait for services to be ready
         run: |
@@ -193,7 +188,7 @@ jobs:
           timeout 60s bash -c 'until curl -f http://localhost:1880; do sleep 2; done'
 
       - name: 🧪 Run E2E tests
-        run: yarn test:e2e
+        run: node .yarn/releases/yarn-stable-temp.cjs test:e2e
         env:
           BASE_URL: http://localhost:3000
           NODERED_URL: http://localhost:1880
@@ -238,15 +233,12 @@ jobs:
         with:
           category: '/language:javascript'
 
-  # Job 5: Docker Build & Push (Disabled - Yarn 4.9.4 + Node 22 compatibility issue in Docker)
-  # Issue: Yarn 4.9.4 has dynamic require() calls that fail in Node.js 22 ESM mode within Docker
-  # TODO: Re-enable when Yarn Berry + Node 22 Docker compatibility is resolved or downgrade to Yarn 1.x for Docker
   docker:
-    name: 🐳 Docker Build & Push (Disabled)
+    name: 🐳 Docker Build & Push
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [quality, test]
-    if: false # Temporarily disabled due to Yarn 4/Node 22 Docker incompatibility
+    if: github.event_name != 'schedule'
 
     permissions:
       contents: read

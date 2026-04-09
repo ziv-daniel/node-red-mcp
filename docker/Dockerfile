@@ -23,9 +23,6 @@ RUN apk update && apk upgrade && \
         tzdata && \
     rm -rf /var/cache/apk/*
 
-# Enable Corepack for modern package management
-RUN corepack enable
-
 # Create non-root user for security
 RUN addgroup -g 1001 -S mcpserver && \
     adduser -S mcpserver -u 1001 -G mcpserver -h /app -s /bin/sh
@@ -44,13 +41,14 @@ FROM base AS dependencies
 # Switch to non-root user
 USER mcpserver
 
-# Copy package management files
+# Copy package management files + local Yarn binary (avoids corepack/ESM issues with Node 22)
 COPY --chown=mcpserver:mcpserver package.json yarn.lock .yarnrc.yml ./
+COPY --chown=mcpserver:mcpserver .yarn/releases/ ./.yarn/releases/
 
-# Install dependencies with optimizations
+# Install dependencies using local Yarn binary
 ENV YARN_CACHE_FOLDER=/tmp/yarn-cache
-RUN yarn install --immutable --network-timeout 300000 && \
-    yarn cache clean && \
+RUN node .yarn/releases/yarn-stable-temp.cjs install --immutable --network-timeout 300000 && \
+    node .yarn/releases/yarn-stable-temp.cjs cache clean && \
     rm -rf /tmp/yarn-cache
 
 # ============================================================================
@@ -62,11 +60,11 @@ FROM dependencies AS builder
 COPY --chown=mcpserver:mcpserver . .
 
 # Build the application
-RUN yarn build:prod
+RUN node .yarn/releases/yarn-stable-temp.cjs build:prod
 
 # Remove development dependencies to reduce size
-RUN yarn workspaces focus --production && \
-    yarn cache clean
+RUN node .yarn/releases/yarn-stable-temp.cjs workspaces focus --production && \
+    node .yarn/releases/yarn-stable-temp.cjs cache clean
 
 # ============================================================================
 # Stage 4: Production image
@@ -164,4 +162,4 @@ ENV HTTP_ENABLED=true
 EXPOSE 3000 9229
 
 # Development command with hot reload
-CMD ["yarn", "dev"] 
+CMD ["node", ".yarn/releases/yarn-stable-temp.cjs", "dev"] 
