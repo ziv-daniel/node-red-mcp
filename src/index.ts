@@ -42,16 +42,19 @@ async function main(): Promise<void> {
       expressApp.startSystemMonitoring();
     }
   } catch (error) {
+    console.error('Server startup error:', error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
 
 // Handle uncaught exceptions and rejections
-process.on('uncaughtException', () => {
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error.message, error.stack);
   process.exit(1);
 });
 
-process.on('unhandledRejection', () => {
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
   process.exit(1);
 });
 

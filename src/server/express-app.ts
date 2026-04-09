@@ -1165,7 +1165,7 @@ export class ExpressApp {
     );
 
     // Catch-all for undefined routes
-    this.app.use('*', (req: Request, res: Response) => {
+    this.app.use('/{*splat}', (req: Request, res: Response) => {
       const response: ApiResponse = {
         success: false,
         error: {
