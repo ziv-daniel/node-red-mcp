@@ -170,8 +170,11 @@ jobs:
       - name: 🎭 Install Playwright browsers
         run: node .yarn/releases/yarn-stable-temp.cjs playwright install --with-deps chromium
 
+      - name: ⏳ Wait for Node-RED to be ready
+        run: timeout 90s bash -c 'until curl -sf http://localhost:1880; do sleep 3; done'
+
       - name: 🚀 Start MCP server in background
-        run: node dist/index.mjs &
+        run: node dist/index.mjs > /tmp/mcp-server.log 2>&1 &
         env:
           NODE_ENV: test
           PORT: 3000
@@ -180,12 +183,10 @@ jobs:
           NODERED_URL: http://localhost:1880
           JWT_SECRET: ci-test-secret-minimum-32-characters-ok
 
-      - name: ⏳ Wait for services to be ready
+      - name: ⏳ Wait for MCP server to be ready
         run: |
-          # Wait for MCP server
-          timeout 60s bash -c 'until curl -f http://localhost:3000/health; do sleep 2; done'
-          # Wait for Node-RED
-          timeout 60s bash -c 'until curl -f http://localhost:1880; do sleep 2; done'
+          timeout 60s bash -c 'until curl -sf http://localhost:3000/health; do sleep 2; done' || \
+          (echo "=== MCP server log ===" && cat /tmp/mcp-server.log && exit 1)
 
       - name: 🧪 Run E2E tests
         run: node .yarn/releases/yarn-stable-temp.cjs test:e2e

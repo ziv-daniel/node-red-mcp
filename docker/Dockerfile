@@ -143,11 +143,13 @@ LABEL org.opencontainers.image.revision="main"
 # ============================================================================
 FROM dependencies AS development
 
-# Install development tools
+# Install development tools (must run as root)
+USER root
 RUN apk add --no-cache \
         git \
         openssh-client && \
     rm -rf /var/cache/apk/*
+USER mcpserver
 
 # Copy source code
 COPY --chown=mcpserver:mcpserver . .
