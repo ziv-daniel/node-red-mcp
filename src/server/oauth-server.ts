@@ -39,6 +39,10 @@ export class OAuthServer {
     this.clients.set(claudeClientId, {
       clientId: claudeClientId,
       redirectUris: [
+        // Claude.ai actual callback URIs (RFC-compliant paths)
+        'https://claude.ai/api/mcp/auth_callback',
+        'https://claude.com/api/mcp/auth_callback',
+        // Legacy / fallback paths
         'https://claude.ai/oauth/callback',
         'https://app.claude.ai/oauth/callback',
         // Allow localhost redirect for testing
