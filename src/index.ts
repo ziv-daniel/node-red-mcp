@@ -48,12 +48,12 @@ async function main(): Promise<void> {
 }
 
 // Handle uncaught exceptions and rejections
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   console.error('Uncaught exception:', error.message, error.stack);
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', reason => {
   console.error('Unhandled rejection:', reason);
   process.exit(1);
 });
