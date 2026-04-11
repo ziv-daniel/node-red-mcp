@@ -382,7 +382,8 @@ export class ExpressApp {
     // OAuth Protected Resource Metadata (RFC 9728)
     // Required by Claude.ai to discover the authorization server
     this.app.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
-      const resourceUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
+      const resourceUrl =
+        process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
       res.json({
         resource: resourceUrl,
         authorization_servers: [resourceUrl],
