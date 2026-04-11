@@ -181,7 +181,35 @@ export class ExpressApp {
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
     // ── MCP Streamable HTTP Transport (spec 2025-03-26) ───────────────────
-    // Single endpoint handles initialize, tools/list, tools/call etc.
+    // GET /mcp — used by Claude.ai for endpoint discovery / SSE stream
+    this.app.get('/mcp', (req: Request, res: Response) => {
+      // If client wants SSE, open a stream; otherwise return server info
+      if (req.headers.accept?.includes('text/event-stream')) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+        // Send server info as first event
+        const info = {
+          name: 'nodered-mcp-server',
+          version: '1.0.0',
+          protocolVersion: '2025-03-26',
+        };
+        res.write(`data: ${JSON.stringify(info)}\n\n`);
+        req.on('close', () => res.end());
+      } else {
+        const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
+        res.json({
+          name: 'nodered-mcp-server',
+          version: '1.0.0',
+          protocolVersion: '2025-03-26',
+          endpoint: `${baseUrl}/mcp`,
+          transport: 'streamable-http',
+        });
+      }
+    });
+
+    // POST /mcp — Single endpoint handles initialize, tools/list, tools/call etc.
     this.app.post(
       '/mcp',
       asyncHandler(async (req: Request, res: Response) => {
