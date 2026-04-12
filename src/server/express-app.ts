@@ -226,7 +226,9 @@ export class ExpressApp {
               'WWW-Authenticate',
               `Bearer resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource"`
             );
-            return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
+            return res
+              .status(401)
+              .json({ error: 'unauthorized', error_description: 'Bearer token required' });
           }
           const token = auth.slice(7);
           const tokenData = this.oauthServer.validateToken(token);
@@ -237,7 +239,9 @@ export class ExpressApp {
               'WWW-Authenticate',
               `Bearer resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource", error="invalid_token"`
             );
-            return res.status(401).json({ error: 'invalid_token', error_description: 'Token is invalid or expired' });
+            return res
+              .status(401)
+              .json({ error: 'invalid_token', error_description: 'Token is invalid or expired' });
           }
         }
 
