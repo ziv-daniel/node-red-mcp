@@ -10,6 +10,14 @@ export interface OAuthClient {
   scopes: string[];
 }
 
+export interface NodeRedCredentials {
+  url: string;
+  authType: 'bearer' | 'basic';
+  token?: string; // for bearer
+  username?: string; // for basic
+  password?: string; // for basic
+}
+
 export interface AuthorizationCode {
   code: string;
   clientId: string;
@@ -20,6 +28,8 @@ export interface AuthorizationCode {
   // PKCE
   codeChallenge: string;
   codeChallengeMethod: 'S256' | 'plain';
+  // Node-RED credentials captured at authorization time
+  nodeRedCredentials?: NodeRedCredentials;
 }
 
 export interface AccessToken {
@@ -28,6 +38,8 @@ export interface AccessToken {
   userId: string;
   scopes: string[];
   expiresAt: number;
+  // Node-RED credentials bound to this token
+  nodeRedCredentials?: NodeRedCredentials;
 }
 
 export interface OAuthAuthorizationServerMetadata {

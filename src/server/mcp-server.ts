@@ -13,6 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { NodeRedAPIClient } from '../services/nodered-api.js';
+import type { NodeRedCredentials } from '../types/oauth.js';
 import {
   McpServerConfig,
   McpToolResult,
@@ -607,8 +608,27 @@ export class McpNodeRedServer {
 
   /**
    * Public method to call tools (for HTTP API)
+   * Accepts optional per-request Node-RED credentials from the OAuth token.
    */
-  async callToolPublic(name: string, args: any) {
+  async callToolPublic(name: string, args: any, nodeRedCredentials?: NodeRedCredentials) {
+    if (nodeRedCredentials) {
+      const savedClient = this.nodeRedClient;
+      const authHeader =
+        nodeRedCredentials.authType === 'basic'
+          ? `Basic ${Buffer.from(`${nodeRedCredentials.username}:${nodeRedCredentials.password}`).toString('base64')}`
+          : nodeRedCredentials.token
+            ? `Bearer ${nodeRedCredentials.token}`
+            : undefined;
+      this.nodeRedClient = new NodeRedAPIClient({
+        baseURL: nodeRedCredentials.url,
+        headers: authHeader ? { Authorization: authHeader } : {},
+      });
+      try {
+        return await this.callTool(name, args);
+      } finally {
+        this.nodeRedClient = savedClient;
+      }
+    }
     return await this.callTool(name, args);
   }
 

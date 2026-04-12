@@ -248,6 +248,7 @@ export class ExpressApp {
         // Resolve or create session
         let session = sessionId ? this.sessionManager.get(sessionId) : undefined;
         const isNewSession = !session;
+        let nodeRedCredentials = undefined;
         if (!session) {
           // Validate Bearer token if present
           const auth = req.headers.authorization;
@@ -255,9 +256,19 @@ export class ExpressApp {
           if (auth?.startsWith('Bearer ')) {
             const token = auth.slice(7);
             const tokenData = this.oauthServer.validateToken(token);
-            if (tokenData) userId = tokenData.userId;
+            if (tokenData) {
+              userId = tokenData.userId;
+              nodeRedCredentials = tokenData.nodeRedCredentials;
+            }
           }
           session = this.sessionManager.create(userId);
+        } else {
+          // Re-extract credentials from token even for existing sessions
+          const auth = req.headers.authorization;
+          if (auth?.startsWith('Bearer ')) {
+            const tokenData = this.oauthServer.validateToken(auth.slice(7));
+            if (tokenData) nodeRedCredentials = tokenData.nodeRedCredentials;
+          }
         }
 
         const { method, params, id, jsonrpc } = req.body as {
@@ -305,7 +316,8 @@ export class ExpressApp {
               if (!params?.name) throw new Error('Tool name required');
               result = await this.mcpServer.callToolPublic(
                 params.name as string,
-                (params.arguments as Record<string, unknown>) || {}
+                (params.arguments as Record<string, unknown>) || {},
+                nodeRedCredentials
               );
               break;
 

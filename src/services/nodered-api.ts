@@ -2,6 +2,8 @@
  * Node-RED Admin API client service
  */
 
+import https from 'https';
+
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -104,6 +106,8 @@ export class NodeRedAPIClient {
     this.client = axios.create({
       baseURL: this.config.baseURL,
       timeout: this.config.timeout,
+      // Allow self-signed certs for local HAOS/homelab HTTPS endpoints
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         'Content-Type': 'application/json',
         ...getNodeRedAuthHeader(),
