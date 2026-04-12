@@ -372,15 +372,15 @@ document.getElementById('loginForm').addEventListener('submit', function() {
               ? 'שם משתמש / סיסמה / token שגויים'
               : `לא ניתן להתחבר ל-Node-RED: ${creds.url}`;
 
-        const q = new URLSearchParams({
-          client_id: client_id ?? '',
-          redirect_uri: redirect_uri ?? '',
-          response_type: 'code',
-          state: state ?? '',
-          scope: scope ?? '',
-          code_challenge: code_challenge ?? '',
-          code_challenge_method: code_challenge_method ?? 'S256',
-        }).toString();
+          const q = new URLSearchParams({
+            client_id: client_id ?? '',
+            redirect_uri: redirect_uri ?? '',
+            response_type: 'code',
+            state: state ?? '',
+            scope: scope ?? '',
+            code_challenge: code_challenge ?? '',
+            code_challenge_method: code_challenge_method ?? 'S256',
+          }).toString();
 
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.status(400).send(`<!DOCTYPE html>

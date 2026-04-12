@@ -13,7 +13,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { NodeRedAPIClient } from '../services/nodered-api.js';
-import type { NodeRedCredentials } from '../types/oauth.js';
 import {
   McpServerConfig,
   McpToolResult,
@@ -25,6 +24,7 @@ import {
   NodeRedSSEResource,
   NodeRedPromptTemplate,
 } from '../types/mcp-extensions.js';
+import type { NodeRedCredentials } from '../types/oauth.js';
 import { validateRequired, validateTypes } from '../utils/error-handling.js';
 
 import { SSEHandler } from './sse-handler.js';
