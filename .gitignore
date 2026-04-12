@@ -144,3 +144,5 @@ mcp-debug.log
 
 /dist
 /memory-bank
+core.585
+e2e-results/

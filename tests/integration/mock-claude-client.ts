@@ -184,13 +184,42 @@ export class MockClaudeClient {
 
     let code: string;
     try {
-      // Server redirects → we catch the redirect and extract `code`
-      const auth = await request(authorizeUrl, { followRedirects: false });
-      if (auth.status !== 302) {
-        result.errors.push(`Authorize: expected 302, got ${auth.status}`);
+      // Step 3a: GET /authorize → may return HTML form (200) or direct redirect (302)
+      const authGet = await request(authorizeUrl, { followRedirects: false });
+
+      let location: string;
+      if (authGet.status === 302) {
+        // Direct redirect (legacy/auto-approve)
+        location = authGet.headers['location'] as string;
+      } else if (authGet.status === 200) {
+        // HTML form — POST credentials (NODERED_SKIP_CREDENTIAL_VALIDATION=true in tests)
+        const authorizePostUrl = new URL(authorizeUrl);
+        const formBody = new URLSearchParams({
+          nr_url: 'http://localhost:1880',
+          auth_type: 'bearer',
+          nr_token: 'test-token',
+        });
+        const authPost = await request(
+          `${authorizePostUrl.origin}${authorizePostUrl.pathname}${authorizePostUrl.search}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formBody.toString(),
+            followRedirects: false,
+          }
+        );
+        if (authPost.status !== 302) {
+          result.errors.push(
+            `Authorize POST: expected 302, got ${authPost.status} — ${authPost.body.slice(0, 200)}`
+          );
+          return result;
+        }
+        location = authPost.headers['location'] as string;
+      } else {
+        result.errors.push(`Authorize: expected 200 or 302, got ${authGet.status}`);
         return result;
       }
-      const location = auth.headers['location'] as string;
+
       if (!location) {
         result.errors.push('Authorize: missing Location header');
         return result;

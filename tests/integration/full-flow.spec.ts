@@ -38,6 +38,7 @@ import { MockClaudeClient } from './mock-claude-client.js';
 function buildTestApp(oauthServer: OAuthServer, sessionManager: SessionManager, baseUrl: string) {
   const app = express();
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
   app.use(oauthServer.createRouter(baseUrl));
 
   // Minimal /mcp endpoint
@@ -121,6 +122,9 @@ describe('Full Claude.ai connection flow', () => {
   let baseUrl: string;
 
   beforeAll(async () => {
+    // Skip Node-RED credential validation in integration tests (no real Node-RED)
+    process.env.NODERED_SKIP_CREDENTIAL_VALIDATION = 'true';
+
     const oauthServer = new OAuthServer();
     const sessionManager = new SessionManager();
 

@@ -356,19 +356,21 @@ document.getElementById('loginForm').addEventListener('submit', function() {
             ? `Bearer ${creds.token}`
             : undefined;
 
-      try {
-        await axios.get(`${creds.url}/settings`, {
-          timeout: 8000,
-          headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
-          httpsAgent: new (await import('https')).Agent({ rejectUnauthorized: false }),
-        });
-      } catch (err: unknown) {
-        const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-        // 401/403 → wrong credentials; connection errors → wrong URL
-        const msg =
-          status === 401 || status === 403
-            ? 'שם משתמש / סיסמה / token שגויים'
-            : `לא ניתן להתחבר ל-Node-RED: ${creds.url}`;
+      const skipValidation = process.env.NODERED_SKIP_CREDENTIAL_VALIDATION === 'true';
+      if (!skipValidation) {
+        try {
+          await axios.get(`${creds.url}/settings`, {
+            timeout: 8000,
+            headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
+            httpsAgent: new (await import('https')).Agent({ rejectUnauthorized: false }),
+          });
+        } catch (err: unknown) {
+          const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+          // 401/403 → wrong credentials; connection errors → wrong URL
+          const msg =
+            status === 401 || status === 403
+              ? 'שם משתמש / סיסמה / token שגויים'
+              : `לא ניתן להתחבר ל-Node-RED: ${creds.url}`;
 
         const q = new URLSearchParams({
           client_id: client_id ?? '',
@@ -380,8 +382,8 @@ document.getElementById('loginForm').addEventListener('submit', function() {
           code_challenge_method: code_challenge_method ?? 'S256',
         }).toString();
 
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.status(400).send(`<!DOCTYPE html>
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.status(400).send(`<!DOCTYPE html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>שגיאה</title>
 <style>body{font-family:sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
@@ -392,7 +394,8 @@ a{color:#6366f1;text-decoration:none;font-weight:600}</style></head>
 <h2 style="margin:12px 0">שגיאת חיבור</h2>
 <div class="err">${msg}</div>
 <a href="/authorize?${q}">← נסה שוב</a></div></body></html>`);
-        return;
+          return;
+        }
       }
 
       const authCode = this.createAuthorizationCode({

@@ -123,6 +123,7 @@ jobs:
         run: yarn test --reporter=verbose --coverage
         env:
           NODE_ENV: test
+          NODERED_SKIP_CREDENTIAL_VALIDATION: 'true'
 
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -177,6 +178,7 @@ jobs:
         run: node dist/index.mjs > /tmp/mcp-server.log 2>&1 &
         env:
           NODE_ENV: test
+          NODERED_SKIP_CREDENTIAL_VALIDATION: 'true'
           PORT: 3000
           MCP_TRANSPORT: http
           HTTP_ENABLED: true
