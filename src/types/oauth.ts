@@ -47,6 +47,7 @@ export interface OAuthAuthorizationServerMetadata {
   authorization_endpoint: string;
   token_endpoint: string;
   registration_endpoint?: string;
+  revocation_endpoint?: string;
   scopes_supported: string[];
   response_types_supported: string[];
   grant_types_supported: string[];

@@ -45,9 +45,27 @@ export class OAuthServer {
   private clients = new Map<string, OAuthClient>();
   private codes = new Map<string, AuthorizationCode>();
   private tokens = new Map<string, AccessToken>();
+  private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
     this.registerDefaultClients();
+    // Purge expired tokens and codes every 10 minutes
+    this.cleanupInterval = setInterval(() => this.cleanup(), 10 * 60 * 1000);
+    this.cleanupInterval.unref();
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [k, v] of this.tokens) {
+      if (now > v.expiresAt) this.tokens.delete(k);
+    }
+    for (const [k, v] of this.codes) {
+      if (now > v.expiresAt) this.codes.delete(k);
+    }
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval);
   }
 
   /**
@@ -134,6 +152,10 @@ export class OAuthServer {
     return entry;
   }
 
+  revokeToken(token: string): void {
+    this.tokens.delete(token);
+  }
+
   // ── PKCE ─────────────────────────────────────────────────────────────────
 
   verifyCodeChallenge(verifier: string, challenge: string, method: 'S256'): boolean {
@@ -155,6 +177,7 @@ export class OAuthServer {
         authorization_endpoint: `${baseUrl}/authorize`,
         token_endpoint: `${baseUrl}/token`,
         registration_endpoint: `${baseUrl}/register`,
+        revocation_endpoint: `${baseUrl}/oauth/revoke`,
         scopes_supported: ['mcp:read', 'mcp:write', 'mcp:admin'],
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code'],
@@ -357,6 +380,16 @@ export class OAuthServer {
 
     router.post('/token', handleToken);
     router.post('/oauth/token', handleToken);
+
+    // ── Token Revocation (RFC 7009) ───────────────────────────────────────
+    router.post('/oauth/revoke', (req: Request, res: Response) => {
+      const { token } = req.body as { token?: string };
+      if (token) {
+        this.revokeToken(token);
+      }
+      // RFC 7009: always respond 200 regardless of whether token existed
+      res.status(200).end();
+    });
 
     return router;
   }

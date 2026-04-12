@@ -430,30 +430,17 @@ export class ExpressApp {
       res.status(204).end();
     });
 
-    // Health check endpoint (public)
+    // Health check endpoint (public — minimal info only)
     this.app.get(
       '/health',
-      asyncHandler(async (req: Request, res: Response) => {
+      asyncHandler(async (_req: Request, res: Response) => {
         const health = await this.mcpServer.getNodeRedClient().healthCheck();
-        const sseStats = this.sseHandler.getStats();
 
-        const response: ApiResponse = {
-          success: true,
-          data: {
-            server: 'healthy',
-            nodeRed: health,
-            sse: {
-              activeConnections: sseStats.activeConnections,
-              totalConnections: sseStats.totalConnections,
-              uptime: sseStats.uptime,
-            },
-            memory: process.memoryUsage(),
-            uptime: process.uptime(),
-          },
+        res.json({
+          status: 'ok',
+          nodeRed: health.healthy ? 'connected' : 'unreachable',
           timestamp: new Date().toISOString(),
-        };
-
-        res.json(response);
+        });
       })
     );
 
