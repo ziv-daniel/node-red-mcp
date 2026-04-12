@@ -21,6 +21,26 @@ import type {
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// Allowed redirect URI prefixes for dynamically registered clients
+const ALLOWED_REDIRECT_ORIGINS = [
+  'https://claude.ai',
+  'https://app.claude.ai',
+  'https://www.claude.ai',
+];
+
+function isAllowedRedirectUri(uri: string): boolean {
+  try {
+    const parsed = new URL(uri);
+    // Allow localhost for development/testing only
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      return true;
+    }
+    return ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin));
+  } catch {
+    return false;
+  }
+}
+
 export class OAuthServer {
   private clients = new Map<string, OAuthClient>();
   private codes = new Map<string, AuthorizationCode>();
@@ -116,13 +136,9 @@ export class OAuthServer {
 
   // ── PKCE ─────────────────────────────────────────────────────────────────
 
-  verifyCodeChallenge(verifier: string, challenge: string, method: 'S256' | 'plain'): boolean {
-    if (method === 'S256') {
-      const computed = createHash('sha256').update(verifier).digest('base64url');
-      return computed === challenge;
-    }
-    // plain
-    return verifier === challenge;
+  verifyCodeChallenge(verifier: string, challenge: string, method: 'S256'): boolean {
+    const computed = createHash('sha256').update(verifier).digest('base64url');
+    return computed === challenge;
   }
 
   // ── Express Router ────────────────────────────────────────────────────────
@@ -165,6 +181,16 @@ export class OAuthServer {
         return;
       }
 
+      // Validate all redirect URIs against allowlist
+      const invalidUris = redirect_uris.filter(uri => !isAllowedRedirectUri(uri));
+      if (invalidUris.length > 0) {
+        res.status(400).json({
+          error: 'invalid_client_metadata',
+          error_description: 'One or more redirect_uris are not allowed',
+        });
+        return;
+      }
+
       const client = this.registerClient({
         name: client_name || 'Unknown Client',
         redirectUris: redirect_uris,
@@ -202,210 +228,52 @@ export class OAuthServer {
         return;
       }
 
-      // Auto-register unknown clients
-      if (!this.clients.get(client_id)) {
-        const newClient = this.registerClient({
-          name: 'Claude',
-          redirectUris: redirect_uri ? [redirect_uri] : [],
-          scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
-        });
-        this.clients.delete(newClient.clientId);
-        this.clients.set(client_id, { ...newClient, clientId: client_id });
+      // Only accept pre-registered clients — no auto-registration
+      const client = this.clients.get(client_id);
+      if (!client) {
+        res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
+        return;
       }
 
-      const defaultUrl = process.env.NODERED_URL || 'https://nodered.danielshaprvt.work';
-      const q = new URLSearchParams({
-        client_id,
-        redirect_uri: redirect_uri ?? '',
-        response_type,
-        state: state ?? '',
-        scope: scope ?? '',
-        code_challenge,
-        code_challenge_method: code_challenge_method ?? 'S256',
-      }).toString();
+      // Validate redirect_uri against the client's registered URIs
+      if (!redirect_uri) {
+        res
+          .status(400)
+          .json({ error: 'invalid_request', error_description: 'redirect_uri required' });
+        return;
+      }
+      if (!client.redirectUris.includes(redirect_uri)) {
+        res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'redirect_uri does not match registered URIs',
+        });
+        return;
+      }
 
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(`<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>התחבר ל-Node-RED</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: #f0f2f5; display: flex; align-items: center; justify-content: center;
-         min-height: 100vh; padding: 20px; }
-  .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.12);
-          padding: 36px; width: 100%; max-width: 420px; }
-  .logo { text-align: center; margin-bottom: 24px; font-size: 32px; }
-  h1 { text-align: center; font-size: 20px; color: #1a1a1a; margin-bottom: 6px; }
-  .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 28px; }
-  label { display: block; font-size: 14px; font-weight: 500; color: #333; margin-bottom: 6px; }
-  input[type=text], input[type=password], input[type=url] {
-    width: 100%; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px;
-    font-size: 15px; outline: none; transition: border-color .2s; }
-  input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
-  .field { margin-bottom: 18px; }
-  .auth-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
-  .tab { flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb;
-         cursor: pointer; text-align: center; font-size: 13px; color: #555; transition: all .15s; }
-  .tab.active { background: #6366f1; color: #fff; border-color: #6366f1; }
-  .section { display: none; }
-  .section.visible { display: block; }
-  button[type=submit] { width: 100%; padding: 12px; background: #6366f1; color: #fff;
-    border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;
-    margin-top: 8px; transition: background .2s; }
-  button[type=submit]:hover { background: #4f46e5; }
-  .error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626;
-           padding: 10px 14px; border-radius: 8px; font-size: 14px; margin-bottom: 16px; display: none; }
-  .error.show { display: block; }
-  .spinner { display: none; }
-  button.loading .spinner { display: inline; }
-  button.loading .btn-text { display: none; }
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="logo">🔴</div>
-  <h1>התחבר ל-Node-RED</h1>
-  <p class="subtitle">הזן את פרטי הגישה ל-Node-RED שלך</p>
+      if (!code_challenge) {
+        res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'code_challenge required (PKCE S256)',
+        });
+        return;
+      }
 
-  <div id="errMsg" class="error"></div>
-
-  <form id="loginForm" method="POST" action="/authorize?${q}">
-    <div class="field">
-      <label for="nr_url">כתובת Node-RED</label>
-      <input type="url" id="nr_url" name="nr_url" value="${defaultUrl}"
-             placeholder="https://nodered.example.com" required>
-    </div>
-
-    <div class="auth-tabs">
-      <div class="tab active" onclick="setTab('bearer')">API Token</div>
-      <div class="tab" onclick="setTab('basic')">שם משתמש + סיסמה</div>
-    </div>
-    <input type="hidden" name="auth_type" id="auth_type" value="bearer">
-
-    <div id="sec-bearer" class="section visible">
-      <div class="field">
-        <label for="nr_token">Token (Bearer)</label>
-        <input type="password" id="nr_token" name="nr_token"
-               placeholder="HA Long-Lived Access Token">
-      </div>
-    </div>
-
-    <div id="sec-basic" class="section">
-      <div class="field">
-        <label for="nr_user">שם משתמש</label>
-        <input type="text" id="nr_user" name="nr_user" placeholder="admin">
-      </div>
-      <div class="field">
-        <label for="nr_pass">סיסמה</label>
-        <input type="password" id="nr_pass" name="nr_pass" placeholder="">
-      </div>
-    </div>
-
-    <button type="submit" id="submitBtn">
-      <span class="btn-text">התחבר</span>
-      <span class="spinner">⏳ מתחבר...</span>
-    </button>
-  </form>
-</div>
-<script>
-function setTab(t) {
-  document.querySelectorAll('.tab').forEach((el,i) =>
-    el.classList.toggle('active', (i===0&&t==='bearer')||(i===1&&t==='basic')));
-  document.getElementById('sec-bearer').classList.toggle('visible', t==='bearer');
-  document.getElementById('sec-basic').classList.toggle('visible', t==='basic');
-  document.getElementById('auth_type').value = t;
-}
-document.getElementById('loginForm').addEventListener('submit', function() {
-  document.getElementById('submitBtn').classList.add('loading');
-});
-</script>
-</body>
-</html>`);
-    };
-
-    // POST /authorize — validate credentials and issue auth code
-    const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
-      const { client_id, redirect_uri, state, scope, code_challenge, code_challenge_method } =
-        req.query as Record<string, string | undefined>;
-
-      const { nr_url, auth_type, nr_token, nr_user, nr_pass } = req.body as Record<string, string>;
-
-      // Validate Node-RED credentials by calling /settings
-      const creds: NodeRedCredentials =
-        auth_type === 'basic'
-          ? {
-              url: (nr_url || '').replace(/\/$/, ''),
-              authType: 'basic',
-              username: nr_user || '',
-              password: nr_pass || '',
-            }
-          : {
-              url: (nr_url || '').replace(/\/$/, ''),
-              authType: 'bearer',
-              token: nr_token || '',
-            };
-
-      const authHeader =
-        creds.authType === 'basic'
-          ? `Basic ${Buffer.from(`${creds.username}:${creds.password}`).toString('base64')}`
-          : creds.token
-            ? `Bearer ${creds.token}`
-            : undefined;
-
-      const skipValidation = process.env.NODERED_SKIP_CREDENTIAL_VALIDATION === 'true';
-      if (!skipValidation) {
-        try {
-          await axios.get(`${creds.url}/settings`, {
-            timeout: 8000,
-            headers: { ...(authHeader ? { Authorization: authHeader } : {}) },
-            httpsAgent: new (await import('https')).Agent({ rejectUnauthorized: false }),
-          });
-        } catch (err: unknown) {
-          const status = axios.isAxiosError(err) ? err.response?.status : undefined;
-          // 401/403 → wrong credentials; connection errors → wrong URL
-          const msg =
-            status === 401 || status === 403
-              ? 'שם משתמש / סיסמה / token שגויים'
-              : `לא ניתן להתחבר ל-Node-RED: ${creds.url}`;
-
-          const q = new URLSearchParams({
-            client_id: client_id ?? '',
-            redirect_uri: redirect_uri ?? '',
-            response_type: 'code',
-            state: state ?? '',
-            scope: scope ?? '',
-            code_challenge: code_challenge ?? '',
-            code_challenge_method: code_challenge_method ?? 'S256',
-          }).toString();
-
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.status(400).send(`<!DOCTYPE html>
-<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>שגיאה</title>
-<style>body{font-family:sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.card{background:#fff;border-radius:12px;padding:32px;max-width:420px;width:100%;text-align:center}
-.err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:12px;border-radius:8px;margin:16px 0}
-a{color:#6366f1;text-decoration:none;font-weight:600}</style></head>
-<body><div class="card"><div style="font-size:32px">❌</div>
-<h2 style="margin:12px 0">שגיאת חיבור</h2>
-<div class="err">${msg}</div>
-<a href="/authorize?${q}">← נסה שוב</a></div></body></html>`);
-          return;
-        }
+      // Only S256 PKCE is supported
+      if (code_challenge_method && code_challenge_method !== 'S256') {
+        res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Only S256 code_challenge_method is supported',
+        });
+        return;
       }
 
       const authCode = this.createAuthorizationCode({
-        clientId: client_id ?? '',
-        redirectUri: redirect_uri ?? '',
-        userId: 'mcp-user',
+        clientId: client_id,
+        redirectUri: redirect_uri,
+        userId,
         scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
-        codeChallenge: code_challenge ?? '',
-        codeChallengeMethod: (code_challenge_method as 'S256' | 'plain') || 'S256',
-        nodeRedCredentials: creds,
+        codeChallenge: code_challenge,
+        codeChallengeMethod: 'S256',
       });
 
       const params = new URLSearchParams({ code: authCode.code });
@@ -449,25 +317,20 @@ a{color:#6366f1;text-decoration:none;font-weight:600}</style></head>
         return;
       }
 
-      if (authCode.codeChallenge && !code_verifier) {
+      // PKCE verification (required)
+      if (!code_verifier) {
         res
           .status(400)
           .json({ error: 'invalid_grant', error_description: 'code_verifier required' });
         return;
       }
 
-      if (code_verifier) {
-        const valid = this.verifyCodeChallenge(
-          code_verifier,
-          authCode.codeChallenge,
-          authCode.codeChallengeMethod
-        );
-        if (!valid) {
-          res
-            .status(400)
-            .json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
-          return;
-        }
+      const valid = this.verifyCodeChallenge(code_verifier, authCode.codeChallenge, 'S256');
+      if (!valid) {
+        res
+          .status(400)
+          .json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
+        return;
       }
 
       if (redirect_uri && authCode.redirectUri && authCode.redirectUri !== redirect_uri) {

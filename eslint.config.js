@@ -94,7 +94,11 @@ export default tseslint.config(
 
   // Test files configuration
   {
-    files: ['test/**/*.{js,mjs,cjs,ts}', 'src/**/*.{test,spec}.{js,mjs,cjs,ts}'],
+    files: [
+      'test/**/*.{js,mjs,cjs,ts}',
+      'tests/**/*.{js,mjs,cjs,ts}',
+      'src/**/*.{test,spec}.{js,mjs,cjs,ts}',
+    ],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

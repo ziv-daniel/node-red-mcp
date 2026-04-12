@@ -495,6 +495,14 @@ export class NodeRedAPIClient {
    * Install node module
    */
   async installNodeModule(moduleName: string, version?: string): Promise<void> {
+    // Validate module name (npm package name format)
+    if (!/^(@[a-z0-9][a-z0-9-._]*\/)?[a-z0-9][a-z0-9-._]*$/.test(moduleName)) {
+      throw new Error(`Invalid module name: ${moduleName}`);
+    }
+    // Validate version if provided (semver-like)
+    if (version && !/^[\d]+\.[\d]+\.[\d]+([-+][a-zA-Z0-9._-]+)?$/.test(version)) {
+      throw new Error(`Invalid module version: ${version}`);
+    }
     try {
       const body = version ? `${moduleName}@${version}` : moduleName;
       await this.client.post('/nodes', { module: body });

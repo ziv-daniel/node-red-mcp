@@ -2,13 +2,31 @@
  * Authentication utilities for JWT and API key management
  */
 
+import { timingSafeEqual } from 'crypto';
+
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
 import { McpAuthContext, NodeRedToolPermissions } from '../types/mcp-extensions.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const API_KEY = process.env.API_KEY || 'your-api-key';
+function getJwtSecret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value) {
+    throw new Error('Required environment variable JWT_SECRET is not set');
+  }
+  if (value.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
+  }
+  return value;
+}
+
+function getApiKey(): string {
+  const value = process.env.API_KEY;
+  if (!value) {
+    throw new Error('Required environment variable API_KEY is not set');
+  }
+  return value;
+}
 
 export interface AuthPayload {
   userId: string;
@@ -25,7 +43,7 @@ export interface AuthRequest extends Request {
  * Generate JWT token for user authentication
  */
 export function generateToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign(payload, getJwtSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
     algorithm: 'HS256',
   } as jwt.SignOptions);
@@ -36,10 +54,9 @@ export function generateToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): string
  */
 export function verifyToken(token: string): AuthPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as AuthPayload;
     return decoded;
-  } catch (error) {
-    console.error('Token verification failed:', error);
+  } catch {
     return null;
   }
 }
@@ -102,13 +119,23 @@ export function authenticateAPIKey(req: AuthRequest, res: Response, next: NextFu
     return;
   }
 
-  if (apiKey !== API_KEY) {
+  const expected = getApiKey();
+  let valid = false;
+  try {
+    const a = Buffer.from(apiKey);
+    const b = Buffer.from(expected);
+    valid = a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    valid = false;
+  }
+
+  if (!valid) {
     res.status(401).json({ error: 'Invalid API key' });
     return;
   }
 
   req.auth = {
-    permissions: ['*'], // API key has all permissions
+    permissions: ['*'],
     isAuthenticated: true,
   };
 
@@ -131,106 +158,6 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
   }
 
   res.status(401).json({ error: 'Authentication required' });
-}
-
-/**
- * Claude-compatible authentication middleware (flexible authentication)
- */
-export function authenticateClaudeCompatible(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): void {
-  const isClaudeMode = process.env.CLAUDE_COMPATIBLE_MODE === 'true';
-  const authRequired = process.env.CLAUDE_AUTH_REQUIRED !== 'false';
-  const acceptAnyToken = process.env.ACCEPT_ANY_BEARER_TOKEN === 'true';
-  const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
-
-  if (debugConnections) {
-    console.log('Claude authentication attempt:', {
-      userAgent: req.get('User-Agent'),
-      origin: req.get('Origin'),
-      authorization: req.headers.authorization ? 'present' : 'missing',
-      headers: Object.keys(req.headers),
-    });
-  }
-
-  // If Claude mode is enabled and auth is not required, allow through
-  if (isClaudeMode && !authRequired) {
-    req.auth = {
-      permissions: ['*'],
-      isAuthenticated: true,
-      userId: 'claude-user',
-    };
-    next();
-    return;
-  }
-
-  const authHeader = req.headers.authorization;
-  const apiKey = req.headers['x-api-key'] as string;
-
-  // Try API key first
-  if (apiKey) {
-    return authenticateAPIKey(req, res, next);
-  }
-
-  // Try Bearer token
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-
-    // In Claude compatible mode, accept any non-empty Bearer token
-    if (isClaudeMode && acceptAnyToken && token.length > 0) {
-      req.auth = {
-        permissions: ['*'],
-        isAuthenticated: true,
-        userId: 'claude-bearer-user',
-      };
-      next();
-      return;
-    }
-
-    // Try normal JWT validation
-    const payload = verifyToken(token);
-    if (payload) {
-      req.auth = {
-        userId: payload.userId,
-        permissions: payload.permissions,
-        isAuthenticated: true,
-        tokenExpiry: new Date(payload.exp! * 1000),
-      };
-      next();
-      return;
-    }
-  }
-
-  // If we get here and it's Claude mode with fallback enabled, allow through
-  if (isClaudeMode && process.env.AUTH_FALLBACK_ENABLED === 'true') {
-    if (debugConnections) {
-      console.log('Using Claude authentication fallback');
-    }
-    req.auth = {
-      permissions: ['*'],
-      isAuthenticated: true,
-      userId: 'claude-fallback-user',
-    };
-    next();
-    return;
-  }
-
-  // Authentication failed
-  if (debugConnections) {
-    console.log('Claude authentication failed:', {
-      authHeader: authHeader ? 'present' : 'missing',
-      apiKey: apiKey ? 'present' : 'missing',
-      claudeMode: isClaudeMode,
-      authRequired,
-    });
-  }
-
-  res.status(401).json({
-    error: 'Authentication required',
-    hint: 'For Claude integration, ensure CLAUDE_COMPATIBLE_MODE=true and CLAUDE_AUTH_REQUIRED=false for testing',
-  });
 }
 
 /**
@@ -271,7 +198,6 @@ export function requirePermission(permission: string) {
       res.status(403).json({
         error: 'Insufficient permissions',
         required: permission,
-        current: req.auth.permissions,
       });
       return;
     }

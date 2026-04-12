@@ -9,7 +9,7 @@ import helmet from 'helmet';
 
 import { NodeRedEventListener } from '../services/nodered-event-listener.js';
 import type { ApiResponse } from '../types/mcp-extensions.js';
-import { authenticate, authenticateClaudeCompatible, getRateLimitKey } from '../utils/auth.js';
+import { authenticate, authenticateAPIKey, verifyToken, getRateLimitKey } from '../utils/auth.js';
 import type { AuthRequest } from '../utils/auth.js';
 import {
   errorHandler,
@@ -64,7 +64,7 @@ export class ExpressApp {
         windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
         max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
       },
-      helmet: process.env.NODE_ENV === 'production',
+      helmet: process.env.DISABLE_HELMET !== 'true',
       ...config,
     };
 
@@ -73,6 +73,47 @@ export class ExpressApp {
     this.setupRoutes();
     this.setupErrorHandling();
   }
+
+  /**
+   * Middleware that validates OAuth Bearer tokens (from OAuthServer) or falls
+   * back to API key auth. Used on MCP/SSE endpoints.
+   */
+  private requireAuth = (req: Request, res: Response, next: NextFunction): void => {
+    const apiKey = req.headers['x-api-key'] as string;
+    if (apiKey) {
+      return authenticateAPIKey(req as AuthRequest, res, next);
+    }
+
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+
+      // Try OAuth opaque token first
+      const oauthToken = this.oauthServer.validateToken(token);
+      if (oauthToken) {
+        (req as AuthRequest).auth = {
+          userId: oauthToken.userId,
+          permissions: oauthToken.scopes,
+          isAuthenticated: true,
+        };
+        return next();
+      }
+
+      // Fall back to JWT
+      const payload = verifyToken(token);
+      if (payload) {
+        (req as AuthRequest).auth = {
+          userId: payload.userId,
+          permissions: payload.permissions,
+          isAuthenticated: true,
+          tokenExpiry: new Date(payload.exp! * 1000),
+        };
+        return next();
+      }
+    }
+
+    res.status(401).json({ error: 'Authentication required' });
+  };
 
   /**
    * Setup Express middleware
@@ -117,16 +158,10 @@ export class ExpressApp {
             this.config.cors.origin,
           ].filter(Boolean);
 
-          // In Claude mode, be more permissive
-          if (isClaudeMode) {
-            if (!origin || allowedOrigins.includes(origin) || origin.includes('claude')) {
-              callback(null, true);
-              return;
-            }
-          }
-
-          // Standard origin check
-          if (!origin || this.config.cors.origin === '*' || allowedOrigins.includes(origin)) {
+          // Allow configured origins (Claude.ai domains always allowed)
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+          } else if (this.config.cors.origin === '*') {
             callback(null, true);
           } else {
             callback(new Error('Not allowed by CORS'));
@@ -147,7 +182,7 @@ export class ExpressApp {
       })
     );
 
-    // Rate limiting
+    // Rate limiting — applied broadly
     const limiter = rateLimit({
       windowMs: this.config.rateLimit.windowMs,
       max: this.config.rateLimit.max,
@@ -161,9 +196,29 @@ export class ExpressApp {
     });
     this.app.use('/api/', limiter);
 
+    // Stricter rate limiting for OAuth and MCP endpoints
+    const mcpLimiter = rateLimit({
+      windowMs: 60 * 1000, // 1 minute
+      max: 60,
+      message: { error: 'Too many MCP requests' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    const oauthLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 30,
+      message: { error: 'Too many OAuth requests' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    this.app.use('/mcp', mcpLimiter);
+    this.app.use('/sse', mcpLimiter);
+    this.app.use('/messages', mcpLimiter);
+    this.app.use('/oauth/', oauthLimiter);
+
     // Body parsing middleware
-    this.app.use(express.json({ limit: '10mb' }));
-    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    this.app.use(express.json({ limit: '1mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
     // Request logging
     this.app.use((req: Request, res: Response, next: NextFunction) => {
@@ -212,8 +267,10 @@ export class ExpressApp {
     // POST /mcp — Single endpoint handles initialize, tools/list, tools/call etc.
     this.app.post(
       '/mcp',
+      this.requireAuth,
       asyncHandler(async (req: Request, res: Response) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        const authReq = req as AuthRequest;
 
         // Enforce auth when CLAUDE_AUTH_REQUIRED=true
         const authRequired = process.env.CLAUDE_AUTH_REQUIRED === 'true';
@@ -246,6 +303,7 @@ export class ExpressApp {
         }
 
         // Resolve or create session
+
         let session = sessionId ? this.sessionManager.get(sessionId) : undefined;
         const isNewSession = !session;
         let nodeRedCredentials = undefined;
@@ -269,6 +327,7 @@ export class ExpressApp {
             const tokenData = this.oauthServer.validateToken(auth.slice(7));
             if (tokenData) nodeRedCredentials = tokenData.nodeRedCredentials;
           }
+
         }
 
         const { method, params, id, jsonrpc } = req.body as {
@@ -539,22 +598,12 @@ export class ExpressApp {
       res.json(response);
     });
 
-    // Add CORS preflight handler for Claude integration
-    this.app.options('/sse', (req: Request, res: Response) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader(
-        'Access-Control-Allow-Headers',
-        'Authorization, Content-Type, Cache-Control, X-Requested-With, X-API-Key'
-      );
-      res.setHeader('Access-Control-Max-Age', '86400');
-      res.status(200).end();
-    });
+    // CORS preflight for SSE — handled by the global cors() middleware above
 
     // Claude website expects /sse endpoint (standard MCP SSE format)
     this.app.get(
       '/sse',
-      authenticateClaudeCompatible,
+      this.requireAuth,
       asyncHandler(async (req: AuthRequest, res: Response) => {
         try {
           const debugConnections = process.env.DEBUG_CLAUDE_CONNECTIONS === 'true';
@@ -568,15 +617,11 @@ export class ExpressApp {
             });
           }
 
-          // Set proper SSE headers for MCP with Claude compatibility
+          // Set proper SSE headers for MCP
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             Connection: 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers':
-              'Authorization, Content-Type, Cache-Control, X-Requested-With, X-API-Key',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'X-MCP-Server': 'nodered-mcp-server',
             'X-MCP-Version': '1.0.0',
             'X-MCP-Protocol': '2025-03-26',
@@ -683,10 +728,9 @@ export class ExpressApp {
     // MCP JSON-RPC endpoint for Claude website (standard MCP format)
     this.app.post(
       '/messages',
+      this.requireAuth,
       asyncHandler(async (req: Request, res: Response) => {
         try {
-          console.log('Received MCP JSON-RPC request:', JSON.stringify(req.body, null, 2));
-
           const { method, params, id, jsonrpc } = req.body;
 
           // Validate JSON-RPC 2.0 format
@@ -762,7 +806,6 @@ export class ExpressApp {
             result,
           };
 
-          console.log('Sending MCP JSON-RPC response:', JSON.stringify(response, null, 2));
           return res.json(response);
         } catch (error) {
           const errorResponse = {
@@ -782,6 +825,7 @@ export class ExpressApp {
     // MCP JSON-RPC endpoint for tool calls (POST requests) - legacy endpoint
     this.app.post(
       '/api/events',
+      this.requireAuth,
       asyncHandler(async (req: Request, res: Response) => {
         try {
           const { method, params, id, jsonrpc } = req.body;
@@ -1247,6 +1291,7 @@ export class ExpressApp {
     );
 
     // Catch-all for undefined routes
+
     // Catch-all for undefined routes (Express 5 with path-to-regexp v8 requires named wildcard)
     this.app.use('/{*splat}', (req: Request, res: Response) => {
       const response: ApiResponse = {

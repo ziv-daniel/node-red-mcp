@@ -51,14 +51,15 @@ export class SessionManager {
       this.sessions.delete(id);
       return undefined;
     }
-    session.lastActivity = Date.now();
-    return session;
+    const updated: McpSession = { ...session, lastActivity: Date.now() };
+    this.sessions.set(id, updated);
+    return updated;
   }
 
   markInitialized(id: string): boolean {
-    const session = this.get(id);
+    const session = this.sessions.get(id);
     if (!session) return false;
-    session.initialized = true;
+    this.sessions.set(id, { ...session, initialized: true });
     return true;
   }
 

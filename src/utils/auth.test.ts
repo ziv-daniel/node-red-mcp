@@ -2,14 +2,32 @@
  * Tests for authentication utilities
  */
 
+import type { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { describe, it, expect, beforeEach } from 'vitest';
 
-// Import the functions we want to test
-import { generateToken, verifyToken, extractToken, type AuthPayload } from './auth.js';
+import type { McpAuthContext } from '../types/mcp-extensions.js';
+
+import {
+  generateToken,
+  verifyToken,
+  extractToken,
+  authenticateJWT,
+  authenticateAPIKey,
+  authenticate,
+  hasPermission,
+  getNodeRedPermissions,
+  requirePermission,
+  createAuthContext,
+  validateNodeRedAuth,
+  getNodeRedAuthHeader,
+  getRateLimitKey,
+  type AuthPayload,
+  type AuthRequest,
+} from './auth.js';
 
 describe('Auth Utils', () => {
-  const mockSecret = 'test-secret-key';
+  const mockSecret = 'test-secret-key-minimum-32-chars-xxxx';
   const mockPayload: Omit<AuthPayload, 'iat' | 'exp'> = {
     userId: 'user123',
     permissions: ['read', 'write'],
@@ -107,13 +125,14 @@ describe('Auth Utils', () => {
 });
 
 describe('Auth Utils Edge Cases', () => {
-  it('should use default secret when JWT_SECRET is missing', () => {
+  it('should throw when JWT_SECRET is missing', () => {
     const originalSecret = process.env.JWT_SECRET;
     delete process.env.JWT_SECRET;
 
-    // Should not throw, will use default secret
-    const token = generateToken({ userId: 'test', permissions: [] });
-    expect(token).toBeDefined();
+    // Should throw — no fallback secret
+    expect(() => generateToken({ userId: 'test', permissions: [] })).toThrow(
+      'JWT_SECRET is not set'
+    );
 
     // Restore environment variable
     process.env.JWT_SECRET = originalSecret;
@@ -136,24 +155,6 @@ describe('Auth Utils Edge Cases', () => {
     expect(result).toBeNull();
   });
 });
-
-// Import additional functions for testing
-import {
-  authenticateJWT,
-  authenticateAPIKey,
-  authenticate,
-  authenticateClaudeCompatible,
-  hasPermission,
-  getNodeRedPermissions,
-  requirePermission,
-  createAuthContext,
-  validateNodeRedAuth,
-  getNodeRedAuthHeader,
-  getRateLimitKey,
-  type AuthRequest,
-} from './auth.js';
-import type { McpAuthContext } from '../types/mcp-extensions.js';
-import type { Response, NextFunction } from 'express';
 
 // Mock express objects helper
 function createMockReqRes(): {
@@ -190,7 +191,7 @@ function createMockReqRes(): {
 }
 
 describe('JWT Authentication Middleware', () => {
-  const mockSecret = 'test-secret-key';
+  const mockSecret = 'test-secret-key-minimum-32-chars-xxxx';
 
   beforeEach(() => {
     process.env.JWT_SECRET = mockSecret;
@@ -279,8 +280,11 @@ describe('JWT Authentication Middleware', () => {
 });
 
 describe('API Key Authentication Middleware', () => {
-  // API_KEY is evaluated at module load time, so we use the default value
-  const mockApiKey = process.env.API_KEY || 'your-api-key';
+  const mockApiKey = 'test-api-key-for-unit-tests';
+
+  beforeEach(() => {
+    process.env.API_KEY = mockApiKey;
+  });
 
   describe('authenticateAPIKey', () => {
     it('should reject request without API key', () => {
@@ -343,12 +347,12 @@ describe('API Key Authentication Middleware', () => {
 });
 
 describe('Flexible Authentication Middleware', () => {
-  const mockSecret = 'test-secret-key';
-  // API_KEY is evaluated at module load time, so we use the default value
-  const mockApiKey = process.env.API_KEY || 'your-api-key';
+  const mockSecret = 'test-secret-key-minimum-32-chars-xxxx';
+  const mockApiKey = 'test-api-key-for-unit-tests';
 
   beforeEach(() => {
     process.env.JWT_SECRET = mockSecret;
+    process.env.API_KEY = mockApiKey;
   });
 
   describe('authenticate', () => {
@@ -399,81 +403,6 @@ describe('Flexible Authentication Middleware', () => {
 
       expect(statusCode).toBe(401);
       expect(jsonData).toHaveProperty('error', 'Authentication required');
-    });
-  });
-});
-
-describe('Claude Compatible Authentication', () => {
-  beforeEach(() => {
-    // Reset environment variables
-    delete process.env.CLAUDE_COMPATIBLE_MODE;
-    delete process.env.CLAUDE_AUTH_REQUIRED;
-    delete process.env.ACCEPT_ANY_BEARER_TOKEN;
-    delete process.env.AUTH_FALLBACK_ENABLED;
-    delete process.env.DEBUG_CLAUDE_CONNECTIONS;
-  });
-
-  describe('authenticateClaudeCompatible', () => {
-    it('should allow through when Claude mode enabled and auth not required', () => {
-      const { req, res, next } = createMockReqRes();
-      let nextCalled = false;
-
-      process.env.CLAUDE_COMPATIBLE_MODE = 'true';
-      process.env.CLAUDE_AUTH_REQUIRED = 'false';
-
-      authenticateClaudeCompatible(req, res as Response, () => {
-        nextCalled = true;
-      });
-
-      expect(nextCalled).toBe(true);
-      expect(req.auth?.userId).toBe('claude-user');
-      expect(req.auth?.isAuthenticated).toBe(true);
-    });
-
-    it('should accept any bearer token when configured', () => {
-      const { req, res, next } = createMockReqRes();
-      let nextCalled = false;
-
-      process.env.CLAUDE_COMPATIBLE_MODE = 'true';
-      process.env.ACCEPT_ANY_BEARER_TOKEN = 'true';
-      req.headers.authorization = 'Bearer any-token-here';
-
-      authenticateClaudeCompatible(req, res as Response, () => {
-        nextCalled = true;
-      });
-
-      expect(nextCalled).toBe(true);
-      expect(req.auth?.userId).toBe('claude-bearer-user');
-    });
-
-    it('should use fallback when enabled', () => {
-      const { req, res, next } = createMockReqRes();
-      let nextCalled = false;
-
-      process.env.CLAUDE_COMPATIBLE_MODE = 'true';
-      process.env.AUTH_FALLBACK_ENABLED = 'true';
-
-      authenticateClaudeCompatible(req, res as Response, () => {
-        nextCalled = true;
-      });
-
-      expect(nextCalled).toBe(true);
-      expect(req.auth?.userId).toBe('claude-fallback-user');
-    });
-
-    it('should reject when no valid auth and fallback disabled', () => {
-      const { req, res, next } = createMockReqRes();
-      let statusCode: number | null = null;
-
-      (res.status as any) = (code: number) => {
-        statusCode = code;
-        return res;
-      };
-      (res.json as any) = () => res;
-
-      authenticateClaudeCompatible(req, res as Response, next);
-
-      expect(statusCode).toBe(401);
     });
   });
 });

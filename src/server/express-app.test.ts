@@ -3,9 +3,9 @@
  * Tests for HTTP endpoints and middleware
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import request from 'supertest';
 import type { Express } from 'express';
+import request from 'supertest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Create mock objects with vi.hoisted to ensure they're available before imports
 const { mockSSEHandler, mockNodeRedClient, mockEventListener, mockMcpServer } = vi.hoisted(() => {
@@ -40,9 +40,7 @@ const { mockSSEHandler, mockNodeRedClient, mockEventListener, mockMcpServer } = 
         details: { flowCount: 5, nodeCount: 25 },
       })
     ),
-    getFlows: vi.fn(() =>
-      Promise.resolve([{ id: 'flow-1', label: 'Test Flow', type: 'tab' }])
-    ),
+    getFlows: vi.fn(() => Promise.resolve([{ id: 'flow-1', label: 'Test Flow', type: 'tab' }])),
     getNodeTypes: vi.fn(() =>
       Promise.resolve([{ id: 'inject', name: 'inject', module: 'node-red' }])
     ),
@@ -98,10 +96,11 @@ vi.mock('../utils/auth.js', () => ({
     req.auth = { userId: 'test-user', permissions: ['*'], isAuthenticated: true };
     next();
   }),
-  authenticateClaudeCompatible: vi.fn((req: any, res: any, next: any) => {
-    req.auth = { userId: 'claude-user', permissions: ['*'], isAuthenticated: true };
+  authenticateAPIKey: vi.fn((req: any, res: any, next: any) => {
+    req.auth = { userId: 'test-user', permissions: ['*'], isAuthenticated: true };
     next();
   }),
+  verifyToken: vi.fn(() => null),
   getRateLimitKey: vi.fn((req: any) => req.ip || '127.0.0.1'),
 }));
 
@@ -124,6 +123,8 @@ describe('ExpressApp', () => {
     process.env.PORT = '3001';
     process.env.HOST = 'localhost';
     process.env.NODE_ENV = 'test';
+    process.env.JWT_SECRET = 'test-secret-key-minimum-32-chars-xxxx';
+    process.env.API_KEY = 'test-api-key';
 
     // Pass the mock directly instead of using new McpNodeRedServer()
     expressApp = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer, {
@@ -237,25 +238,6 @@ describe('ExpressApp', () => {
         expect(res.body.result).toHaveProperty('serverInfo');
       });
     });
-
-    describe('GET /debug/claude-connection', () => {
-      it('should return debug info', async () => {
-        const res = await request(app).get('/debug/claude-connection');
-
-        expect(res.status).toBe(200);
-        expect(res.body).toHaveProperty('server');
-        expect(res.body).toHaveProperty('request');
-        expect(res.body).toHaveProperty('endpoints');
-        expect(res.body).toHaveProperty('nodeRed');
-      });
-
-      it('should test Node-RED connection', async () => {
-        const res = await request(app).get('/debug/claude-connection');
-
-        expect(res.body.nodeRed.status).toBe('connected');
-        expect(mockNodeRedClient.healthCheck).toHaveBeenCalled();
-      });
-    });
   });
 
   describe('MCP Endpoints', () => {
@@ -263,6 +245,7 @@ describe('ExpressApp', () => {
       it('should initialize MCP session', async () => {
         const res = await request(app)
           .post('/api/mcp/initialize')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 1 });
 
         expect(res.status).toBe(200);
@@ -278,6 +261,7 @@ describe('ExpressApp', () => {
       it('should handle initialize method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 1, method: 'initialize' });
 
         expect(res.status).toBe(200);
@@ -288,6 +272,7 @@ describe('ExpressApp', () => {
       it('should handle tools/list method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
 
         expect(res.status).toBe(200);
@@ -297,6 +282,7 @@ describe('ExpressApp', () => {
       it('should handle tools/call method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({
             jsonrpc: '2.0',
             id: 3,
@@ -311,6 +297,7 @@ describe('ExpressApp', () => {
       it('should handle resources/list method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 4, method: 'resources/list' });
 
         expect(res.status).toBe(200);
@@ -320,6 +307,7 @@ describe('ExpressApp', () => {
       it('should handle prompts/list method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 5, method: 'prompts/list' });
 
         expect(res.status).toBe(200);
@@ -329,6 +317,7 @@ describe('ExpressApp', () => {
       it('should reject invalid JSON-RPC version', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '1.0', id: 1, method: 'initialize' });
 
         expect(res.status).toBe(400);
@@ -339,6 +328,7 @@ describe('ExpressApp', () => {
       it('should return error for unknown method', async () => {
         const res = await request(app)
           .post('/messages')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 6, method: 'unknown/method' });
 
         expect(res.status).toBe(500);
@@ -347,14 +337,12 @@ describe('ExpressApp', () => {
       });
 
       it('should require tool name for tools/call', async () => {
-        const res = await request(app)
-          .post('/messages')
-          .send({
-            jsonrpc: '2.0',
-            id: 7,
-            method: 'tools/call',
-            params: {},
-          });
+        const res = await request(app).post('/messages').set('x-api-key', 'test-api-key').send({
+          jsonrpc: '2.0',
+          id: 7,
+          method: 'tools/call',
+          params: {},
+        });
 
         expect(res.status).toBe(500);
         expect(res.body.error.message).toContain('Tool name is required');
@@ -365,6 +353,7 @@ describe('ExpressApp', () => {
       it('should handle initialize method', async () => {
         const res = await request(app)
           .post('/api/events')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 1, method: 'initialize' });
 
         expect(res.status).toBe(200);
@@ -374,6 +363,7 @@ describe('ExpressApp', () => {
       it('should reject invalid JSON-RPC version', async () => {
         const res = await request(app)
           .post('/api/events')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '1.0', id: 1, method: 'initialize' });
 
         expect(res.status).toBe(400);
@@ -622,6 +612,7 @@ describe('ExpressApp', () => {
         const res = await request(app)
           .post('/messages')
           .set('Content-Type', 'application/json')
+          .set('x-api-key', 'test-api-key')
           .send({ jsonrpc: '2.0', id: 1, method: 'initialize' });
 
         expect(res.status).toBe(200);
@@ -643,9 +634,7 @@ describe('ExpressApp', () => {
     });
 
     it('should allow Claude.ai origins', async () => {
-      const res = await request(app)
-        .get('/health')
-        .set('Origin', 'https://claude.ai');
+      const res = await request(app).get('/health').set('Origin', 'https://claude.ai');
 
       expect(res.status).toBe(200);
     });

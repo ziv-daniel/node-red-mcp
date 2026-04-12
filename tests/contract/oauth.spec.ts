@@ -131,14 +131,7 @@ describe('OAuthServer', () => {
       expect(server.verifyCodeChallenge(wrongVerifier, challenge, 'S256')).toBe(false);
     });
 
-    it('plain: verifies matching verifier', () => {
-      const verifier = 'some-plain-verifier';
-      expect(server.verifyCodeChallenge(verifier, verifier, 'plain')).toBe(true);
-    });
-
-    it('plain: rejects non-matching verifier', () => {
-      expect(server.verifyCodeChallenge('abc', 'xyz', 'plain')).toBe(false);
-    });
+    // plain PKCE method is intentionally not supported (only S256 is allowed)
   });
 
   // ── Access Token ──────────────────────────────────────────────────────────

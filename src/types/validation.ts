@@ -19,8 +19,9 @@ export const envSchema = z.object({
   NODERED_USERNAME: z.string().optional(),
   NODERED_PASSWORD: z.string().optional(),
 
-  // Security Configuration
-  JWT_SECRET: z.string().min(32).optional(),
+  // Security Configuration — JWT_SECRET is required and must be at least 32 characters
+  JWT_SECRET: z.string().min(32),
+  API_KEY: z.string().min(16),
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW: z.coerce.number().int().positive().default(900000), // 15 minutes
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
