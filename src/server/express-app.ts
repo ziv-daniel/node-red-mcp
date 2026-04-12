@@ -215,6 +215,32 @@ export class ExpressApp {
       asyncHandler(async (req: Request, res: Response) => {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
+        // Enforce auth when CLAUDE_AUTH_REQUIRED=true
+        const authRequired = process.env.CLAUDE_AUTH_REQUIRED === 'true';
+        if (authRequired) {
+          const auth = req.headers.authorization;
+          if (!auth?.startsWith('Bearer ')) {
+            const resourceUrl =
+              process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
+            res.setHeader(
+              'WWW-Authenticate',
+              `Bearer resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource"`
+            );
+            return res.status(401).json({ error: 'unauthorized', error_description: 'Bearer token required' });
+          }
+          const token = auth.slice(7);
+          const tokenData = this.oauthServer.validateToken(token);
+          if (!tokenData) {
+            const resourceUrl =
+              process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
+            res.setHeader(
+              'WWW-Authenticate',
+              `Bearer resource_metadata="${resourceUrl}/.well-known/oauth-protected-resource", error="invalid_token"`
+            );
+            return res.status(401).json({ error: 'invalid_token', error_description: 'Token is invalid or expired' });
+          }
+        }
+
         // Resolve or create session
         let session = sessionId ? this.sessionManager.get(sessionId) : undefined;
         const isNewSession = !session;

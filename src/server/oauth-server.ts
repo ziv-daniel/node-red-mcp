@@ -132,20 +132,24 @@ export class OAuthServer {
     router.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
       const meta: OAuthAuthorizationServerMetadata = {
         issuer: baseUrl,
-        authorization_endpoint: `${baseUrl}/oauth/authorize`,
-        token_endpoint: `${baseUrl}/oauth/token`,
-        registration_endpoint: `${baseUrl}/oauth/register`,
+        // Advertise root paths — Claude.ai web ignores these and hardcodes /authorize /token /register,
+        // but Claude Code and compliant clients will use these correctly.
+        authorization_endpoint: `${baseUrl}/authorize`,
+        token_endpoint: `${baseUrl}/token`,
+        registration_endpoint: `${baseUrl}/register`,
         scopes_supported: ['mcp:read', 'mcp:write', 'mcp:admin'],
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code'],
         token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
-        code_challenge_methods_supported: ['S256', 'plain'],
+        code_challenge_methods_supported: ['S256'],
       };
       res.json(meta);
     });
 
     // ── Dynamic Client Registration (RFC 7591) ────────────────────────────
-    router.post('/oauth/register', (req: Request, res: Response) => {
+    // Claude.ai web hardcodes /register at root, so we expose it there.
+    // Keep /oauth/register as well for compliant clients that read the metadata.
+    const handleRegister = (req: Request, res: Response): void => {
       const { client_name, redirect_uris, scope } = req.body as {
         client_name?: string;
         redirect_uris?: string[];
@@ -173,10 +177,14 @@ export class OAuthServer {
         response_types: ['code'],
         token_endpoint_auth_method: 'none',
       });
-    });
+    };
+
+    router.post('/register', handleRegister);
+    router.post('/oauth/register', handleRegister);
 
     // ── Authorization Endpoint ────────────────────────────────────────────
-    router.get('/oauth/authorize', (req: Request, res: Response) => {
+    // Claude.ai web hardcodes /authorize, compliant clients use path from metadata.
+    const handleAuthorize = (req: Request, res: Response): void => {
       const {
         client_id,
         redirect_uri,
@@ -187,7 +195,6 @@ export class OAuthServer {
         code_challenge_method,
       } = req.query as Record<string, string | undefined>;
 
-      // Validate required params
       if (!client_id) {
         res.status(400).json({ error: 'invalid_request', error_description: 'client_id required' });
         return;
@@ -217,11 +224,9 @@ export class OAuthServer {
         return;
       }
 
-      // For server-to-server / headless: auto-approve
-      // In production this would show a consent screen
       const userId = 'mcp-user';
       const authCode = this.createAuthorizationCode({
-        clientId: client_id, // narrowed to string above
+        clientId: client_id,
         redirectUri: redirect_uri ?? '',
         userId,
         scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
@@ -234,10 +239,14 @@ export class OAuthServer {
 
       const redirectTo = `${redirect_uri}?${params.toString()}`;
       res.redirect(302, redirectTo);
-    });
+    };
+
+    router.get('/authorize', handleAuthorize);
+    router.get('/oauth/authorize', handleAuthorize);
 
     // ── Token Endpoint ────────────────────────────────────────────────────
-    router.post('/oauth/token', (req: Request, res: Response) => {
+    // Claude.ai web hardcodes /token, compliant clients use path from metadata.
+    const handleToken = (req: Request, res: Response): void => {
       const { grant_type, code, redirect_uri, client_id, code_verifier } = req.body as Record<
         string,
         string
@@ -266,7 +275,6 @@ export class OAuthServer {
         return;
       }
 
-      // PKCE verification
       if (authCode.codeChallenge && !code_verifier) {
         res
           .status(400)
@@ -307,7 +315,10 @@ export class OAuthServer {
         expires_in: Math.floor(TOKEN_TTL_MS / 1000),
         scope: accessToken.scopes.join(' '),
       });
-    });
+    };
+
+    router.post('/token', handleToken);
+    router.post('/oauth/token', handleToken);
 
     return router;
   }
