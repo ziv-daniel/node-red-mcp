@@ -3,8 +3,9 @@
  * Tests for health check handlers, metrics functions, and probe endpoints
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import axios from 'axios';
 import type { Request, Response } from 'express';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock dependencies before imports
 vi.mock('axios');
@@ -28,7 +29,8 @@ vi.mock('../utils/logger.js', () => ({
   logPerformance: vi.fn(),
 }));
 
-import axios from 'axios';
+import { appConfig } from '../utils/config.js';
+
 import {
   incrementHttpMetrics,
   updateMcpMetrics,
@@ -39,7 +41,6 @@ import {
   metricsHandler,
   resetMetricsHandler,
 } from './health.js';
-import { appConfig } from '../utils/config.js';
 
 // Mock Express Request/Response
 function createMockRequest(overrides: Partial<Request> = {}): Request {
