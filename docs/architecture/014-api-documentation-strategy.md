@@ -8,10 +8,11 @@
 ## Context
 
 The project lacks comprehensive API documentation for the 20+ MCP tools and HTTP
-endpoints, making it difficult for users to understand capabilities and integrate
-with the server:
+endpoints, making it difficult for users to understand capabilities and
+integrate with the server:
 
 ### Current Documentation State
+
 - ✅ **README**: Basic overview and quick start
 - ✅ **ADRs**: Architectural decisions documented
 - ⏳ **API Reference**: Incomplete tool documentation
@@ -20,6 +21,7 @@ with the server:
 - ⏳ **OpenAPI Spec**: Partially defined in docs/api/openapi.yaml
 
 ### Documentation Needs
+
 1. **MCP Tools**: All 20+ tools with parameters, responses, examples
 2. **HTTP API**: REST endpoints for HTTP transport mode
 3. **SSE Events**: Event types, formats, subscription patterns
@@ -29,6 +31,7 @@ with the server:
 7. **Best Practices**: Common patterns and anti-patterns
 
 ### Target Audiences
+
 - **AI Model Users**: Using through Claude Desktop (MCP tools)
 - **Developers**: Integrating via HTTP API
 - **System Admins**: Deploying and configuring
@@ -36,8 +39,9 @@ with the server:
 
 ## Decision
 
-Implement comprehensive, multi-format documentation with **OpenAPI specification**,
-**interactive playground**, **code examples**, and **integration guides**:
+Implement comprehensive, multi-format documentation with **OpenAPI
+specification**, **interactive playground**, **code examples**, and
+**integration guides**:
 
 ### Documentation Architecture
 
@@ -69,36 +73,40 @@ docs/
 ### Documentation Formats
 
 **1. OpenAPI Specification** (Machine-readable)
+
 - Complete API specification in openapi.yaml
 - Used for code generation, validation, API client generation
 - Powers interactive documentation (Swagger UI / Redoc)
 
 **2. Markdown Documentation** (Human-readable)
+
 - API reference with descriptions and examples
 - Integration guides and tutorials
 - Searchable, version-controlled
 
 **3. Interactive Playground** (Hands-on)
+
 - Swagger UI or Redoc for HTTP API
 - Live API testing directly in browser
 - No code required to explore
 
 **4. Code Examples** (Copy-paste ready)
+
 - Multiple languages (Node.js, Python, curl)
 - Common workflows and patterns
 - Runnable examples in repository
 
 ### Documentation Tooling
 
-**Documentation Generator**: Use TypeDoc for TypeScript code
-**API Explorer**: Swagger UI or Redoc for OpenAPI
-**Version Control**: Git for all documentation
-**Automation**: Generate docs from code where possible
-**Search**: Use GitHub search or Algolia DocSearch
+**Documentation Generator**: Use TypeDoc for TypeScript code **API Explorer**:
+Swagger UI or Redoc for OpenAPI **Version Control**: Git for all documentation
+**Automation**: Generate docs from code where possible **Search**: Use GitHub
+search or Algolia DocSearch
 
 ## Rationale
 
 ### Why OpenAPI?
+
 - **Standard**: Industry-standard API specification format
 - **Tooling**: Excellent ecosystem (codegen, validation, UI)
 - **Machine-Readable**: Enables code generation and validation
@@ -106,18 +114,21 @@ docs/
 - **Contract**: Serves as API contract
 
 ### Why Multiple Formats?
+
 - **OpenAPI**: For tools and API clients
 - **Markdown**: For human readers and GitHub integration
 - **Examples**: For quick start and copy-paste
 - **Different Audiences**: Different preferences and needs
 
 ### Why Interactive Playground?
+
 - **Try Before Use**: Test API without writing code
 - **Learning**: Understand API by experimenting
 - **Debugging**: Test requests and see responses
 - **Discovery**: Explore capabilities interactively
 
 ### Why Examples Repository?
+
 - **Quick Start**: Get running immediately
 - **Best Practices**: Show recommended patterns
 - **Reference**: Real working code to learn from
@@ -126,11 +137,14 @@ docs/
 ## Alternatives Considered
 
 ### Alternative 1: Code Comments Only
+
 **Pros**:
+
 - Minimal effort
 - Close to code
 
 **Cons**:
+
 - Not discoverable
 - No user-facing docs
 - Hard to maintain
@@ -139,12 +153,15 @@ docs/
 **Verdict**: ❌ Rejected - Insufficient for users
 
 ### Alternative 2: Wiki or Confluence
+
 **Pros**:
+
 - Easy to edit
 - Rich formatting
 - Collaborative
 
 **Cons**:
+
 - Not version-controlled with code
 - Gets outdated quickly
 - No code review for docs
@@ -153,12 +170,15 @@ docs/
 **Verdict**: ❌ Rejected - Docs should live with code
 
 ### Alternative 3: Custom Documentation Site
+
 **Pros**:
+
 - Full control over design
 - Custom features
 - Beautiful presentation
 
 **Cons**:
+
 - Significant development effort
 - Maintenance burden
 - Unnecessary complexity
@@ -167,12 +187,15 @@ docs/
 **Verdict**: ❌ Rejected - Overengineering
 
 ### Alternative 4: GraphQL Schema + Playground
+
 **Pros**:
+
 - Self-documenting
 - Great tooling (GraphiQL)
 - Type-safe
 
 **Cons**:
+
 - Requires GraphQL adoption
 - Not RESTful (current design)
 - Major architectural change
@@ -183,6 +206,7 @@ docs/
 ## Consequences
 
 ### Positive
+
 - ✅ **Discoverability**: Users can find and understand tools
 - ✅ **Adoption**: Lower barrier to integration
 - ✅ **Reduced Support**: Self-service documentation
@@ -192,6 +216,7 @@ docs/
 - ✅ **Standard**: OpenAPI enables ecosystem tooling
 
 ### Negative
+
 - ⚠️ **Maintenance**: Documentation requires ongoing updates
 - ⚠️ **Initial Effort**: Significant work to create comprehensive docs
 - ⚠️ **Sync Risk**: Docs can drift from implementation
@@ -199,6 +224,7 @@ docs/
 - ⚠️ **Hosting**: Interactive docs need web hosting
 
 ### Mitigation Strategies
+
 - Automate doc generation from code where possible
 - Include doc updates in PR checklist
 - CI/CD checks for OpenAPI validation
@@ -335,7 +361,7 @@ components:
 
 ### Phase 2: MCP Tools Documentation (Week 1)
 
-```markdown
+````markdown
 # docs/api/mcp-tools.md
 
 # MCP Tools Reference
@@ -346,10 +372,10 @@ Get list of Node-RED flows with optional details.
 
 ### Parameters
 
-| Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
-| `includeDetails` | boolean | No | `false` | Include full node details |
-| `types` | string[] | No | `["tab", "subflow"]` | Flow types to filter |
+| Name             | Type     | Required | Default              | Description               |
+| ---------------- | -------- | -------- | -------------------- | ------------------------- |
+| `includeDetails` | boolean  | No       | `false`              | Include full node details |
+| `types`          | string[] | No       | `["tab", "subflow"]` | Flow types to filter      |
 
 ### Response
 
@@ -360,6 +386,7 @@ Get list of Node-RED flows with optional details.
   cacheAge?: number;
 }
 ```
+````
 
 ### Example
 
@@ -367,7 +394,7 @@ Get list of Node-RED flows with optional details.
 // Using MCP SDK
 const result = await client.callTool('get_flows', {
   includeDetails: false,
-  types: ['tab']
+  types: ['tab'],
 });
 
 console.log(result.flows);
@@ -386,7 +413,8 @@ console.log(result.flows);
 Create a new Node-RED flow.
 
 [... detailed documentation for each tool ...]
-```
+
+````
 
 ### Phase 3: Integration Guides (Week 2)
 
@@ -410,7 +438,7 @@ git clone https://github.com/ziv-daniel/node-red-mcp.git
 cd node-red-mcp
 yarn install
 yarn build
-```
+````
 
 ### 2. Configure Claude Desktop
 
@@ -446,7 +474,8 @@ Ask Claude: "Can you list my Node-RED flows?"
 ## Usage Examples
 
 [... detailed usage examples ...]
-```
+
+````
 
 ### Phase 4: Interactive Documentation (Week 2)
 
@@ -461,7 +490,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: 'MCP Node-RED Server API'
 }));
-```
+````
 
 ### Phase 5: Code Examples (Week 3)
 
@@ -472,7 +501,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 const client = new Client({
   name: 'example-client',
-  version: '1.0.0'
+  version: '1.0.0',
 });
 
 // Connect to server
@@ -480,7 +509,7 @@ await client.connect(transport);
 
 // Get flows
 const flows = await client.callTool('get_flows', {
-  includeDetails: false
+  includeDetails: false,
 });
 
 console.log('Flows:', flows);
@@ -490,8 +519,8 @@ const newFlow = await client.callTool('create_flow', {
   flowData: {
     label: 'My New Flow',
     nodes: [],
-    connections: {}
-  }
+    connections: {},
+  },
 });
 
 console.log('Created flow:', newFlow);
@@ -557,8 +586,10 @@ jobs:
 
 ## Related ADRs
 
-- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) - API design
-- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) - SSE documentation needs
+- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) -
+  API design
+- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) -
+  SSE documentation needs
 
 ## References
 

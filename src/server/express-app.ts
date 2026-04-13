@@ -327,7 +327,6 @@ export class ExpressApp {
             const tokenData = this.oauthServer.validateToken(auth.slice(7));
             if (tokenData) nodeRedCredentials = tokenData.nodeRedCredentials;
           }
-
         }
 
         const { method, params, id, jsonrpc } = req.body as {

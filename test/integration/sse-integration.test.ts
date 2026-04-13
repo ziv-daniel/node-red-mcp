@@ -12,9 +12,7 @@ import { NodeRedEventListener } from '../../src/services/nodered-event-listener.
 // Mock NodeRedAPIClient
 const mockNodeRedClient = {
   healthCheck: vi.fn().mockResolvedValue({ healthy: true }),
-  getFlows: vi.fn().mockResolvedValue([
-    { id: 'flow-1', label: 'Test Flow', type: 'tab' },
-  ]),
+  getFlows: vi.fn().mockResolvedValue([{ id: 'flow-1', label: 'Test Flow', type: 'tab' }]),
 };
 
 vi.mock('../../src/services/nodered-api.js', () => ({
@@ -25,9 +23,7 @@ vi.mock('../../src/services/nodered-api.js', () => ({
 function createMockRequest(overrides: Record<string, any> = {}): any {
   const emitter = new EventEmitter();
   return {
-    get: vi.fn((header: string) =>
-      header === 'User-Agent' ? 'Test-Agent/1.0' : undefined
-    ),
+    get: vi.fn((header: string) => (header === 'User-Agent' ? 'Test-Agent/1.0' : undefined)),
     ip: '127.0.0.1',
     auth: { userId: 'test-user' },
     on: emitter.on.bind(emitter),
@@ -196,7 +192,7 @@ describe('SSE Integration', () => {
       const sentCount = sseHandler.broadcast({
         type: 'test-topic',
         timestamp: new Date().toISOString(),
-        data: {}
+        data: {},
       });
 
       expect(sentCount).toBe(3);
@@ -239,10 +235,7 @@ describe('SSE Integration', () => {
 
   describe('NodeRedEventListener Integration', () => {
     it('should broadcast flow deploy events from listener', () => {
-      const eventListener = new NodeRedEventListener(
-        sseHandler,
-        mockNodeRedClient as any
-      );
+      const eventListener = new NodeRedEventListener(sseHandler, mockNodeRedClient as any);
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -261,10 +254,7 @@ describe('SSE Integration', () => {
     });
 
     it('should broadcast node status events from listener', () => {
-      const eventListener = new NodeRedEventListener(
-        sseHandler,
-        mockNodeRedClient as any
-      );
+      const eventListener = new NodeRedEventListener(sseHandler, mockNodeRedClient as any);
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -283,10 +273,7 @@ describe('SSE Integration', () => {
     });
 
     it('should broadcast monitoring start event', () => {
-      const eventListener = new NodeRedEventListener(
-        sseHandler,
-        mockNodeRedClient as any
-      );
+      const eventListener = new NodeRedEventListener(sseHandler, mockNodeRedClient as any);
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -304,10 +291,7 @@ describe('SSE Integration', () => {
     });
 
     it('should broadcast monitoring stop event', () => {
-      const eventListener = new NodeRedEventListener(
-        sseHandler,
-        mockNodeRedClient as any
-      );
+      const eventListener = new NodeRedEventListener(sseHandler, mockNodeRedClient as any);
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -335,7 +319,11 @@ describe('SSE Integration', () => {
 
       // Send some broadcasts
       for (let i = 0; i < 3; i++) {
-        sseHandler.broadcast({ type: 'test', timestamp: new Date().toISOString(), data: { count: i } });
+        sseHandler.broadcast({
+          type: 'test',
+          timestamp: new Date().toISOString(),
+          data: { count: i },
+        });
       }
 
       const finalStats = sseHandler.getStats();

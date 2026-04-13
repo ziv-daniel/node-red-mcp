@@ -11,6 +11,7 @@ The MCP Node-RED server currently has basic observability features but lacks
 comprehensive production-grade monitoring, logging, and tracing capabilities:
 
 ### Current State
+
 - **Logging**: Basic Pino setup with pretty printing for development
 - **Metrics**: No structured metrics collection
 - **Tracing**: OpenTelemetry dependencies installed but not fully configured
@@ -18,6 +19,7 @@ comprehensive production-grade monitoring, logging, and tracing capabilities:
 - **Debugging**: Limited correlation between logs, traces, and metrics
 
 ### Production Requirements
+
 - **Multi-environment Support**: Development, staging, production
 - **Structured Logging**: JSON logs with correlation IDs
 - **Distributed Tracing**: Track requests across MCP, Node-RED, and SSE
@@ -26,6 +28,7 @@ comprehensive production-grade monitoring, logging, and tracing capabilities:
 - **Debugging**: Quick root cause analysis
 
 ### Observability Pillars
+
 1. **Logs**: What happened (events, errors, debug info)
 2. **Metrics**: How much/how often (performance, counts, gauges)
 3. **Traces**: Where time was spent (distributed request flow)
@@ -38,11 +41,13 @@ Implement a comprehensive observability stack using **Pino for logging** and
 ### Logging Strategy: Pino
 
 **Development**:
+
 - Pretty printing with colors
 - Debug level logging
 - Console output
 
 **Production**:
+
 - Structured JSON logs
 - Info level default (configurable)
 - Correlation IDs for request tracking
@@ -50,6 +55,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - Log aggregation to stdout (captured by container orchestration)
 
 **Log Structure**:
+
 ```json
 {
   "level": "info",
@@ -69,11 +75,13 @@ Implement a comprehensive observability stack using **Pino for logging** and
 ### Metrics & Tracing: OpenTelemetry
 
 **Automatic Instrumentation**:
+
 - HTTP server/client requests
 - Database queries (if added later)
 - External API calls (Node-RED API)
 
 **Custom Metrics**:
+
 - MCP tool invocation counts
 - Tool execution duration
 - Error rates by tool
@@ -82,18 +90,21 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - Node-RED API call latency
 
 **Custom Spans**:
+
 - MCP tool execution
 - Node-RED API operations
 - SSE event broadcasting
 - Authentication flows
 
 **Export Targets**:
+
 - **Development**: Console exporter
 - **Production**: OTLP exporter to Jaeger/Grafana Tempo
 
 ### Monitoring Dashboard: Grafana
 
 **Dashboards**:
+
 1. **System Health**: CPU, memory, connections
 2. **MCP Tools**: Invocation rates, latency, errors
 3. **Node-RED Integration**: API call success/failure, latency
@@ -101,6 +112,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 5. **Errors**: Error rates, error types, stack traces
 
 **Alerting Rules**:
+
 - Error rate > 5% for 5 minutes
 - Tool latency > 1s p95
 - Memory usage > 80%
@@ -109,6 +121,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 ## Rationale
 
 ### Why Pino?
+
 - **Performance**: Fastest Node.js logger (minimal overhead)
 - **Structured**: Native JSON output for log aggregation
 - **Ecosystem**: Excellent middleware (pino-http)
@@ -116,6 +129,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - **Already Used**: Dependency already in package.json
 
 ### Why OpenTelemetry?
+
 - **Vendor Neutral**: Not locked into specific monitoring vendor
 - **Comprehensive**: Logs, metrics, traces in one framework
 - **Auto-instrumentation**: Minimal code changes needed
@@ -124,6 +138,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - **Already Included**: Dependencies already in package.json
 
 ### Why Grafana + Jaeger?
+
 - **Open Source**: No vendor lock-in
 - **Powerful**: Professional-grade dashboards
 - **Integration**: Works seamlessly with OpenTelemetry
@@ -131,6 +146,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - **Familiar**: Widely known tools, easy onboarding
 
 ### Business Value
+
 - **Faster Debugging**: Correlation IDs link logs to traces
 - **Proactive Monitoring**: Alerts before users notice issues
 - **Performance Insights**: Identify bottlenecks quickly
@@ -140,11 +156,14 @@ Implement a comprehensive observability stack using **Pino for logging** and
 ## Alternatives Considered
 
 ### Alternative 1: Winston for Logging
+
 **Pros**:
+
 - Popular and well-established
 - Large ecosystem of transports
 
 **Cons**:
+
 - Slower than Pino
 - More complex configuration
 - Less efficient JSON serialization
@@ -152,11 +171,14 @@ Implement a comprehensive observability stack using **Pino for logging** and
 **Verdict**: ❌ Rejected - Pino is faster and simpler
 
 ### Alternative 2: Prometheus + Custom Metrics
+
 **Pros**:
+
 - Industry standard for metrics
 - Powerful query language
 
 **Cons**:
+
 - Requires separate instrumentation vs OpenTelemetry
 - Pull-based model less suitable for ephemeral containers
 - More complex setup
@@ -164,12 +186,15 @@ Implement a comprehensive observability stack using **Pino for logging** and
 **Verdict**: ❌ Rejected - OpenTelemetry provides unified approach
 
 ### Alternative 3: Commercial APM (Datadog, New Relic)
+
 **Pros**:
+
 - Fully managed, batteries included
 - Excellent UX and features
 - Support and SLAs
 
 **Cons**:
+
 - Expensive ($50-200+/host/month)
 - Vendor lock-in
 - Privacy concerns (data sent to third party)
@@ -178,11 +203,14 @@ Implement a comprehensive observability stack using **Pino for logging** and
 **Verdict**: ❌ Rejected - Open source sufficient for now, can migrate later
 
 ### Alternative 4: ELK Stack (Elasticsearch, Logstash, Kibana)
+
 **Pros**:
+
 - Comprehensive log search
 - Powerful querying
 
 **Cons**:
+
 - Heavy resource requirements
 - Complex to operate
 - Overkill for log aggregation
@@ -193,6 +221,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 ## Consequences
 
 ### Positive
+
 - ✅ **Production Ready**: Professional observability
 - ✅ **Fast Debugging**: Correlation IDs and traces
 - ✅ **Proactive Monitoring**: Know issues before users do
@@ -202,6 +231,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - ✅ **Low Overhead**: Pino and OpenTelemetry are efficient
 
 ### Negative
+
 - ⚠️ **Infrastructure Complexity**: Need to run Grafana, Jaeger
 - ⚠️ **Learning Curve**: Team needs to learn OpenTelemetry
 - ⚠️ **Storage Costs**: Logs and traces require storage
@@ -209,6 +239,7 @@ Implement a comprehensive observability stack using **Pino for logging** and
 - ⚠️ **Operational Overhead**: Dashboard maintenance, alert tuning
 
 ### Mitigation Strategies
+
 - Provide docker-compose setup for local development
 - Document common queries and dashboard usage
 - Set reasonable log retention policies (7-30 days)
@@ -232,7 +263,7 @@ export const logger = pino({
     ? { target: 'pino-pretty', options: { colorize: true } }
     : undefined,
   formatters: {
-    level: (label) => ({ level: label }),
+    level: label => ({ level: label }),
   },
   base: {
     service: 'mcp-nodered-server',
@@ -277,10 +308,13 @@ export function initTelemetry() {
   const sdk = new NodeSDK({
     resource: new Resource({
       [SemanticResourceAttributes.SERVICE_NAME]: 'mcp-nodered-server',
-      [SemanticResourceAttributes.SERVICE_VERSION]: process.env.npm_package_version,
+      [SemanticResourceAttributes.SERVICE_VERSION]:
+        process.env.npm_package_version,
     }),
     traceExporter: new OTLPTraceExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+      url:
+        process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+        'http://localhost:4318/v1/traces',
     }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
@@ -288,9 +322,10 @@ export function initTelemetry() {
   sdk.start();
 
   process.on('SIGTERM', () => {
-    sdk.shutdown()
+    sdk
+      .shutdown()
       .then(() => console.log('Telemetry terminated'))
-      .catch((error) => console.error('Error terminating telemetry', error));
+      .catch(error => console.error('Error terminating telemetry', error));
   });
 }
 ```
@@ -303,9 +338,12 @@ import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('mcp-nodered-server');
 
-export const toolInvocationCounter = meter.createCounter('mcp.tool.invocations', {
-  description: 'Number of MCP tool invocations',
-});
+export const toolInvocationCounter = meter.createCounter(
+  'mcp.tool.invocations',
+  {
+    description: 'Number of MCP tool invocations',
+  }
+);
 
 export const toolDuration = meter.createHistogram('mcp.tool.duration', {
   description: 'MCP tool execution duration',
@@ -329,7 +367,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3001:3000"
+      - '3001:3000'
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
@@ -339,13 +377,13 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686"  # Jaeger UI
-      - "4318:4318"    # OTLP HTTP receiver
+      - '16686:16686' # Jaeger UI
+      - '4318:4318' # OTLP HTTP receiver
 
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - '9090:9090'
     volumes:
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
 ```
@@ -380,8 +418,10 @@ OTEL_TRACES_SAMPLER_ARG=0.1  # Sample 10% of traces
 
 ## Related ADRs
 
-- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) - Transport affects tracing
-- [ADR-006: Containerization and Deployment Strategy](./006-containerization-strategy.md) - Deployment affects log collection
+- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) -
+  Transport affects tracing
+- [ADR-006: Containerization and Deployment Strategy](./006-containerization-strategy.md) -
+  Deployment affects log collection
 
 ## References
 

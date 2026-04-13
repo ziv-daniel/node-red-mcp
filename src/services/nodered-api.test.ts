@@ -320,7 +320,9 @@ describe('NodeRedAPIClient', () => {
     describe('enableFlow', () => {
       it('should enable a flow and deploy', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDisabledFlow });
-        mockAxiosInstance.put.mockResolvedValueOnce({ data: { ...mockDisabledFlow, disabled: false } });
+        mockAxiosInstance.put.mockResolvedValueOnce({
+          data: { ...mockDisabledFlow, disabled: false },
+        });
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.enableFlow('flow-disabled');

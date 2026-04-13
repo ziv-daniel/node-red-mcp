@@ -11,13 +11,17 @@ The Docker build is currently disabled in CI/CD due to compatibility issues
 between Yarn 4 (Berry) and Node 22 in containerized environments:
 
 ### Current Issues
+
 1. **CI/CD Failure**: Docker build job disabled in `.github/workflows/ci.yml`
-2. **Yarn 4 Compatibility**: Yarn 4 uses PnP (Plug'n'Play) by default, causing issues
-3. **Corepack Integration**: Node 22 includes Corepack but requires proper activation
+2. **Yarn 4 Compatibility**: Yarn 4 uses PnP (Plug'n'Play) by default, causing
+   issues
+3. **Corepack Integration**: Node 22 includes Corepack but requires proper
+   activation
 4. **Build Context**: Multi-stage builds not optimized for Yarn 4 zero-installs
 5. **Cache Invalidation**: Poor layer caching leads to slow rebuilds
 
 ### Git Commit Reference
+
 ```
 commit ba30e16
 Author: CI/CD
@@ -27,6 +31,7 @@ ci: disable Docker build job due to Yarn 4/Node 22 incompatibility
 ```
 
 ### Requirements
+
 - Support Yarn 4 (Berry) with PnP or node_modules mode
 - Node 22 LTS compatibility
 - Fast builds with proper layer caching
@@ -42,21 +47,25 @@ Implement a **multi-stage Docker build** with proper Yarn 4 support using
 ### Docker Strategy
 
 **Stage 1: Base**
+
 - Use official Node 22 Alpine image
 - Enable Corepack for Yarn 4 management
 - Set up non-root user for security
 
 **Stage 2: Dependencies**
+
 - Copy only package.json, yarn.lock, .yarnrc.yml
 - Install production dependencies
 - Leverage layer caching
 
 **Stage 3: Builder**
+
 - Copy source code
 - Run TypeScript build
 - Generate production artifacts
 
 **Stage 4: Production**
+
 - Copy only necessary artifacts
 - Minimal runtime dependencies
 - Non-root user execution
@@ -72,6 +81,7 @@ enableGlobalCache: false
 ```
 
 ### Build Optimizations
+
 - Multi-stage builds reduce final image size
 - Layer caching for dependencies
 - .dockerignore to exclude unnecessary files
@@ -80,6 +90,7 @@ enableGlobalCache: false
 ## Rationale
 
 ### Why node-modules Mode?
+
 - **Compatibility**: Works better in Docker without PnP complexity
 - **Simpler**: No need for PnP loader in container
 - **Predictable**: Standard node_modules resolution
@@ -87,18 +98,21 @@ enableGlobalCache: false
 - **Third-party**: Better compatibility with native modules
 
 ### Why Alpine Linux?
+
 - **Size**: ~5MB base vs ~150MB for full Debian
 - **Security**: Smaller attack surface
 - **Performance**: Faster image pulls and deployments
 - **Standard**: Common choice for Node.js containers
 
 ### Why Multi-stage Builds?
+
 - **Size Reduction**: Dev dependencies not in production image
 - **Security**: Build tools not in runtime image
 - **Speed**: Parallel stage execution
 - **Clarity**: Clear separation of concerns
 
 ### Why Corepack?
+
 - **Official**: Built into Node 22
 - **Version Management**: Ensures correct Yarn version
 - **Automatic**: No manual Yarn installation needed
@@ -107,11 +121,14 @@ enableGlobalCache: false
 ## Alternatives Considered
 
 ### Alternative 1: Stick with Yarn 3
+
 **Pros**:
+
 - Might have fewer compatibility issues
 - Known working configuration
 
 **Cons**:
+
 - Missing Yarn 4 features
 - Going backwards in versions
 - Yarn 4 already in use locally
@@ -119,12 +136,15 @@ enableGlobalCache: false
 **Verdict**: ❌ Rejected - Regression, not a solution
 
 ### Alternative 2: Use PnP Mode in Docker
+
 **Pros**:
+
 - Faster installs
 - Disk space savings
 - "Pure" Yarn 4 experience
 
 **Cons**:
+
 - Complex PnP setup in Docker
 - Compatibility issues with some packages
 - Harder debugging
@@ -133,12 +153,15 @@ enableGlobalCache: false
 **Verdict**: ❌ Rejected - Too complex for containers
 
 ### Alternative 3: Use npm Instead
+
 **Pros**:
+
 - Simpler Docker setup
 - More familiar to some developers
 - Native to Node.js
 
 **Cons**:
+
 - Lose Yarn 4 benefits (workspaces, constraints)
 - Migration effort required
 - Slower than Yarn 4
@@ -147,12 +170,15 @@ enableGlobalCache: false
 **Verdict**: ❌ Rejected - Contradicts ADR-007
 
 ### Alternative 4: Use BuildKit with PnP
+
 **Pros**:
+
 - Modern Docker features
 - Better caching
 - Keep PnP benefits
 
 **Cons**:
+
 - Requires BuildKit everywhere (CI/CD, local)
 - More complex configuration
 - PnP still has compatibility issues
@@ -162,6 +188,7 @@ enableGlobalCache: false
 ## Consequences
 
 ### Positive
+
 - ✅ **Working Builds**: Docker builds succeed in CI/CD
 - ✅ **Fast Rebuilds**: Layer caching optimized
 - ✅ **Small Images**: Multi-stage builds reduce size
@@ -171,6 +198,7 @@ enableGlobalCache: false
 - ✅ **Reproducible**: Locked dependencies with yarn.lock
 
 ### Negative
+
 - ⚠️ **Disk Space**: node_modules larger than PnP
 - ⚠️ **Install Speed**: Slightly slower than PnP mode
 - ⚠️ **Configuration Change**: Need to update .yarnrc.yml
@@ -178,6 +206,7 @@ enableGlobalCache: false
 - ⚠️ **Cache Size**: Docker layer cache can grow large
 
 ### Mitigation Strategies
+
 - Use .dockerignore to exclude unnecessary files
 - Implement cache pruning in CI/CD
 - Document both PnP and node-modules workflows
@@ -343,14 +372,14 @@ services:
       dockerfile: Dockerfile
       target: production
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - NODE_ENV=production
       - NODERED_URL=${NODERED_URL}
       - NODERED_USERNAME=${NODERED_USERNAME}
       - NODERED_PASSWORD=${NODERED_PASSWORD}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
       interval: 30s
       timeout: 3s
       retries: 3
@@ -384,9 +413,12 @@ docker-compose up --build
 
 ## Related ADRs
 
-- [ADR-007: Package Manager Migration to Yarn 4](./007-package-manager-migration.md) - Yarn 4 adoption decision
-- [ADR-002: TypeScript Build System](./002-typescript-build-system.md) - Build process affects Docker
-- [ADR-006: Containerization and Deployment Strategy](./006-containerization-strategy.md) - Overall deployment approach
+- [ADR-007: Package Manager Migration to Yarn 4](./007-package-manager-migration.md) -
+  Yarn 4 adoption decision
+- [ADR-002: TypeScript Build System](./002-typescript-build-system.md) - Build
+  process affects Docker
+- [ADR-006: Containerization and Deployment Strategy](./006-containerization-strategy.md) -
+  Overall deployment approach
 
 ## References
 

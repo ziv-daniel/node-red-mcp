@@ -11,13 +11,19 @@ Current test coverage stands at approximately 30%, which is significantly below
 industry standards for production-grade systems. This low coverage creates
 several risks:
 
-1. **Regression Risk**: Changes may break existing functionality without detection
-2. **Refactoring Difficulty**: Lack of tests makes safe refactoring nearly impossible
-3. **Documentation Gap**: Tests serve as executable documentation of expected behavior
-4. **Debugging Overhead**: Issues discovered in production are more costly to fix
-5. **Confidence Issues**: Developers hesitant to make changes due to fear of breaking things
+1. **Regression Risk**: Changes may break existing functionality without
+   detection
+2. **Refactoring Difficulty**: Lack of tests makes safe refactoring nearly
+   impossible
+3. **Documentation Gap**: Tests serve as executable documentation of expected
+   behavior
+4. **Debugging Overhead**: Issues discovered in production are more costly to
+   fix
+5. **Confidence Issues**: Developers hesitant to make changes due to fear of
+   breaking things
 
 ### Current Coverage Breakdown
+
 - **Service Layer**: ~25% - Critical business logic undertested
 - **API Routes**: ~40% - Some basic endpoint tests exist
 - **MCP Tools**: ~20% - Tool implementations lack comprehensive tests
@@ -25,9 +31,11 @@ several risks:
 - **SSE/WebSocket**: 0% - Real-time features completely untested
 
 ### Testing Framework Status
+
 - **Unit/Integration**: Vitest configured but underutilized
 - **E2E**: Playwright configured but tests disabled due to CI failures
-- **Coverage Reporting**: V8 coverage enabled, thresholds adjusted down to current baseline
+- **Coverage Reporting**: V8 coverage enabled, thresholds adjusted down to
+  current baseline
 
 ## Decision
 
@@ -35,6 +43,7 @@ Implement a comprehensive testing strategy to achieve **80%+ code coverage**
 across all critical paths with the following priorities:
 
 ### Phase 1: Foundation (Weeks 1-2)
+
 1. **Service Layer Unit Tests**: 80%+ coverage for all service methods
    - Node-RED API client (flows, nodes, runtime)
    - MCP tool implementations
@@ -46,6 +55,7 @@ across all critical paths with the following priorities:
    - Authentication and authorization flows
 
 ### Phase 2: Real-time Features (Week 3)
+
 3. **SSE/WebSocket Tests**
    - Connection lifecycle management
    - Event filtering and subscription
@@ -53,6 +63,7 @@ across all critical paths with the following priorities:
    - Multiple concurrent connections
 
 ### Phase 3: End-to-End (Week 4)
+
 4. **E2E Tests with Playwright**
    - Critical user journeys
    - Flow management workflows
@@ -60,6 +71,7 @@ across all critical paths with the following priorities:
    - Error recovery paths
 
 ### Testing Principles
+
 - **Test Pyramid**: Many unit tests, fewer integration tests, some E2E tests
 - **Coverage Gates**: CI/CD fails if coverage drops below 80%
 - **Test Quality**: Focus on meaningful tests, not just coverage numbers
@@ -68,18 +80,24 @@ across all critical paths with the following priorities:
 ## Rationale
 
 ### Why 80%+?
-- **Industry Standard**: 80% is recognized as professional baseline for production systems
-- **Diminishing Returns**: Beyond 80-90% often tests trivial code with little value
-- **Balance**: Provides strong safety net without excessive test maintenance burden
+
+- **Industry Standard**: 80% is recognized as professional baseline for
+  production systems
+- **Diminishing Returns**: Beyond 80-90% often tests trivial code with little
+  value
+- **Balance**: Provides strong safety net without excessive test maintenance
+  burden
 - **Risk Reduction**: Catches vast majority of regressions and bugs
 
 ### Why This Approach?
+
 - **Bottom-Up**: Start with unit tests (fastest, most stable) before E2E
 - **Critical Path First**: Focus on service layer where business logic lives
 - **Pragmatic**: 80% is achievable and maintainable, 100% is often wasteful
 - **Incremental**: Phased approach allows learning and adjustment
 
 ### Business Value
+
 - **Faster Development**: Confident refactoring enables faster iteration
 - **Lower Costs**: Bugs caught early are 10-100x cheaper to fix
 - **Better Design**: Testability forces better architecture
@@ -88,11 +106,14 @@ across all critical paths with the following priorities:
 ## Alternatives Considered
 
 ### Alternative 1: Maintain Current Coverage (30%)
+
 **Pros**:
+
 - No immediate time investment
 - Faster short-term feature delivery
 
 **Cons**:
+
 - High regression risk
 - Difficult refactoring
 - Increasing technical debt
@@ -102,12 +123,15 @@ across all critical paths with the following priorities:
 **Verdict**: ❌ Rejected - Unacceptable for production system
 
 ### Alternative 2: Target 60% Coverage
+
 **Pros**:
+
 - Less effort than 80%
 - Some safety improvements
 - Faster to achieve
 
 **Cons**:
+
 - Still below industry standards
 - Insufficient for production confidence
 - Leaves critical paths untested
@@ -115,11 +139,14 @@ across all critical paths with the following priorities:
 **Verdict**: ❌ Rejected - Insufficient quality bar
 
 ### Alternative 3: Target 100% Coverage
+
 **Pros**:
+
 - Maximum theoretical coverage
 - "Perfect" quality metric
 
 **Cons**:
+
 - Diminishing returns beyond 80-90%
 - Excessive time investment
 - Tests become maintenance burden
@@ -129,12 +156,15 @@ across all critical paths with the following priorities:
 **Verdict**: ❌ Rejected - Overengineering, unsustainable
 
 ### Alternative 4: TDD for All New Code Only
+
 **Pros**:
+
 - No retroactive work needed
 - Gradual improvement
 - Lower immediate cost
 
 **Cons**:
+
 - Existing code remains risky
 - Takes years to reach good coverage
 - Refactoring old code still dangerous
@@ -144,6 +174,7 @@ across all critical paths with the following priorities:
 ## Consequences
 
 ### Positive
+
 - ✅ **Regression Protection**: Changes caught before production
 - ✅ **Refactoring Confidence**: Safe to improve code structure
 - ✅ **Better Design**: Testability improves architecture
@@ -154,6 +185,7 @@ across all critical paths with the following priorities:
 - ✅ **Onboarding**: New developers learn system through tests
 
 ### Negative
+
 - ⚠️ **Initial Time Investment**: 3-4 weeks of focused effort
 - ⚠️ **Ongoing Maintenance**: Tests need updates as code changes
 - ⚠️ **Slower Initial Features**: Testing slows development short-term
@@ -162,6 +194,7 @@ across all critical paths with the following priorities:
 - ⚠️ **False Positives**: Flaky tests can block deployments
 
 ### Mitigation Strategies
+
 - Use fast unit tests as foundation (quick feedback)
 - Parallelize test execution in CI/CD
 - Invest in testing infrastructure and tooling
@@ -179,7 +212,9 @@ describe('NodeRedApiService', () => {
   describe('getFlows', () => {
     it('should return flows with summary when includeDetails is false', async () => {
       // Arrange
-      const mockResponse = { /* mock data */ };
+      const mockResponse = {
+        /* mock data */
+      };
       vi.spyOn(axios, 'get').mockResolvedValue({ data: mockResponse });
 
       // Act
@@ -205,7 +240,7 @@ describe('NodeRedApiService', () => {
 describe('MCP Tool Integration', () => {
   it('should execute get_flows tool end-to-end', async () => {
     const response = await mcpServer.executeTool('get_flows', {
-      includeDetails: false
+      includeDetails: false,
     });
 
     expect(response).toMatchSchema(flowsResponseSchema);
@@ -243,10 +278,10 @@ export default defineConfig({
         'dist/',
         '**/*.test.ts',
         '**/*.spec.ts',
-        '**/test/**'
-      ]
-    }
-  }
+        '**/test/**',
+      ],
+    },
+  },
 });
 ```
 
@@ -308,8 +343,10 @@ test/
 
 ## Related ADRs
 
-- [ADR-003: Comprehensive Testing Strategy](./003-testing-strategy.md) - Initial testing approach
-- [ADR-002: TypeScript Build System](./002-typescript-build-system.md) - Build configuration affects test setup
+- [ADR-003: Comprehensive Testing Strategy](./003-testing-strategy.md) - Initial
+  testing approach
+- [ADR-002: TypeScript Build System](./002-typescript-build-system.md) - Build
+  configuration affects test setup
 
 ## References
 

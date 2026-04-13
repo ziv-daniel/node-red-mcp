@@ -241,7 +241,7 @@ describe('MCP Protocol Integration', () => {
 
     it('should include flow management tools', () => {
       const tools = mcpServer.getToolDefinitions();
-      const toolNames = tools.map((t) => t.name);
+      const toolNames = tools.map(t => t.name);
 
       expect(toolNames).toContain('get_flows');
       expect(toolNames).toContain('get_flow');
@@ -250,7 +250,7 @@ describe('MCP Protocol Integration', () => {
 
     it('should include module management tools', () => {
       const tools = mcpServer.getToolDefinitions();
-      const toolNames = tools.map((t) => t.name);
+      const toolNames = tools.map(t => t.name);
 
       expect(toolNames).toContain('search_modules');
       expect(toolNames).toContain('install_module');

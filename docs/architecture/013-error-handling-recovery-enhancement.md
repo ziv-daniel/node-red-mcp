@@ -8,10 +8,11 @@
 ## Context
 
 Current error handling is ~50% complete with basic error classes and response
-formatting, but lacks sophisticated retry logic, connection recovery, and graceful
-degradation:
+formatting, but lacks sophisticated retry logic, connection recovery, and
+graceful degradation:
 
 ### Current State
+
 - ✅ **Basic Error Handling**: Error classes and response formatting exist
 - ✅ **Circuit Breaker**: Basic circuit breaker pattern for Node-RED API
 - 🔄 **Retry Logic**: Simple retry without exponential backoff
@@ -20,6 +21,7 @@ degradation:
 - ⏳ **Error Context**: Limited error context and debugging info
 
 ### Problems
+
 1. **Cascading Failures**: Single Node-RED failure breaks all operations
 2. **Poor UX**: Generic error messages don't help users
 3. **Debugging Difficulty**: Insufficient context for troubleshooting
@@ -28,6 +30,7 @@ degradation:
 6. **Silent Failures**: Some errors not logged or surfaced
 
 ### Error Sources
+
 - **Node-RED API**: Connection timeouts, 500 errors, auth failures
 - **Network**: DNS failures, connection refused, timeouts
 - **MCP Protocol**: Invalid tool calls, malformed responses
@@ -37,7 +40,8 @@ degradation:
 ## Decision
 
 Implement comprehensive error handling with **circuit breaker pattern**,
-**exponential backoff retry**, **graceful degradation**, and **rich error context**:
+**exponential backoff retry**, **graceful degradation**, and **rich error
+context**:
 
 ### Error Handling Strategy
 
@@ -58,6 +62,7 @@ Implement comprehensive error handling with **circuit breaker pattern**,
 ### Error Classification
 
 **Retryable Errors** (transient, may succeed on retry):
+
 - Network timeouts
 - 429 Too Many Requests
 - 502/503/504 Gateway errors
@@ -65,6 +70,7 @@ Implement comprehensive error handling with **circuit breaker pattern**,
 - DNS temporary failures
 
 **Non-Retryable Errors** (permanent, won't succeed):
+
 - 400 Bad Request (invalid parameters)
 - 401 Unauthorized (wrong credentials)
 - 403 Forbidden (insufficient permissions)
@@ -72,6 +78,7 @@ Implement comprehensive error handling with **circuit breaker pattern**,
 - Validation errors
 
 **Fatal Errors** (system-level failures):
+
 - Out of memory
 - Unhandled exceptions
 - Corrupted state
@@ -83,10 +90,10 @@ Implement comprehensive error handling with **circuit breaker pattern**,
 // Retry configuration
 const retryConfig = {
   maxAttempts: 5,
-  initialDelay: 1000,      // 1 second
-  maxDelay: 30000,         // 30 seconds
-  multiplier: 2,           // Double each time
-  jitter: true             // Add randomness
+  initialDelay: 1000, // 1 second
+  maxDelay: 30000, // 30 seconds
+  multiplier: 2, // Double each time
+  jitter: true, // Add randomness
 };
 
 // Retry delays: 1s, 2s, 4s, 8s, 16s (with jitter)
@@ -95,6 +102,7 @@ const retryConfig = {
 **Jitter**: Adds randomness to prevent thundering herd problem
 
 **Per-Operation Config**:
+
 - Critical operations: More retries (5-7 attempts)
 - Read operations: Moderate retries (3-5 attempts)
 - Write operations: Fewer retries (2-3 attempts, with idempotency check)
@@ -102,40 +110,45 @@ const retryConfig = {
 ### Circuit Breaker Enhancement
 
 **States**:
+
 - **Closed**: Normal operation, requests pass through
 - **Open**: Too many failures, requests fail fast
 - **Half-Open**: Testing if service recovered
 
 **Configuration**:
+
 ```typescript
 const circuitBreakerConfig = {
-  failureThreshold: 5,      // Open after 5 failures
-  successThreshold: 2,      // Close after 2 successes in half-open
-  timeout: 60000,           // Try half-open after 60s
-  volumeThreshold: 10       // Min requests before calculating failure rate
+  failureThreshold: 5, // Open after 5 failures
+  successThreshold: 2, // Close after 2 successes in half-open
+  timeout: 60000, // Try half-open after 60s
+  volumeThreshold: 10, // Min requests before calculating failure rate
 };
 ```
 
 ### Graceful Degradation
 
 **Partial Functionality**:
+
 - If Node-RED unreachable: Return cached flow list (with staleness warning)
 - If SSE fails: Fall back to polling
 - If authentication fails: Allow read-only operations
 - If rate limited: Queue non-urgent requests
 
 **Feature Flags**:
+
 ```typescript
 const features = {
   sseEnabled: checkSSEHealth(),
   nodeRedWrites: checkNodeRedHealth(),
-  moduleInstall: checkNodeRedHealth() && isAdmin()
+  moduleInstall: checkNodeRedHealth() && isAdmin(),
 };
 ```
 
 ### Rich Error Context
 
 **Error Object Structure**:
+
 ```typescript
 {
   error: {
@@ -159,24 +172,28 @@ const features = {
 ## Rationale
 
 ### Why Exponential Backoff?
+
 - **Prevents Overload**: Gives failing service time to recover
 - **Fair**: Doesn't monopolize resources
 - **Standard**: Industry best practice
 - **Jitter**: Prevents synchronized retries (thundering herd)
 
 ### Why Circuit Breaker?
+
 - **Fast Failures**: Don't wait for timeout on known-bad service
 - **Service Protection**: Prevent overwhelming failed service
 - **Recovery**: Automatically test for service recovery
 - **User Experience**: Faster error responses
 
 ### Why Graceful Degradation?
+
 - **Availability**: Partial functionality better than total failure
 - **User Experience**: Users can still do some work
 - **Critical Path**: Ensure most important operations work
 - **Recovery Time**: Gives time for manual intervention
 
 ### Why Rich Error Context?
+
 - **Debugging**: Developers can diagnose issues faster
 - **User Communication**: Clear messages help users understand problems
 - **Observability**: Better logging and monitoring
@@ -185,11 +202,14 @@ const features = {
 ## Alternatives Considered
 
 ### Alternative 1: Simple Try-Catch Only
+
 **Pros**:
+
 - Easiest to implement
 - Minimal code
 
 **Cons**:
+
 - No retry logic
 - Poor user experience
 - Cascading failures
@@ -198,11 +218,14 @@ const features = {
 **Verdict**: ❌ Rejected - Insufficient for production
 
 ### Alternative 2: Retry Without Backoff
+
 **Pros**:
+
 - Simple implementation
 - Fast retries
 
 **Cons**:
+
 - Overwhelms failing services
 - Wastes resources
 - Thundering herd problem
@@ -211,11 +234,14 @@ const features = {
 **Verdict**: ❌ Rejected - Can make problems worse
 
 ### Alternative 3: Timeout-Based Recovery
+
 **Pros**:
+
 - Simple concept
 - No state management
 
 **Cons**:
+
 - No intelligent failure detection
 - Wastes time on timeouts
 - Poor user experience
@@ -223,12 +249,15 @@ const features = {
 **Verdict**: ❌ Rejected - Too simplistic
 
 ### Alternative 4: Bulkhead Pattern
+
 **Pros**:
+
 - Isolates failures
 - Prevents resource exhaustion
 - Better fault isolation
 
 **Cons**:
+
 - More complex
 - Resource overhead
 - Harder to configure
@@ -239,6 +268,7 @@ const features = {
 ## Consequences
 
 ### Positive
+
 - ✅ **Resilience**: System handles failures gracefully
 - ✅ **Better UX**: Clear error messages, partial functionality
 - ✅ **Fast Recovery**: Automatic recovery when services restore
@@ -248,6 +278,7 @@ const features = {
 - ✅ **Availability**: Higher uptime through degradation
 
 ### Negative
+
 - ⚠️ **Complexity**: More sophisticated error handling code
 - ⚠️ **State Management**: Circuit breaker requires state
 - ⚠️ **Testing**: More scenarios to test
@@ -256,6 +287,7 @@ const features = {
 - ⚠️ **Cache Management**: Degradation modes need caching
 
 ### Mitigation Strategies
+
 - Comprehensive error handling tests
 - Clear documentation of retry behavior
 - Monitoring of retry rates and circuit breaker state
@@ -310,7 +342,7 @@ export async function retryWithBackoff<T>(
         attempt,
         maxAttempts: config.maxAttempts,
         nextRetryIn: actualDelay,
-        error: error.message
+        error: error.message,
       });
 
       await sleep(actualDelay);
@@ -324,21 +356,20 @@ export async function retryWithBackoff<T>(
 }
 
 // Usage
-const flows = await retryWithBackoff(
-  () => nodeRedClient.getFlows(),
-  {
-    maxAttempts: 5,
-    initialDelay: 1000,
-    maxDelay: 30000,
-    multiplier: 2,
-    jitter: true,
-    retryableErrors: (error) => {
-      return error.code === 'ECONNREFUSED' ||
-             error.statusCode >= 500 ||
-             error.statusCode === 429;
-    }
-  }
-);
+const flows = await retryWithBackoff(() => nodeRedClient.getFlows(), {
+  maxAttempts: 5,
+  initialDelay: 1000,
+  maxDelay: 30000,
+  multiplier: 2,
+  jitter: true,
+  retryableErrors: error => {
+    return (
+      error.code === 'ECONNREFUSED' ||
+      error.statusCode >= 500 ||
+      error.statusCode === 429
+    );
+  },
+});
 ```
 
 ### Phase 2: Enhanced Circuit Breaker (Week 1)
@@ -348,7 +379,7 @@ const flows = await retryWithBackoff(
 export enum CircuitState {
   CLOSED = 'closed',
   OPEN = 'open',
-  HALF_OPEN = 'half_open'
+  HALF_OPEN = 'half_open',
 }
 
 export class CircuitBreaker {
@@ -453,14 +484,14 @@ export class DegradationService {
         logger.warn({
           message: 'Using cached flows due to Node-RED error',
           cacheAge: age,
-          error: error.message
+          error: error.message,
         });
 
         return {
           data: cached.data,
           mode: 'cached',
           cacheAge: age,
-          warning: 'Data may be stale due to Node-RED unavailability'
+          warning: 'Data may be stale due to Node-RED unavailability',
         };
       }
 
@@ -495,8 +526,8 @@ export class ApplicationError extends Error {
       details: this.details,
       timestamp: new Date().toISOString(),
       ...(process.env.NODE_ENV === 'development' && {
-        stack: this.stack
-      })
+        stack: this.stack,
+      }),
     };
   }
 }
@@ -510,7 +541,7 @@ export class NodeRedConnectionError extends ApplicationError {
       'Node-RED is temporarily unavailable. Please try again in a moment.',
       {
         url,
-        cause: cause.message
+        cause: cause.message,
       },
       503
     );
@@ -535,14 +566,14 @@ export function errorHandler(
     correlationId: req.correlationId,
     path: req.path,
     method: req.method,
-    userId: req.user?.id
+    userId: req.user?.id,
   });
 
   // Send user-friendly response
   if (error instanceof ApplicationError) {
     return res.status(error.statusCode).json({
       error: error.toJSON(),
-      correlationId: req.correlationId
+      correlationId: req.correlationId,
     });
   }
 
@@ -552,8 +583,8 @@ export function errorHandler(
       code: 'INTERNAL_SERVER_ERROR',
       message: 'An unexpected error occurred',
       userMessage: 'Something went wrong. Please try again or contact support.',
-      correlationId: req.correlationId
-    }
+      correlationId: req.correlationId,
+    },
   });
 }
 ```
@@ -582,8 +613,10 @@ CACHE_MAX_AGE=300000  # 5 minutes
 
 ## Related ADRs
 
-- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) - Error logging
-- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) - SSE reconnection
+- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) -
+  Error logging
+- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) -
+  SSE reconnection
 
 ## References
 

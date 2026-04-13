@@ -610,7 +610,9 @@ describe('SSEHandler', () => {
     });
 
     it('should apply global filter', () => {
-      const req = createMockRequest({ auth: { userId: 'user-1', permissions: [], isAuthenticated: true } });
+      const req = createMockRequest({
+        auth: { userId: 'user-1', permissions: [], isAuthenticated: true },
+      });
       const res = createMockResponse();
 
       const connectionId = handler.connect(req, res);
@@ -927,7 +929,9 @@ describe('SSEHandler', () => {
 
   describe('Filter matching', () => {
     it('should filter by userId', () => {
-      const req = createMockRequest({ auth: { userId: 'user-1', permissions: ['*'], isAuthenticated: true } });
+      const req = createMockRequest({
+        auth: { userId: 'user-1', permissions: ['*'], isAuthenticated: true },
+      });
       const res = createMockResponse();
 
       const connectionId = handler.connect(req, res);

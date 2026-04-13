@@ -11,6 +11,7 @@ Server-Sent Events (SSE) infrastructure is partially implemented (~70% complete)
 but lacks critical features for production use:
 
 ### Current State
+
 - ✅ **SSE Handler Core**: Basic connection management exists
 - ✅ **Event Types**: Event schema and types defined
 - ✅ **Connection Tracking**: Active connection monitoring
@@ -19,6 +20,7 @@ but lacks critical features for production use:
 - ⏳ **Node-RED Integration**: Live event capture not fully implemented
 
 ### Missing Features
+
 1. **Event Filtering**: Clients can't subscribe to specific event types
 2. **Connection Health**: No heartbeat/keepalive mechanism
 3. **Reconnection Logic**: Poor handling of disconnections
@@ -27,6 +29,7 @@ but lacks critical features for production use:
 6. **Error Handling**: Incomplete error recovery
 
 ### Use Cases
+
 - **Real-time Monitoring**: Live flow execution status
 - **Debug Streaming**: Debug node output in real-time
 - **Error Notifications**: Immediate error alerts
@@ -35,18 +38,20 @@ but lacks critical features for production use:
 
 ## Decision
 
-Complete SSE implementation with focus on **reliability, filtering, and
-Node-RED integration**:
+Complete SSE implementation with focus on **reliability, filtering, and Node-RED
+integration**:
 
 ### Core Features
 
 **1. Event Filtering & Subscriptions**
+
 ```typescript
 // Clients specify event types they want
 GET /api/events?filter=flow.deployed,flow.error,node.status
 ```
 
 Supported filters:
+
 - `flow.*` - All flow events
 - `flow.deployed` - Flow deployments
 - `flow.error` - Flow errors
@@ -55,6 +60,7 @@ Supported filters:
 - `system.*` - System events
 
 **2. Connection Health Management**
+
 - Heartbeat every 15 seconds (configurable)
 - Client must respond to heartbeat or be disconnected
 - Automatic cleanup of dead connections
@@ -62,12 +68,14 @@ Supported filters:
 - Graceful shutdown on server restart
 
 **3. Event Buffering & Replay**
+
 - In-memory buffer: Last 100 events per type
 - Clients can request replay: `?lastEventId=123`
 - Events have sequential IDs
 - Buffer cleared on server restart (not persistent)
 
 **4. Node-RED Event Integration**
+
 - Hook into Node-RED runtime events
 - Capture debug node output
 - Monitor flow deployment
@@ -75,6 +83,7 @@ Supported filters:
 - Error propagation from Node-RED
 
 **5. Error Handling & Recovery**
+
 - Automatic reconnection with exponential backoff
 - Event delivery guarantees (at-least-once)
 - Error events sent to clients
@@ -127,24 +136,28 @@ Supported filters:
 ## Rationale
 
 ### Why Event Filtering?
+
 - **Efficiency**: Clients only receive relevant events
 - **Bandwidth**: Reduces unnecessary data transfer
 - **Client-side**: Simplifies client code (no filtering needed)
 - **Scalability**: Server can optimize delivery
 
 ### Why Event Buffering?
+
 - **Reliability**: Clients can recover from disconnections
 - **Replay**: Useful for debugging and monitoring
 - **Flexibility**: Clients can catch up on missed events
 - **Simple**: In-memory is sufficient (not critical data)
 
 ### Why Heartbeat?
+
 - **Detection**: Quickly identify dead connections
 - **Cleanup**: Prevent resource leaks
 - **User Experience**: Client knows connection is alive
 - **Standard**: SSE best practice
 
 ### Why at-least-once Delivery?
+
 - **Reliability**: Better to duplicate than lose events
 - **Simple**: Easier to implement than exactly-once
 - **Acceptable**: Clients can deduplicate if needed
@@ -153,13 +166,16 @@ Supported filters:
 ## Alternatives Considered
 
 ### Alternative 1: WebSocket Instead of SSE
+
 **Pros**:
+
 - Bidirectional communication
 - Lower latency
 - Better for high-frequency updates
 - More flexible protocol
 
 **Cons**:
+
 - More complex implementation
 - Requires WebSocket infrastructure
 - SSE sufficient for one-way events
@@ -168,12 +184,15 @@ Supported filters:
 **Verdict**: ❌ Rejected - SSE sufficient, already decided
 
 ### Alternative 2: Polling Instead of SSE
+
 **Pros**:
+
 - Simpler client implementation
 - Works everywhere (no SSE support needed)
 - No persistent connections
 
 **Cons**:
+
 - Higher latency
 - More server load
 - Inefficient bandwidth usage
@@ -182,13 +201,16 @@ Supported filters:
 **Verdict**: ❌ Rejected - SSE is superior for real-time
 
 ### Alternative 3: Redis for Event Buffering
+
 **Pros**:
+
 - Persistent across restarts
 - Shared across multiple instances
 - Powerful pub/sub features
 - Scalable
 
 **Cons**:
+
 - Additional infrastructure dependency
 - Overkill for non-critical events
 - More complexity
@@ -197,12 +219,15 @@ Supported filters:
 **Verdict**: ❌ Rejected for now - Can add later if needed
 
 ### Alternative 4: No Event Replay
+
 **Pros**:
+
 - Simpler implementation
 - No buffering needed
 - Lower memory usage
 
 **Cons**:
+
 - Poor reconnection experience
 - Missed events lost forever
 - Harder debugging
@@ -213,6 +238,7 @@ Supported filters:
 ## Consequences
 
 ### Positive
+
 - ✅ **Real-time Monitoring**: Live visibility into Node-RED
 - ✅ **Better UX**: Filtered events, replay capability
 - ✅ **Reliability**: Heartbeat and reconnection
@@ -221,6 +247,7 @@ Supported filters:
 - ✅ **Production Ready**: Robust error handling
 
 ### Negative
+
 - ⚠️ **Memory Usage**: Event buffering consumes memory (~10-50MB)
 - ⚠️ **Connection Limits**: SSE connections limited to ~100-1000 per process
 - ⚠️ **Complexity**: More sophisticated connection management
@@ -228,6 +255,7 @@ Supported filters:
 - ⚠️ **Node-RED Coupling**: Tight integration with Node-RED internals
 
 ### Mitigation Strategies
+
 - Implement connection limits (max 1000 concurrent)
 - Use circular buffer to cap memory usage
 - Document connection limits clearly
@@ -241,8 +269,8 @@ Supported filters:
 ```typescript
 // src/sse/types.ts
 export type EventFilter = {
-  categories: string[];  // ['flow', 'node', 'debug']
-  types: string[];       // ['deployed', 'error', 'status']
+  categories: string[]; // ['flow', 'node', 'debug']
+  types: string[]; // ['deployed', 'error', 'status']
 };
 
 // src/sse/connection-manager.ts
@@ -331,7 +359,7 @@ export class NodeRedEventBridge {
     return {
       type: `flow.${nodeRedEvent.type}`,
       data: nodeRedEvent,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 }
@@ -349,12 +377,12 @@ class SSEClient {
   connect(url: string, filters: string[]) {
     const query = new URLSearchParams({
       filter: filters.join(','),
-      ...(this.lastEventId && { lastEventId: this.lastEventId })
+      ...(this.lastEventId && { lastEventId: this.lastEventId }),
     });
 
     const eventSource = new EventSource(`${url}?${query}`);
 
-    eventSource.onmessage = (event) => {
+    eventSource.onmessage = event => {
       this.lastEventId = event.lastEventId;
       this.reconnectDelay = 1000; // Reset on success
       this.handleEvent(JSON.parse(event.data));
@@ -434,8 +462,10 @@ SSE_ENABLE_REPLAY=true
 
 ## Related ADRs
 
-- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) - SSE decision made here
-- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) - Logging SSE events
+- [ADR-001: MCP Transport Layer Selection](./001-mcp-transport-selection.md) -
+  SSE decision made here
+- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) -
+  Logging SSE events
 
 ## References
 

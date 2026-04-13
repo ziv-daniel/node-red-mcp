@@ -3,7 +3,11 @@
  */
 
 import { NodeRedSettings, NodeRedRuntimeInfo, NodeRedNodeType } from '../../src/types/nodered.js';
-import { NodeRedModule, ModuleSearchResult, ModuleInstallResult } from '../../src/services/nodered-api.js';
+import {
+  NodeRedModule,
+  ModuleSearchResult,
+  ModuleInstallResult,
+} from '../../src/services/nodered-api.js';
 
 // Runtime and Settings
 export const mockSettings: NodeRedSettings = {
@@ -25,9 +29,9 @@ export const mockSettings: NodeRedSettings = {
 export const mockRuntimeInfo: NodeRedRuntimeInfo = {
   version: '3.1.0',
   nodes: {
-    'inject': { count: 5 },
-    'debug': { count: 10 },
-    'function': { count: 3 },
+    inject: { count: 5 },
+    debug: { count: 10 },
+    function: { count: 3 },
     'http in': { count: 2 },
     'http response': { count: 2 },
   },
@@ -216,7 +220,7 @@ export const mockGlobalContext = {
 export const mockLibraryEntries = [
   { fn: 'flow1.json' },
   { fn: 'flow2.json' },
-  { d: { 'subfolder': [{ fn: 'nested.json' }] } },
+  { d: { subfolder: [{ fn: 'nested.json' }] } },
 ];
 
 // Health check mock
@@ -235,7 +239,8 @@ export const mockHealthCheck = {
 
 // Auth mock
 export const mockAuthToken = {
-  access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNTE2MjM5MDIyfQ.test',
+  access_token:
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNTE2MjM5MDIyfQ.test',
   token_type: 'Bearer',
   expires_in: 3600,
 };

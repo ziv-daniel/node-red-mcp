@@ -120,9 +120,7 @@ describe('NodeRedEventListener', () => {
 
       // Should not have additional broadcasts
       expect(secondCallCount).toBe(firstCallCount);
-      expect(console.log).toHaveBeenCalledWith(
-        'Node-RED event monitoring already started'
-      );
+      expect(console.log).toHaveBeenCalledWith('Node-RED event monitoring already started');
     });
 
     it('should log the interval', () => {
@@ -212,9 +210,7 @@ describe('NodeRedEventListener', () => {
       eventListener.startEventMonitoring();
       eventListener.stopEventMonitoring();
 
-      expect(console.log).toHaveBeenCalledWith(
-        'Stopping Node-RED event monitoring'
-      );
+      expect(console.log).toHaveBeenCalledWith('Stopping Node-RED event monitoring');
     });
   });
 
@@ -258,9 +254,7 @@ describe('NodeRedEventListener', () => {
     });
 
     it('should broadcast error when healthCheck fails', async () => {
-      mockNodeRedClient.healthCheck.mockRejectedValue(
-        new Error('Connection refused')
-      );
+      mockNodeRedClient.healthCheck.mockRejectedValue(new Error('Connection refused'));
 
       eventListener.startEventMonitoring(1000);
       mockSSEHandler.broadcast.mockClear();
@@ -309,16 +303,14 @@ describe('NodeRedEventListener', () => {
 
       // Should have runtime broadcast but no flow broadcast (within 1 minute)
       const flowBroadcasts = mockSSEHandler.broadcast.mock.calls.filter(
-        (call) => call[0].type === 'flow'
+        call => call[0].type === 'flow'
       );
 
       expect(flowBroadcasts.length).toBe(0);
     });
 
     it('should broadcast flow error when getFlows fails', async () => {
-      mockNodeRedClient.getFlows.mockRejectedValue(
-        new Error('Network error')
-      );
+      mockNodeRedClient.getFlows.mockRejectedValue(new Error('Network error'));
 
       // Set last event timestamp to be old to trigger flow check
       const listener = eventListener as any;
@@ -342,12 +334,8 @@ describe('NodeRedEventListener', () => {
     });
 
     it('should handle polling errors gracefully', async () => {
-      mockNodeRedClient.healthCheck.mockRejectedValue(
-        new Error('API error')
-      );
-      mockNodeRedClient.getFlows.mockRejectedValue(
-        new Error('API error')
-      );
+      mockNodeRedClient.healthCheck.mockRejectedValue(new Error('API error'));
+      mockNodeRedClient.getFlows.mockRejectedValue(new Error('API error'));
 
       eventListener.startEventMonitoring(1000);
 
@@ -562,9 +550,7 @@ describe('NodeRedEventListener', () => {
     });
 
     it('should log errors to console', async () => {
-      mockNodeRedClient.healthCheck.mockRejectedValue(
-        new Error('Test error')
-      );
+      mockNodeRedClient.healthCheck.mockRejectedValue(new Error('Test error'));
 
       eventListener.startEventMonitoring(1000);
       await vi.advanceTimersByTimeAsync(1000);

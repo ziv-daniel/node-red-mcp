@@ -7,10 +7,11 @@
 
 ## Context
 
-Security layer is ~85% complete with basic authentication but lacks production-grade
-authorization and security hardening:
+Security layer is ~85% complete with basic authentication but lacks
+production-grade authorization and security hardening:
 
 ### Current State
+
 - ✅ **Authentication Foundation**: JWT and API key infrastructure exists
 - ✅ **Middleware Setup**: Express authentication middleware configured
 - ✅ **Claude Integration**: Flexible auth for Claude.ai compatibility
@@ -18,6 +19,7 @@ authorization and security hardening:
 - ⏳ **Security Hardening**: Missing rate limiting, input validation, audit logs
 
 ### Security Requirements
+
 1. **Authentication**: Verify identity (who you are)
 2. **Authorization**: Control access (what you can do)
 3. **Input Validation**: Prevent injection attacks
@@ -27,6 +29,7 @@ authorization and security hardening:
 7. **HTTPS Enforcement**: Encrypted transport
 
 ### Threat Model
+
 - **Unauthorized Access**: Non-authenticated users accessing MCP tools
 - **Privilege Escalation**: Users accessing tools beyond their permissions
 - **DoS Attacks**: Overwhelming server with requests
@@ -58,6 +61,7 @@ Implement comprehensive security with **RBAC (Role-Based Access Control)**,
 ### Role Definitions
 
 **Admin Role** (full access):
+
 - All MCP tools
 - Flow CRUD operations
 - Module installation
@@ -65,6 +69,7 @@ Implement comprehensive security with **RBAC (Role-Based Access Control)**,
 - User management
 
 **Operator Role** (operational access):
+
 - Read flows
 - Execute flows (deploy)
 - Enable/disable flows
@@ -73,12 +78,14 @@ Implement comprehensive security with **RBAC (Role-Based Access Control)**,
 - No system configuration
 
 **Viewer Role** (read-only):
+
 - Read flows
 - View system status
 - SSE event subscription (read-only events)
 - No modifications allowed
 
 **Integration Role** (automation access):
+
 - Specific tool whitelist
 - API key auth only (no JWT)
 - Rate limits adjusted per integration
@@ -113,18 +120,21 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 ### Authentication Methods
 
 **JWT (Primary)** - For user sessions:
+
 - Issued by auth service
 - Short-lived (1 hour)
 - Refresh token support
 - Claims include: userId, role, permissions
 
 **API Key (Secondary)** - For integrations:
+
 - Long-lived (no expiration or 1 year)
 - Per-integration keys
 - Specific permission scopes
 - Revocable
 
 **Claude Desktop (Stdio)** - Special case:
+
 - No authentication required for stdio mode
 - Node-RED credentials passed via environment
 - Single-user assumption
@@ -132,29 +142,34 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 ### Rate Limiting Strategy
 
 **Per-Role Limits**:
+
 - Admin: 1000 req/min
 - Operator: 500 req/min
 - Viewer: 100 req/min
 - Integration: Configurable (default 200 req/min)
 
 **Per-Tool Limits**:
+
 - Read operations: More generous
 - Write operations: Stricter
 - Module install: Very strict (5/hour)
 
 **IP-based Limits**:
+
 - Global: 10,000 req/min per IP
 - Prevents distributed attacks
 
 ### Input Validation
 
 **All Inputs Validated** using Zod schemas:
+
 - Tool parameters
 - API request bodies
 - Query parameters
 - Headers
 
 **Sanitization**:
+
 - Strip HTML/scripts from text inputs
 - Validate URLs before fetching
 - Check file paths for traversal attacks
@@ -163,6 +178,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 ## Rationale
 
 ### Why RBAC?
+
 - **Standard**: Industry-standard authorization model
 - **Flexible**: Easy to add/modify roles
 - **Scalable**: Works for small and large teams
@@ -170,18 +186,21 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 - **Auditable**: Easy to verify permissions
 
 ### Why JWT + API Key?
+
 - **JWT**: Standard for user sessions, widely supported
 - **API Key**: Simple for service-to-service, long-lived
 - **Both**: Flexibility for different use cases
 - **Proven**: Battle-tested authentication methods
 
 ### Why Granular Permissions?
+
 - **Principle of Least Privilege**: Users get minimum needed access
 - **Flexibility**: Can create custom roles
 - **Security**: Limits damage from compromised accounts
 - **Compliance**: Meets audit requirements
 
 ### Why Rate Limiting?
+
 - **DoS Protection**: Prevents resource exhaustion
 - **Fair Usage**: Ensures availability for all users
 - **Cost Control**: Prevents abuse of expensive operations
@@ -190,11 +209,14 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 ## Alternatives Considered
 
 ### Alternative 1: No Authorization (Auth only)
+
 **Pros**:
+
 - Simpler implementation
 - Faster development
 
 **Cons**:
+
 - All authenticated users have full access
 - No audit trail of who did what
 - Violates least privilege
@@ -203,12 +225,15 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 **Verdict**: ❌ Rejected - Insufficient for production
 
 ### Alternative 2: OAuth2/OIDC
+
 **Pros**:
+
 - Industry standard
 - Centralized auth
 - SSO support
 
 **Cons**:
+
 - Complex setup
 - Requires auth server
 - Overkill for initial version
@@ -217,12 +242,15 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 **Verdict**: ✅ Deferred - Add in future if needed
 
 ### Alternative 3: Attribute-Based Access Control (ABAC)
+
 **Pros**:
+
 - More flexible than RBAC
 - Context-aware permissions
 - Fine-grained control
 
 **Cons**:
+
 - Much more complex
 - Harder to understand
 - Overkill for current needs
@@ -231,11 +259,14 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 **Verdict**: ❌ Rejected - RBAC sufficient
 
 ### Alternative 4: No Authentication (Open Access)
+
 **Pros**:
+
 - Zero implementation
 - Easy to use
 
 **Cons**:
+
 - Completely insecure
 - Anyone can modify flows
 - Not suitable for production
@@ -246,6 +277,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 ## Consequences
 
 ### Positive
+
 - ✅ **Production Ready**: Secure by default
 - ✅ **Multi-user**: Supports team environments
 - ✅ **Least Privilege**: Users have minimal needed access
@@ -255,6 +287,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 - ✅ **Flexible**: Can add roles as needed
 
 ### Negative
+
 - ⚠️ **Complexity**: More complex auth/authz logic
 - ⚠️ **User Management**: Need user admin interface
 - ⚠️ **Performance**: Auth checks add latency (~5-10ms)
@@ -262,6 +295,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 - ⚠️ **Migration**: Existing users need role assignment
 
 ### Mitigation Strategies
+
 - Provide clear documentation for role setup
 - Cache permission checks to minimize overhead
 - Create admin tools for user management
@@ -278,7 +312,7 @@ export enum Role {
   ADMIN = 'admin',
   OPERATOR = 'operator',
   VIEWER = 'viewer',
-  INTEGRATION = 'integration'
+  INTEGRATION = 'integration',
 }
 
 export enum Permission {
@@ -292,7 +326,7 @@ export enum Permission {
   MODULES_UNINSTALL = 'modules:uninstall',
   SYSTEM_CONFIG = 'system:config',
   USERS_MANAGE = 'users:manage',
-  EVENTS_SUBSCRIBE = 'events:subscribe'
+  EVENTS_SUBSCRIBE = 'events:subscribe',
 }
 
 export class RBACService {
@@ -309,9 +343,7 @@ export class RBACService {
 
   checkPermission(user: User, permission: Permission): void {
     if (!this.hasPermission(user.role, permission)) {
-      throw new ForbiddenError(
-        `User lacks permission: ${permission}`
-      );
+      throw new ForbiddenError(`User lacks permission: ${permission}`);
     }
   }
 }
@@ -342,7 +374,8 @@ export function requirePermission(permission: Permission) {
 }
 
 // Usage
-router.post('/api/flows',
+router.post(
+  '/api/flows',
   authenticate,
   requirePermission(Permission.FLOWS_WRITE),
   createFlowHandler
@@ -360,7 +393,7 @@ export const createRateLimiter = (role: Role) => {
     [Role.ADMIN]: 1000,
     [Role.OPERATOR]: 500,
     [Role.VIEWER]: 100,
-    [Role.INTEGRATION]: 200
+    [Role.INTEGRATION]: 200,
   };
 
   return rateLimit({
@@ -369,9 +402,9 @@ export const createRateLimiter = (role: Role) => {
     message: 'Too many requests',
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
+    keyGenerator: req => {
       return req.user?.id || req.ip;
-    }
+    },
   });
 };
 
@@ -379,10 +412,10 @@ export const createRateLimiter = (role: Role) => {
 export const toolRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5,
-  skip: (req) => {
+  skip: req => {
     const tool = req.body.tool;
     return tool !== 'install_module'; // Only limit module installs
-  }
+  },
 });
 ```
 
@@ -408,7 +441,7 @@ export function auditLog(action: string) {
         path: req.path,
         statusCode: res.statusCode,
         duration,
-        correlationId: req.correlationId
+        correlationId: req.correlationId,
       });
     });
 
@@ -417,7 +450,8 @@ export function auditLog(action: string) {
 }
 
 // Usage
-router.delete('/api/flows/:id',
+router.delete(
+  '/api/flows/:id',
   authenticate,
   requirePermission(Permission.FLOWS_DELETE),
   auditLog('flow.delete'),
@@ -440,7 +474,7 @@ export function validateBody<T>(schema: z.Schema<T>) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           error: 'Validation failed',
-          details: error.errors
+          details: error.errors,
         });
       }
       next(error);
@@ -452,11 +486,12 @@ export function validateBody<T>(schema: z.Schema<T>) {
 const createFlowSchema = z.object({
   name: z.string().min(1).max(100),
   nodes: z.array(z.any()),
-  connections: z.record(z.any())
+  connections: z.record(z.any()),
 });
 
 // Usage
-router.post('/api/flows',
+router.post(
+  '/api/flows',
   authenticate,
   requirePermission(Permission.FLOWS_WRITE),
   validateBody(createFlowSchema),
@@ -500,7 +535,8 @@ AUDIT_LOG_LEVEL=info
 // DELETE /api/users/:id - Delete user (admin only)
 // GET /api/users - List users (admin only)
 
-router.post('/api/users',
+router.post(
+  '/api/users',
   authenticate,
   requirePermission(Permission.USERS_MANAGE),
   validateBody(createUserSchema),
@@ -511,9 +547,12 @@ router.post('/api/users',
 
 ## Related ADRs
 
-- [ADR-005: Security Architecture and Validation](./005-security-architecture.md) - Initial security decisions
-- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) - Audit logging
-- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) - SSE security
+- [ADR-005: Security Architecture and Validation](./005-security-architecture.md) -
+  Initial security decisions
+- [ADR-009: Production Observability Strategy](./009-production-observability-strategy.md) -
+  Audit logging
+- [ADR-011: SSE Implementation Completion](./011-sse-implementation-completion.md) -
+  SSE security
 
 ## References
 

@@ -69,9 +69,7 @@ describe('Config Module', () => {
 
     it('should have supportsStdio property', () => {
       expect(typeof appConfig.mcp.supportsStdio).toBe('boolean');
-      expect(appConfig.mcp.supportsStdio).toBe(
-        ['stdio', 'both'].includes(appConfig.mcp.transport)
-      );
+      expect(appConfig.mcp.supportsStdio).toBe(['stdio', 'both'].includes(appConfig.mcp.transport));
     });
 
     it('should have supportsHttp property', () => {
@@ -130,9 +128,7 @@ describe('Config Module', () => {
 
     it('should have isVerbose property', () => {
       expect(typeof appConfig.logging.isVerbose).toBe('boolean');
-      expect(appConfig.logging.isVerbose).toBe(
-        ['debug', 'info'].includes(appConfig.logging.level)
-      );
+      expect(appConfig.logging.isVerbose).toBe(['debug', 'info'].includes(appConfig.logging.level));
     });
   });
 
