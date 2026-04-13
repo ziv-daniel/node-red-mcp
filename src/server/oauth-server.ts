@@ -251,11 +251,50 @@ export class OAuthServer {
         return;
       }
 
-      // Only accept pre-registered clients — no auto-registration
-      const client = this.clients.get(client_id);
+      // Resolve client — support Client ID Metadata Documents (URL-based client IDs)
+      let client = this.clients.get(client_id);
       if (!client) {
-        res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
-        return;
+        // If client_id is a URL, fetch the metadata document and auto-register
+        if (client_id.startsWith('https://') || client_id.startsWith('http://')) {
+          try {
+            const metaResp = await axios.get<{
+              redirect_uris?: string[];
+              client_name?: string;
+              scope?: string;
+            }>(client_id, { timeout: 5000 });
+            const meta = metaResp.data;
+            const redirectUris: string[] = meta.redirect_uris ?? [];
+            // Validate at least one redirect_uri comes from an allowed origin
+            const allowed = redirectUris.some(uri =>
+              ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin))
+            );
+            if (!allowed && redirectUris.length > 0) {
+              res.status(400).json({
+                error: 'invalid_client',
+                error_description: 'Client redirect URIs not from allowed origins',
+              });
+              return;
+            }
+            // Register and cache for this session
+            const newClient: OAuthClient = {
+              clientId: client_id,
+              redirectUris,
+              name: meta.client_name ?? client_id,
+              scopes: (meta.scope ?? 'mcp:read mcp:write mcp:admin').split(' '),
+            };
+            this.clients.set(client_id, newClient);
+            client = newClient;
+          } catch {
+            res.status(400).json({
+              error: 'invalid_client',
+              error_description: 'Could not fetch client metadata document',
+            });
+            return;
+          }
+        } else {
+          res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
+          return;
+        }
       }
 
       // Validate redirect_uri against the client's registered URIs
@@ -265,7 +304,13 @@ export class OAuthServer {
           .json({ error: 'invalid_request', error_description: 'redirect_uri required' });
         return;
       }
-      if (!client.redirectUris.includes(redirect_uri)) {
+      // Allow if listed in registered URIs, or if client has no redirect_uris registered
+      // (metadata document clients may have empty list — fallback to origin check)
+      const redirectOk =
+        client.redirectUris.length === 0
+          ? ALLOWED_REDIRECT_ORIGINS.some(origin => redirect_uri.startsWith(origin))
+          : client.redirectUris.includes(redirect_uri);
+      if (!redirectOk) {
         res.status(400).json({
           error: 'invalid_request',
           error_description: 'redirect_uri does not match registered URIs',
