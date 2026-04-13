@@ -147,27 +147,24 @@ describe('ExpressApp', () => {
         const res = await request(app).get('/health');
 
         expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data).toHaveProperty('server', 'healthy');
-        expect(res.body.data).toHaveProperty('nodeRed');
-        expect(res.body.data).toHaveProperty('sse');
-        expect(res.body.data).toHaveProperty('memory');
-        expect(res.body.data).toHaveProperty('uptime');
+        expect(res.body).toHaveProperty('status', 'ok');
+        expect(res.body).toHaveProperty('nodeRed');
+        expect(res.body).toHaveProperty('timestamp');
       });
 
-      it('should include SSE statistics', async () => {
+      it('should not expose sensitive server internals', async () => {
         const res = await request(app).get('/health');
 
-        expect(res.body.data.sse).toHaveProperty('activeConnections');
-        expect(res.body.data.sse).toHaveProperty('totalConnections');
-        expect(res.body.data.sse).toHaveProperty('uptime');
+        expect(res.body).not.toHaveProperty('memory');
+        expect(res.body).not.toHaveProperty('uptime');
+        expect(res.body).not.toHaveProperty('sse');
+        expect(res.body).not.toHaveProperty('data');
       });
 
       it('should include timestamp', async () => {
         const res = await request(app).get('/health');
 
-        expect(res.body).toHaveProperty('timestamp');
-        expect(new Date(res.body.timestamp).getTime()).not.toBeNaN();
+        expect(new Date(res.body.timestamp as string).getTime()).not.toBeNaN();
       });
     });
 
@@ -189,7 +186,7 @@ describe('ExpressApp', () => {
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('name', 'nodered-mcp-server');
         expect(res.body).toHaveProperty('version', '1.0.0');
-        expect(res.body).toHaveProperty('protocolVersion', '2024-11-05');
+        expect(res.body).toHaveProperty('protocolVersion', '2025-03-26');
         expect(res.body).toHaveProperty('capabilities');
         expect(res.body).toHaveProperty('endpoints');
       });
@@ -234,7 +231,7 @@ describe('ExpressApp', () => {
 
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('jsonrpc', '2.0');
-        expect(res.body.result).toHaveProperty('protocolVersion', '2024-11-05');
+        expect(res.body.result).toHaveProperty('protocolVersion', '2025-03-26');
         expect(res.body.result).toHaveProperty('serverInfo');
       });
     });
@@ -251,7 +248,7 @@ describe('ExpressApp', () => {
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('jsonrpc', '2.0');
         expect(res.body).toHaveProperty('id', 1);
-        expect(res.body.result).toHaveProperty('protocolVersion', '2024-11-05');
+        expect(res.body.result).toHaveProperty('protocolVersion', '2025-03-26');
         expect(res.body.result).toHaveProperty('serverInfo');
         expect(res.body.result).toHaveProperty('tools');
       });

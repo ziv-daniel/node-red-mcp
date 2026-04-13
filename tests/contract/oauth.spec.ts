@@ -168,6 +168,45 @@ describe('OAuthServer', () => {
     });
   });
 
+  // ── Token Revocation (RFC 7009) ───────────────────────────────────────────
+
+  describe('Token Revocation (RFC 7009)', () => {
+    it('revoked token is immediately invalid', () => {
+      const { token } = server.createAccessToken({
+        clientId: 'c1',
+        userId: 'u1',
+        scopes: ['mcp:read'],
+      });
+
+      expect(server.validateToken(token)).not.toBeNull();
+      server.revokeToken(token);
+      expect(server.validateToken(token)).toBeNull();
+    });
+
+    it('revoking unknown token does not throw', () => {
+      expect(() => server.revokeToken('nonexistent-token')).not.toThrow();
+    });
+
+    it('revoking one token does not affect others', () => {
+      const a = server.createAccessToken({ clientId: 'c1', userId: 'u1', scopes: [] });
+      const b = server.createAccessToken({ clientId: 'c1', userId: 'u2', scopes: [] });
+
+      server.revokeToken(a.token);
+
+      expect(server.validateToken(a.token)).toBeNull();
+      expect(server.validateToken(b.token)).not.toBeNull();
+    });
+  });
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+  describe('Lifecycle', () => {
+    it('destroy() stops the cleanup interval without throwing', () => {
+      const s = new OAuthServer();
+      expect(() => s.destroy()).not.toThrow();
+    });
+  });
+
   // ── Full Authorization Code Flow ──────────────────────────────────────────
 
   describe('Full Authorization Code + PKCE flow', () => {
