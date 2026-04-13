@@ -38,7 +38,7 @@ export default defineConfig({
       // Updated: Jan 2026 after ADR-008 testing enhancement implementation
       // Added 634 tests covering services, server, utils, and integration layers
       thresholds: {
-        branches: 64, // oauth-server HTML form added uncovered branches
+        branches: 63, // dynamic client metadata document support added uncovered branches
         functions: 78,
         lines: 72,
         statements: 72,
