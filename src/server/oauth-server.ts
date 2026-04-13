@@ -293,7 +293,7 @@ export class OAuthServer {
       const authCode = this.createAuthorizationCode({
         clientId: client_id,
         redirectUri: redirect_uri,
-        userId,
+        userId: 'mcp-user',
         scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
         codeChallenge: code_challenge,
         codeChallengeMethod: 'S256',
@@ -303,6 +303,9 @@ export class OAuthServer {
       if (state) params.set('state', state);
       res.redirect(302, `${redirect_uri}?${params.toString()}`);
     };
+
+    // POST /authorize mirrors GET — some clients POST the authorization request
+    const handleAuthorizePost = handleAuthorizeGet;
 
     router.get('/authorize', handleAuthorizeGet);
     router.get('/oauth/authorize', handleAuthorizeGet);
