@@ -235,7 +235,7 @@ export class OAuthServer {
 
     // ── Authorization Endpoint ────────────────────────────────────────────
     // GET /authorize — show login form for the user to enter Node-RED credentials
-    const handleAuthorizeGet = (req: Request, res: Response): void => {
+    const handleAuthorizeGet = async (req: Request, res: Response): Promise<void> => {
       const {
         client_id,
         redirect_uri,
