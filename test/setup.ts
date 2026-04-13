@@ -9,6 +9,8 @@ process.env.NODE_ENV = 'test';
 process.env.MCP_TRANSPORT = 'stdio';
 process.env.HTTP_ENABLED = 'false';
 process.env.PORT = '3001';
+process.env.JWT_SECRET = 'test-secret-key-minimum-32-chars-xxxx';
+process.env.NODERED_SKIP_CREDENTIAL_VALIDATION = 'true';
 
 // Global test utilities
 global.TEST_TIMEOUT = 5000;

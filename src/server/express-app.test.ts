@@ -3,7 +3,7 @@
  * Tests for HTTP endpoints and middleware
  */
 
-import type { Express } from 'express';
+import express from 'express';
 import request from 'supertest';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -110,7 +110,7 @@ import type { McpNodeRedServer } from './mcp-server.js';
 
 describe('ExpressApp', () => {
   let expressApp: ExpressApp;
-  let app: Express;
+  let app: express.Application;
 
   beforeEach(() => {
     vi.clearAllMocks();

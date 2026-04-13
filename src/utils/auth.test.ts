@@ -656,7 +656,7 @@ describe('Rate Limiting Utilities', () => {
 
     it('should return IP key when not authenticated', () => {
       const { req } = createMockReqRes();
-      req.ip = '192.168.1.1';
+      (req as any).ip = '192.168.1.1';
 
       const key = getRateLimitKey(req as any);
 
@@ -665,7 +665,7 @@ describe('Rate Limiting Utilities', () => {
 
     it('should fallback to connection remoteAddress', () => {
       const { req } = createMockReqRes();
-      req.ip = undefined as any;
+      (req as any).ip = undefined;
       req.connection = { remoteAddress: '10.0.0.1' } as any;
 
       const key = getRateLimitKey(req as any);
@@ -675,7 +675,7 @@ describe('Rate Limiting Utilities', () => {
 
     it('should return unknown for missing IP', () => {
       const { req } = createMockReqRes();
-      req.ip = undefined as any;
+      (req as any).ip = undefined;
       req.connection = {} as any;
 
       const key = getRateLimitKey(req as any);

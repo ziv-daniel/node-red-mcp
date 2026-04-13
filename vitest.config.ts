@@ -10,6 +10,13 @@ export default defineConfig({
     // Test environment
     environment: 'node',
 
+    // Environment variables set before any module loads (avoids singleton init failures)
+    env: {
+      NODE_ENV: 'test',
+      JWT_SECRET: 'test-secret-key-minimum-32-chars-xxxx',
+      NODERED_SKIP_CREDENTIAL_VALIDATION: 'true',
+    },
+
     // Global test setup
     globals: true,
 

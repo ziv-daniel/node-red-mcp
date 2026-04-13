@@ -270,6 +270,14 @@ describe('Health Module', () => {
   describe('healthCheckHandler', () => {
     it('should return healthy status when all checks pass', async () => {
       vi.mocked(axios.get).mockResolvedValueOnce({ status: 200 });
+      // Ensure low memory so system check returns 'pass' regardless of CI env
+      vi.spyOn(process, 'memoryUsage').mockReturnValueOnce({
+        heapUsed: 50 * 1024 * 1024,
+        heapTotal: 200 * 1024 * 1024,
+        rss: 0,
+        external: 0,
+        arrayBuffers: 0,
+      });
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -698,6 +706,13 @@ describe('Health Module', () => {
   describe('Health Status Determination', () => {
     it('should be healthy when all checks pass', async () => {
       vi.mocked(axios.get).mockResolvedValueOnce({ status: 200 });
+      vi.spyOn(process, 'memoryUsage').mockReturnValueOnce({
+        heapUsed: 50 * 1024 * 1024,
+        heapTotal: 200 * 1024 * 1024,
+        rss: 0,
+        external: 0,
+        arrayBuffers: 0,
+      });
 
       const req = createMockRequest();
       const res = createMockResponse();
