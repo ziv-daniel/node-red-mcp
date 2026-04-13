@@ -3,13 +3,15 @@
  * Tests for Server-Sent Events connection management
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
+
 import type { Response } from 'express';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+import type { SSEEvent, SSEEventFilter } from '../types/sse.js';
+import type { AuthRequest } from '../utils/auth.js';
 
 import { SSEHandler } from './sse-handler.js';
-import type { AuthRequest } from '../utils/auth.js';
-import type { SSEEvent, SSEEventFilter } from '../types/sse.js';
 
 // Mock uuid
 vi.mock('uuid', () => ({
@@ -406,7 +408,7 @@ describe('SSEHandler', () => {
       handler.subscribeWithFilter(connectionId, 'event', filter);
 
       const subs = handler.getSubscriptions(connectionId);
-      expect(subs.filters['event']).toEqual(filter);
+      expect(subs.filters.event).toEqual(filter);
     });
   });
 
@@ -439,7 +441,7 @@ describe('SSEHandler', () => {
       handler.unsubscribe(connectionId, ['event1']);
 
       const stats = handler.getStats();
-      expect(stats.connectionsByEventType['event1']).toBeUndefined();
+      expect(stats.connectionsByEventType.event1).toBeUndefined();
     });
   });
 

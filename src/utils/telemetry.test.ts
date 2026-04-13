@@ -3,8 +3,8 @@
  * Tests for OpenTelemetry configuration and metrics
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   initializeTelemetry,

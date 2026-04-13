@@ -5,9 +5,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { NodeRedEventListener } from './nodered-event-listener.js';
 import { SSEHandler } from '../server/sse-handler.js';
+
 import { NodeRedAPIClient } from './nodered-api.js';
+import { NodeRedEventListener } from './nodered-event-listener.js';
 
 // Mock SSEHandler
 vi.mock('../server/sse-handler.js', () => ({
