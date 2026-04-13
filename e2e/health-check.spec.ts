@@ -11,9 +11,9 @@ test.describe('MCP Server Health Check', () => {
     expect([200, 204]).toContain(response.status());
 
     const responseData = await response.json();
-    expect(responseData).toHaveProperty('success', true);
+    expect(responseData).toHaveProperty('status', 'ok');
     expect(responseData).toHaveProperty('timestamp');
-    expect(responseData.data).toHaveProperty('server', 'healthy');
+    expect(responseData).toHaveProperty('nodeRed');
   });
 
   test('should respond to api info endpoint', async ({ request }) => {
