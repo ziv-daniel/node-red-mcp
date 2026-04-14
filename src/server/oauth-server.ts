@@ -350,6 +350,182 @@ export class OAuthServer {
         return;
       }
 
+      // Show the Node-RED credential form — user must submit credentials
+      const defaultUrl = process.env.NODERED_URL ?? '';
+      const errorMsg = (req.query.error as string) ?? '';
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.status(200).send(`<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>חיבור ל-Node-RED</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.1); padding: 2rem; width: 100%; max-width: 440px; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .25rem; color: #111; }
+    .subtitle { font-size: .85rem; color: #666; margin-bottom: 1.5rem; }
+    label { display: block; font-size: .85rem; font-weight: 600; color: #333; margin-bottom: .3rem; }
+    input[type=text], input[type=password], input[type=url] { width: 100%; padding: .6rem .75rem; border: 1px solid #ddd; border-radius: 7px; font-size: .9rem; margin-bottom: 1rem; outline: none; transition: border .15s; }
+    input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,.15); }
+    .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+    .tab { flex: 1; padding: .5rem; border: 1px solid #ddd; border-radius: 7px; background: #f9f9f9; cursor: pointer; font-size: .85rem; text-align: center; transition: all .15s; }
+    .tab.active { background: #7c3aed; color: #fff; border-color: #7c3aed; font-weight: 600; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 7px; padding: .7rem 1rem; font-size: .85rem; margin-bottom: 1rem; }
+    button[type=submit] { width: 100%; padding: .75rem; background: #7c3aed; color: #fff; border: none; border-radius: 7px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+    button[type=submit]:hover { background: #6d28d9; }
+    .lock { text-align: center; font-size: .75rem; color: #999; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔌 חיבור ל-Node-RED</h1>
+    <p class="subtitle">הזן את פרטי ה-Node-RED שאליו Claude יתחבר</p>
+    ${errorMsg ? `<div class="error">⚠️ ${errorMsg}</div>` : ''}
+    <form method="POST" action="/authorize">
+      <input type="hidden" name="client_id" value="${client_id}">
+      <input type="hidden" name="redirect_uri" value="${redirect_uri}">
+      <input type="hidden" name="response_type" value="code">
+      <input type="hidden" name="state" value="${state ?? ''}">
+      <input type="hidden" name="scope" value="${scope ?? ''}">
+      <input type="hidden" name="code_challenge" value="${code_challenge}">
+      <input type="hidden" name="code_challenge_method" value="${code_challenge_method ?? 'S256'}">
+
+      <label for="nr_url">כתובת Node-RED</label>
+      <input type="url" id="nr_url" name="nr_url" value="${defaultUrl}" placeholder="https://nodered.example.com" required>
+
+      <label>סוג הזדהות</label>
+      <div class="tabs">
+        <div class="tab active" onclick="setTab('bearer')">Bearer Token</div>
+        <div class="tab" onclick="setTab('basic')">שם משתמש + סיסמה</div>
+      </div>
+      <input type="hidden" id="auth_type" name="auth_type" value="bearer">
+
+      <div id="panel-bearer" class="panel active">
+        <label for="nr_token">API Token</label>
+        <input type="password" id="nr_token" name="nr_token" placeholder="הכנס Bearer token">
+      </div>
+      <div id="panel-basic" class="panel">
+        <label for="nr_username">שם משתמש</label>
+        <input type="text" id="nr_username" name="nr_username" placeholder="admin">
+        <label for="nr_password">סיסמה</label>
+        <input type="password" id="nr_password" name="nr_password" placeholder="••••••••">
+      </div>
+
+      <button type="submit">התחבר</button>
+    </form>
+    <p class="lock">🔒 הפרטים מוצפנים ב-JWT ולא נשמרים בשרת</p>
+  </div>
+  <script>
+    function setTab(type) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-' + type).classList.add('active');
+      document.getElementById('auth_type').value = type;
+    }
+  </script>
+</body>
+</html>`);
+    };
+
+    // POST /authorize — process credential form, validate against Node-RED, issue auth code
+    const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
+      const {
+        client_id,
+        redirect_uri,
+        state,
+        scope,
+        code_challenge,
+        code_challenge_method,
+        nr_url,
+        auth_type,
+        nr_token,
+        nr_username,
+        nr_password,
+      } = req.body as Record<string, string>;
+
+      // Basic param validation
+      if (!client_id || !redirect_uri || !code_challenge || !nr_url) {
+        res
+          .status(400)
+          .json({ error: 'invalid_request', error_description: 'Missing required fields' });
+        return;
+      }
+
+      // Sanitise the Node-RED URL
+      let nodeRedUrl: string;
+      try {
+        const u = new URL(nr_url);
+        nodeRedUrl = u.origin; // strip trailing path/query
+      } catch {
+        const params = new URLSearchParams(req.body as Record<string, string>);
+        params.set('error', 'כתובת URL לא תקינה');
+        res.redirect(302, `/authorize?${params.toString()}`);
+        return;
+      }
+
+      // Validate redirect_uri (re-check after POST)
+      const redirectOk =
+        ALLOWED_REDIRECT_ORIGINS.some(o => redirect_uri.startsWith(o)) ||
+        (this.clients.get(client_id)?.redirectUris ?? []).includes(redirect_uri);
+      if (!redirectOk) {
+        res
+          .status(400)
+          .json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' });
+        return;
+      }
+
+      // Build credentials object
+      const credentials: NodeRedCredentials =
+        auth_type === 'basic'
+          ? {
+              url: nodeRedUrl,
+              authType: 'basic',
+              ...(nr_username && { username: nr_username }),
+              ...(nr_password && { password: nr_password }),
+            }
+          : {
+              url: nodeRedUrl,
+              authType: 'bearer',
+              ...(nr_token && { token: nr_token }),
+            };
+
+      // Validate credentials against Node-RED (unless skipped in tests)
+      if (process.env.NODERED_SKIP_CREDENTIAL_VALIDATION !== 'true') {
+        try {
+          const authHeader =
+            credentials.authType === 'basic' && credentials.username
+              ? `Basic ${Buffer.from(`${credentials.username}:${credentials.password ?? ''}`).toString('base64')}`
+              : credentials.token
+                ? `Bearer ${credentials.token}`
+                : undefined;
+          await axios.get(`${nodeRedUrl}/settings`, {
+            timeout: 5000,
+            headers: authHeader ? { Authorization: authHeader } : {},
+            httpsAgent: new (await import('https')).default.Agent({ rejectUnauthorized: false }),
+          });
+        } catch {
+          // Redirect back to form with error message
+          const params = new URLSearchParams({
+            client_id,
+            redirect_uri,
+            response_type: 'code',
+            state: state ?? '',
+            scope: scope ?? '',
+            code_challenge,
+            code_challenge_method: code_challenge_method ?? 'S256',
+            error: 'לא ניתן להתחבר ל-Node-RED — בדוק כתובת ופרטי הזדהות',
+          });
+          res.redirect(302, `/authorize?${params.toString()}`);
+          return;
+        }
+      }
+
+      // Issue authorization code with embedded Node-RED credentials
       const authCode = this.createAuthorizationCode({
         clientId: client_id,
         redirectUri: redirect_uri,
@@ -357,15 +533,13 @@ export class OAuthServer {
         scopes: scope ? scope.split(' ') : ['mcp:read', 'mcp:write'],
         codeChallenge: code_challenge,
         codeChallengeMethod: 'S256',
+        nodeRedCredentials: credentials,
       });
 
-      const params = new URLSearchParams({ code: authCode.code });
-      if (state) params.set('state', state);
-      res.redirect(302, `${redirect_uri}?${params.toString()}`);
+      const callbackParams = new URLSearchParams({ code: authCode.code });
+      if (state) callbackParams.set('state', state);
+      res.redirect(302, `${redirect_uri}?${callbackParams.toString()}`);
     };
-
-    // POST /authorize mirrors GET — some clients POST the authorization request
-    const handleAuthorizePost = handleAuthorizeGet;
 
     router.get('/authorize', handleAuthorizeGet);
     router.get('/oauth/authorize', handleAuthorizeGet);
