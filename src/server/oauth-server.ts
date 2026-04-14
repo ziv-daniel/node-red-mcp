@@ -254,8 +254,25 @@ export class OAuthServer {
       // Resolve client — support Client ID Metadata Documents (URL-based client IDs)
       let client = this.clients.get(client_id);
       if (!client) {
-        // If client_id is a URL, fetch the metadata document and auto-register
-        if (client_id.startsWith('https://') || client_id.startsWith('http://')) {
+        // Support Client ID Metadata Documents (URL-based client IDs)
+        // If the client_id is a URL from a trusted origin, auto-register the client.
+        // We skip fetching the metadata document itself because it may be behind
+        // Cloudflare or other auth (e.g. claude.ai). Instead we trust the origin
+        // and validate redirect_uri against ALLOWED_REDIRECT_ORIGINS below.
+        const trustedOrigin = ALLOWED_REDIRECT_ORIGINS.find(origin =>
+          client_id.startsWith(origin + '/')
+        );
+        if (trustedOrigin) {
+          const newClient: OAuthClient = {
+            clientId: client_id,
+            redirectUris: [], // validated via origin check below
+            name: client_id,
+            scopes: ['mcp:read', 'mcp:write', 'mcp:admin'],
+          };
+          this.clients.set(client_id, newClient);
+          client = newClient;
+        } else if (client_id.startsWith('https://') || client_id.startsWith('http://')) {
+          // Unknown external URL — try fetching the metadata document
           try {
             const metaResp = await axios.get<{
               redirect_uris?: string[];
@@ -264,7 +281,6 @@ export class OAuthServer {
             }>(client_id, { timeout: 5000 });
             const meta = metaResp.data;
             const redirectUris: string[] = meta.redirect_uris ?? [];
-            // Validate at least one redirect_uri comes from an allowed origin
             const allowed = redirectUris.some(uri =>
               ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin))
             );
@@ -275,7 +291,6 @@ export class OAuthServer {
               });
               return;
             }
-            // Register and cache for this session
             const newClient: OAuthClient = {
               clientId: client_id,
               redirectUris,
