@@ -434,6 +434,11 @@ export class OAuthServer {
 
     // POST /authorize — process credential form, validate against Node-RED, issue auth code
     const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
+      // OAuth params may arrive via hidden form fields (body) or query string — check both
+      const merged = {
+        ...(req.query as Record<string, string>),
+        ...(req.body as Record<string, string>),
+      };
       const {
         client_id,
         redirect_uri,
@@ -446,7 +451,7 @@ export class OAuthServer {
         nr_token,
         nr_username,
         nr_password,
-      } = req.body as Record<string, string>;
+      } = merged;
 
       // Basic param validation
       if (!client_id || !redirect_uri || !code_challenge || !nr_url) {
