@@ -235,7 +235,12 @@ export class OAuthServer {
 
     // ── Authorization Endpoint ────────────────────────────────────────────
     const escHtml = (s: string): string =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+      s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
 
     // GET /authorize — show login form for the user to enter Node-RED credentials
     const handleAuthorizeGet = async (req: Request, res: Response): Promise<void> => {
