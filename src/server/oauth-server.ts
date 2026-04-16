@@ -362,6 +362,7 @@ export class OAuthServer {
       const defaultUrl = process.env.NODERED_URL ?? '';
       const errorMsg = (req.query.error as string) ?? '';
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.status(200).send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
