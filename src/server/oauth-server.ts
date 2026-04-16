@@ -234,6 +234,9 @@ export class OAuthServer {
     router.post('/oauth/register', handleRegister);
 
     // ── Authorization Endpoint ────────────────────────────────────────────
+    const escHtml = (s: string): string =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+
     // GET /authorize — show login form for the user to enter Node-RED credentials
     const handleAuthorizeGet = async (req: Request, res: Response): Promise<void> => {
       const {
@@ -384,15 +387,15 @@ export class OAuthServer {
   <div class="card">
     <h1>🔌 חיבור ל-Node-RED</h1>
     <p class="subtitle">הזן את פרטי ה-Node-RED שאליו Claude יתחבר</p>
-    ${errorMsg ? `<div class="error">⚠️ ${errorMsg}</div>` : ''}
+    ${errorMsg ? `<div class="error">⚠️ ${escHtml(errorMsg)}</div>` : ''}
     <form method="POST" action="/authorize">
-      <input type="hidden" name="client_id" value="${client_id}">
-      <input type="hidden" name="redirect_uri" value="${redirect_uri}">
+      <input type="hidden" name="client_id" value="${escHtml(client_id)}">
+      <input type="hidden" name="redirect_uri" value="${escHtml(redirect_uri ?? '')}">
       <input type="hidden" name="response_type" value="code">
-      <input type="hidden" name="state" value="${state ?? ''}">
-      <input type="hidden" name="scope" value="${scope ?? ''}">
-      <input type="hidden" name="code_challenge" value="${code_challenge}">
-      <input type="hidden" name="code_challenge_method" value="${code_challenge_method ?? 'S256'}">
+      <input type="hidden" name="state" value="${escHtml(state ?? '')}">
+      <input type="hidden" name="scope" value="${escHtml(scope ?? '')}">
+      <input type="hidden" name="code_challenge" value="${escHtml(code_challenge)}">
+      <input type="hidden" name="code_challenge_method" value="${escHtml(code_challenge_method ?? 'S256')}">
 
       <label for="nr_url">כתובת Node-RED</label>
       <input type="url" id="nr_url" name="nr_url" value="${defaultUrl}" placeholder="https://nodered.example.com" required>
