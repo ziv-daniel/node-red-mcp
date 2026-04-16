@@ -402,8 +402,8 @@ export class OAuthServer {
 
       <label>סוג הזדהות</label>
       <div class="tabs">
-        <div class="tab active" onclick="setTab(this,'bearer')">Bearer Token</div>
-        <div class="tab" onclick="setTab(this,'basic')">שם משתמש + סיסמה</div>
+        <div class="tab active" data-tab="bearer">Bearer Token</div>
+        <div class="tab" data-tab="basic">שם משתמש + סיסמה</div>
       </div>
       <input type="hidden" id="auth_type" name="auth_type" value="bearer">
 
@@ -423,13 +423,16 @@ export class OAuthServer {
     <p class="lock">🔒 הפרטים מוצפנים ב-JWT ולא נשמרים בשרת</p>
   </div>
   <script>
-    function setTab(el, type) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      el.classList.add('active');
-      document.getElementById('panel-' + type).classList.add('active');
-      document.getElementById('auth_type').value = type;
-    }
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var type = this.dataset.tab;
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+        this.classList.add('active');
+        document.getElementById('panel-' + type).classList.add('active');
+        document.getElementById('auth_type').value = type;
+      });
+    });
   </script>
 </body>
 </html>`);
