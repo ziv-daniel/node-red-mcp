@@ -511,22 +511,19 @@ export class OAuthServer {
               ...(nr_token && { token: nr_token }),
             };
 
-      // Validate credentials against Node-RED (unless skipped in tests)
+      // Validate that the Node-RED URL is reachable (any HTTP response means the server is up).
+      // We do NOT validate the credentials here — basic-auth and token auth use different
+      // mechanisms, so a 401 simply means the server responded (credentials will be
+      // verified on the first real API call).
       if (process.env.NODERED_SKIP_CREDENTIAL_VALIDATION !== 'true') {
         try {
-          const authHeader =
-            credentials.authType === 'basic' && credentials.username
-              ? `Basic ${Buffer.from(`${credentials.username}:${credentials.password ?? ''}`).toString('base64')}`
-              : credentials.token
-                ? `Bearer ${credentials.token}`
-                : undefined;
-          await axios.get(`${nodeRedUrl}/settings`, {
+          await axios.get(`${nodeRedUrl}/`, {
             timeout: 5000,
-            headers: authHeader ? { Authorization: authHeader } : {},
+            validateStatus: () => true, // accept any HTTP status — 401 means server is up
             httpsAgent: new (await import('https')).default.Agent({ rejectUnauthorized: false }),
           });
         } catch {
-          // Redirect back to form with error message
+          // Only a network-level failure (DNS, timeout, ECONNREFUSED) reaches here
           const params = new URLSearchParams({
             client_id,
             redirect_uri,
@@ -535,7 +532,7 @@ export class OAuthServer {
             scope: scope ?? '',
             code_challenge,
             code_challenge_method: code_challenge_method ?? 'S256',
-            error: 'לא ניתן להתחבר ל-Node-RED — בדוק כתובת ופרטי הזדהות',
+            error: 'כתובת ה-Node-RED אינה נגישה — בדוק שה-URL נכון',
           });
           res.redirect(302, `/authorize?${params.toString()}`);
           return;
