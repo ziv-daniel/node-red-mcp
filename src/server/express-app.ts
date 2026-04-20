@@ -135,6 +135,10 @@ export class ExpressApp {
               connectSrc: ["'self'"],
             },
           },
+          // Disable COOP so claude.ai popup can communicate with its opener
+          // after the OAuth callback redirect. With same-origin COOP, the popup
+          // loses window.opener and claude.ai cannot detect the auth completion.
+          crossOriginOpenerPolicy: false,
         })
       );
     }
