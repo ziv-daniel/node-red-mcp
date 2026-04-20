@@ -244,6 +244,8 @@ export class OAuthServer {
 
     // GET /authorize — show login form for the user to enter Node-RED credentials
     const handleAuthorizeGet = async (req: Request, res: Response): Promise<void> => {
+      // Remove COOP header so claude.ai popup can communicate with the opener after callback
+      res.removeHeader('Cross-Origin-Opener-Policy');
       const {
         client_id,
         redirect_uri,
@@ -446,6 +448,7 @@ export class OAuthServer {
 
     // POST /authorize — process credential form, validate against Node-RED, issue auth code
     const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
+      res.removeHeader('Cross-Origin-Opener-Policy');
       // OAuth params may arrive via hidden form fields (body) or query string — check both
       const merged = {
         ...(req.query as Record<string, string>),
