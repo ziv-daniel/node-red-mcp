@@ -361,6 +361,8 @@ export class OAuthServer {
       // Show the Node-RED credential form — user must submit credentials
       const defaultUrl = process.env.NODERED_URL ?? '';
       const errorMsg = (req.query.error as string) ?? '';
+      // Allow embedding from claude.ai (removes frame restrictions)
+      res.removeHeader('X-Frame-Options');
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.status(200).send(`<!DOCTYPE html>
@@ -384,8 +386,10 @@ export class OAuthServer {
     .panel { display: none; }
     .panel.active { display: block; }
     .error { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 7px; padding: .7rem 1rem; font-size: .85rem; margin-bottom: 1rem; }
-    button[type=submit] { width: 100%; padding: .75rem; background: #7c3aed; color: #fff; border: none; border-radius: 7px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .15s; }
-    button[type=submit]:hover { background: #6d28d9; }
+    .success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; border-radius: 7px; padding: .7rem 1rem; font-size: .85rem; margin-bottom: 1rem; }
+    #submit-btn { width: 100%; padding: .75rem; background: #7c3aed; color: #fff; border: none; border-radius: 7px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+    #submit-btn:hover:not(:disabled) { background: #6d28d9; }
+    #submit-btn:disabled { background: #a78bfa; cursor: not-allowed; }
     .lock { text-align: center; font-size: .75rem; color: #999; margin-top: 1rem; }
   </style>
 </head>
@@ -393,50 +397,88 @@ export class OAuthServer {
   <div class="card">
     <h1>🔌 חיבור ל-Node-RED</h1>
     <p class="subtitle">הזן את פרטי ה-Node-RED שאליו Claude יתחבר</p>
-    ${errorMsg ? `<div class="error">⚠️ ${escHtml(errorMsg)}</div>` : ''}
-    <form method="POST" action="/authorize">
-      <input type="hidden" name="client_id" value="${escHtml(client_id)}">
-      <input type="hidden" name="redirect_uri" value="${escHtml(redirect_uri ?? '')}">
-      <input type="hidden" name="response_type" value="code">
-      <input type="hidden" name="state" value="${escHtml(state ?? '')}">
-      <input type="hidden" name="scope" value="${escHtml(scope ?? '')}">
-      <input type="hidden" name="code_challenge" value="${escHtml(code_challenge)}">
-      <input type="hidden" name="code_challenge_method" value="${escHtml(code_challenge_method ?? 'S256')}">
+    <div id="msg-box">${errorMsg ? `<div class="error">⚠️ ${escHtml(errorMsg)}</div>` : ''}</div>
 
-      <label for="nr_url">כתובת Node-RED</label>
-      <input type="url" id="nr_url" name="nr_url" value="${defaultUrl}" placeholder="https://nodered.example.com" required>
+    <label for="nr_url">כתובת Node-RED</label>
+    <input type="url" id="nr_url" value="${defaultUrl}" placeholder="https://nodered.example.com">
 
-      <label>סוג הזדהות</label>
-      <div class="tabs">
-        <div class="tab active" data-tab="bearer">Bearer Token</div>
-        <div class="tab" data-tab="basic">שם משתמש + סיסמה</div>
-      </div>
-      <input type="hidden" id="auth_type" name="auth_type" value="bearer">
+    <label>סוג הזדהות</label>
+    <div class="tabs">
+      <div class="tab active" data-tab="bearer">Bearer Token</div>
+      <div class="tab" data-tab="basic">שם משתמש + סיסמה</div>
+    </div>
 
-      <div id="panel-bearer" class="panel active">
-        <label for="nr_token">API Token</label>
-        <input type="password" id="nr_token" name="nr_token" placeholder="הכנס Bearer token">
-      </div>
-      <div id="panel-basic" class="panel">
-        <label for="nr_username">שם משתמש</label>
-        <input type="text" id="nr_username" name="nr_username" placeholder="admin">
-        <label for="nr_password">סיסמה</label>
-        <input type="password" id="nr_password" name="nr_password" placeholder="••••••••">
-      </div>
+    <div id="panel-bearer" class="panel active">
+      <label for="nr_token">API Token</label>
+      <input type="password" id="nr_token" placeholder="הכנס Bearer token">
+    </div>
+    <div id="panel-basic" class="panel">
+      <label for="nr_username">שם משתמש</label>
+      <input type="text" id="nr_username" placeholder="admin">
+      <label for="nr_password">סיסמה</label>
+      <input type="password" id="nr_password" placeholder="••••••••">
+    </div>
 
-      <button type="submit">התחבר</button>
-    </form>
+    <button id="submit-btn" type="button">התחבר</button>
     <p class="lock">🔒 הפרטים מוצפנים ב-JWT ולא נשמרים בשרת</p>
   </div>
   <script>
+    var authType = 'bearer';
     document.querySelectorAll('.tab').forEach(function(tab) {
       tab.addEventListener('click', function() {
-        var type = this.dataset.tab;
+        authType = this.dataset.tab;
         document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
         document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
         this.classList.add('active');
-        document.getElementById('panel-' + type).classList.add('active');
-        document.getElementById('auth_type').value = type;
+        document.getElementById('panel-' + authType).classList.add('active');
+      });
+    });
+
+    document.getElementById('submit-btn').addEventListener('click', function() {
+      var btn = this;
+      var msgBox = document.getElementById('msg-box');
+      var nr_url = document.getElementById('nr_url').value.trim();
+      if (!nr_url) { msgBox.innerHTML = '<div class="error">⚠️ יש להזין כתובת Node-RED</div>'; return; }
+
+      btn.disabled = true;
+      btn.textContent = '⏳ מתחבר...';
+      msgBox.innerHTML = '';
+
+      var body = new URLSearchParams({
+        _json: '1',
+        client_id: ${JSON.stringify(client_id)},
+        redirect_uri: ${JSON.stringify(redirect_uri ?? '')},
+        response_type: 'code',
+        state: ${JSON.stringify(state ?? '')},
+        scope: ${JSON.stringify(scope ?? '')},
+        code_challenge: ${JSON.stringify(code_challenge)},
+        code_challenge_method: ${JSON.stringify(code_challenge_method ?? 'S256')},
+        nr_url: nr_url,
+        auth_type: authType,
+        nr_token: document.getElementById('nr_token').value,
+        nr_username: document.getElementById('nr_username') ? document.getElementById('nr_username').value : '',
+        nr_password: document.getElementById('nr_password') ? document.getElementById('nr_password').value : ''
+      });
+
+      fetch('/authorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.redirect_to) {
+          msgBox.innerHTML = '<div class="success">✅ מתחבר ל-Claude...</div>';
+          // Navigate top window (works in popup, iframe, and direct tab)
+          try { window.top.location.href = data.redirect_to; } catch(e) { window.location.href = data.redirect_to; }
+        } else {
+          var err = data.error_description || data.error || 'שגיאה לא ידועה';
+          msgBox.innerHTML = '<div class="error">⚠️ ' + err + '</div>';
+          btn.disabled = false;
+          btn.textContent = 'התחבר';
+        }
+      }).catch(function(e) {
+        msgBox.innerHTML = '<div class="error">⚠️ שגיאת רשת: ' + e.message + '</div>';
+        btn.disabled = false;
+        btn.textContent = 'התחבר';
       });
     });
   </script>
@@ -446,6 +488,11 @@ export class OAuthServer {
 
     // POST /authorize — process credential form, validate against Node-RED, issue auth code
     const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
+      console.log('[AUTH POST] body keys:', Object.keys(req.body || {}));
+      console.log('[AUTH POST] client_id:', (req.body as Record<string,string>)?.client_id?.substring(0,60));
+      console.log('[AUTH POST] redirect_uri:', (req.body as Record<string,string>)?.redirect_uri);
+      console.log('[AUTH POST] nr_url:', (req.body as Record<string,string>)?.nr_url);
+      console.log('[AUTH POST] auth_type:', (req.body as Record<string,string>)?.auth_type);
       // OAuth params may arrive via hidden form fields (body) or query string — check both
       const merged = {
         ...(req.query as Record<string, string>),
@@ -515,6 +562,23 @@ export class OAuthServer {
       // We do NOT validate the credentials here — basic-auth and token auth use different
       // mechanisms, so a 401 simply means the server responded (credentials will be
       // verified on the first real API call).
+      // Whether the client wants JSON response (JS fetch) or classic 302 redirect
+      const wantsJson = merged._json === '1';
+
+      const sendError = (msg: string): void => {
+        if (wantsJson) {
+          res.status(400).json({ error: msg });
+        } else {
+          const params = new URLSearchParams({
+            client_id, redirect_uri, response_type: 'code',
+            state: state ?? '', scope: scope ?? '',
+            code_challenge, code_challenge_method: code_challenge_method ?? 'S256',
+            error: msg,
+          });
+          res.redirect(302, `/authorize?${params.toString()}`);
+        }
+      };
+
       if (process.env.NODERED_SKIP_CREDENTIAL_VALIDATION !== 'true') {
         try {
           await axios.get(`${nodeRedUrl}/`, {
@@ -523,18 +587,7 @@ export class OAuthServer {
             httpsAgent: new (await import('https')).default.Agent({ rejectUnauthorized: false }),
           });
         } catch {
-          // Only a network-level failure (DNS, timeout, ECONNREFUSED) reaches here
-          const params = new URLSearchParams({
-            client_id,
-            redirect_uri,
-            response_type: 'code',
-            state: state ?? '',
-            scope: scope ?? '',
-            code_challenge,
-            code_challenge_method: code_challenge_method ?? 'S256',
-            error: 'כתובת ה-Node-RED אינה נגישה — בדוק שה-URL נכון',
-          });
-          res.redirect(302, `/authorize?${params.toString()}`);
+          sendError('כתובת ה-Node-RED אינה נגישה — בדוק שה-URL נכון');
           return;
         }
       }
@@ -552,7 +605,14 @@ export class OAuthServer {
 
       const callbackParams = new URLSearchParams({ code: authCode.code });
       if (state) callbackParams.set('state', state);
-      res.redirect(302, `${redirect_uri}?${callbackParams.toString()}`);
+      const callbackUrl = `${redirect_uri}?${callbackParams.toString()}`;
+      console.log('[AUTH POST] success, redirecting to:', callbackUrl.substring(0, 80));
+
+      if (wantsJson) {
+        res.json({ redirect_to: callbackUrl });
+      } else {
+        res.redirect(302, callbackUrl);
+      }
     };
 
     router.get('/authorize', handleAuthorizeGet);
@@ -567,6 +627,8 @@ export class OAuthServer {
         string,
         string
       >;
+
+      console.log('[TOKEN] grant_type:', grant_type, 'client_id:', client_id?.substring(0, 50), 'code_verifier present:', !!code_verifier, 'redirect_uri:', redirect_uri);
 
       if (grant_type !== 'authorization_code') {
         res.status(400).json({ error: 'unsupported_grant_type' });
@@ -586,7 +648,9 @@ export class OAuthServer {
         return;
       }
 
-      if (authCode.clientId !== client_id) {
+      // Only check client_id if provided — public clients (auth method: none) may omit it
+      if (client_id && authCode.clientId !== client_id) {
+        console.log('[TOKEN] client_id mismatch:', authCode.clientId, '!=', client_id);
         res.status(400).json({ error: 'invalid_grant', error_description: 'client_id mismatch' });
         return;
       }
