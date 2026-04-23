@@ -159,8 +159,12 @@ export class ExpressApp {
             this.config.cors.origin,
           ].filter(Boolean);
 
-          // Allow configured origins (Claude.ai domains always allowed)
-          if (!origin || allowedOrigins.includes(origin)) {
+          // Also allow the server's own public URL (form is served from our domain)
+          const publicUrl = process.env.PUBLIC_URL;
+          if (publicUrl) allowedOrigins.push(publicUrl);
+
+          // Allow: no origin (same-origin/server-side), whitelisted origins, wildcard config
+          if (!origin || allowedOrigins.some(o => typeof o === 'string' && origin.startsWith(o))) {
             callback(null, true);
           } else if (this.config.cors.origin === '*') {
             callback(null, true);
