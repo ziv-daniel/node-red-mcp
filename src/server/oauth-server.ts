@@ -685,6 +685,7 @@ export class OAuthServer {
         ...(authCode.nodeRedCredentials && { nodeRedCredentials: authCode.nodeRedCredentials }),
       });
 
+      console.log('[TOKEN] success — issued token:', accessToken.token.substring(0,16), 'for userId:', accessToken.userId, 'hasCredentials:', !!accessToken.nodeRedCredentials);
       res.json({
         access_token: accessToken.token,
         token_type: 'Bearer',
