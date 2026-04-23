@@ -31,9 +31,11 @@ const ALLOWED_REDIRECT_ORIGINS = [
 function isAllowedRedirectUri(uri: string): boolean {
   try {
     const parsed = new URL(uri);
-    // Allow localhost for development/testing only
-    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
-      return true;
+    // Allow localhost for development/testing only (not in production)
+    if (process.env.NODE_ENV !== 'production') {
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+        return true;
+      }
     }
     return ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin));
   } catch {
@@ -45,6 +47,7 @@ export class OAuthServer {
   private clients = new Map<string, OAuthClient>();
   private codes = new Map<string, AuthorizationCode>();
   private tokens = new Map<string, AccessToken>();
+  private credentialStore = new Map<string, { credentials: NodeRedCredentials; expiresAt: number }>();
   private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
@@ -62,6 +65,32 @@ export class OAuthServer {
     for (const [k, v] of this.codes) {
       if (now > v.expiresAt) this.codes.delete(k);
     }
+    for (const [k, v] of this.credentialStore) {
+      if (now > v.expiresAt) this.credentialStore.delete(k);
+    }
+  }
+
+  private storeCredentials(credentials: NodeRedCredentials): string {
+    const credentialId = randomBytes(20).toString('hex');
+    this.credentialStore.set(credentialId, {
+      credentials,
+      expiresAt: Date.now() + TOKEN_TTL_MS * 2,
+    });
+    return credentialId;
+  }
+
+  private retrieveCredentials(credentialId: string): NodeRedCredentials | null {
+    const entry = this.credentialStore.get(credentialId);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.credentialStore.delete(credentialId);
+      return null;
+    }
+    return entry.credentials;
+  }
+
+  getNodeRedCredentials(credentialId: string): NodeRedCredentials | null {
+    return this.retrieveCredentials(credentialId);
   }
 
   destroy(): void {
@@ -111,10 +140,13 @@ export class OAuthServer {
   // ── Authorization Code ────────────────────────────────────────────────────
 
   createAuthorizationCode(
-    params: Omit<AuthorizationCode, 'code' | 'expiresAt'>
+    params: Omit<AuthorizationCode, 'code' | 'expiresAt' | 'credentialId'> & { nodeRedCredentials?: NodeRedCredentials }
   ): AuthorizationCode {
+    const { nodeRedCredentials, ...rest } = params;
+    const credentialId = nodeRedCredentials ? this.storeCredentials(nodeRedCredentials) : undefined;
     const code: AuthorizationCode = {
-      ...params,
+      ...rest,
+      ...(credentialId && { credentialId }),
       code: randomBytes(32).toString('hex'),
       expiresAt: Date.now() + CODE_TTL_MS,
     };
@@ -132,9 +164,13 @@ export class OAuthServer {
 
   // ── Access Token ─────────────────────────────────────────────────────────
 
-  createAccessToken(params: Omit<AccessToken, 'token' | 'expiresAt'>): AccessToken {
+  createAccessToken(params: Omit<AccessToken, 'token' | 'expiresAt' | 'credentialId'> & { nodeRedCredentials?: NodeRedCredentials; credentialId?: string }): AccessToken {
+    const { nodeRedCredentials, credentialId: incomingCredentialId, ...rest } = params;
+    // Prefer an already-stored credentialId; otherwise store fresh credentials if provided
+    const credentialId = incomingCredentialId ?? (nodeRedCredentials ? this.storeCredentials(nodeRedCredentials) : undefined);
     const token: AccessToken = {
-      ...params,
+      ...rest,
+      ...(credentialId && { credentialId }),
       token: randomBytes(40).toString('hex'),
       expiresAt: Date.now() + TOKEN_TTL_MS,
     };
@@ -159,6 +195,9 @@ export class OAuthServer {
   // ── PKCE ─────────────────────────────────────────────────────────────────
 
   verifyCodeChallenge(verifier: string, challenge: string, method: 'S256'): boolean {
+    // RFC 7636: verifier must be 43-128 chars, unreserved characters only
+    if (verifier.length < 43 || verifier.length > 128) return false;
+    if (!/^[A-Za-z0-9\-._~]*$/.test(verifier)) return false;
     const computed = createHash('sha256').update(verifier).digest('base64url');
     return computed === challenge;
   }
@@ -280,7 +319,25 @@ export class OAuthServer {
           this.clients.set(client_id, newClient);
           client = newClient;
         } else if (client_id.startsWith('https://') || client_id.startsWith('http://')) {
-          // Unknown external URL — try fetching the metadata document
+          // Only allow known trusted origins (Claude.ai, localhost for dev)
+          const allowedClientMetadataHosts = ['claude.ai', 'www.claude.ai', 'localhost', '127.0.0.1'];
+          const parsedClientId = new URL(client_id);
+          const hostAllowed = allowedClientMetadataHosts.some(
+            h => parsedClientId.hostname === h || parsedClientId.hostname.endsWith('.claude.ai')
+          );
+
+          if (!hostAllowed) {
+            // Skip metadata fetch silently — treat as public client without metadata
+            const newClient: OAuthClient = {
+              clientId: client_id,
+              redirectUris: [],
+              name: client_id,
+              scopes: ['mcp:read', 'mcp:write', 'mcp:admin'],
+            };
+            this.clients.set(client_id, newClient);
+            client = newClient;
+          } else {
+          // Trusted origin — try fetching the metadata document
           try {
             const metaResp = await axios.get<{
               redirect_uris?: string[];
@@ -313,6 +370,7 @@ export class OAuthServer {
               error_description: 'Could not fetch client metadata document',
             });
             return;
+          }
           }
         } else {
           res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
@@ -488,11 +546,6 @@ export class OAuthServer {
 
     // POST /authorize — process credential form, validate against Node-RED, issue auth code
     const handleAuthorizePost = async (req: Request, res: Response): Promise<void> => {
-      console.log('[AUTH POST] body keys:', Object.keys(req.body || {}));
-      console.log('[AUTH POST] client_id:', (req.body as Record<string,string>)?.client_id?.substring(0,60));
-      console.log('[AUTH POST] redirect_uri:', (req.body as Record<string,string>)?.redirect_uri);
-      console.log('[AUTH POST] nr_url:', (req.body as Record<string,string>)?.nr_url);
-      console.log('[AUTH POST] auth_type:', (req.body as Record<string,string>)?.auth_type);
       // OAuth params may arrive via hidden form fields (body) or query string — check both
       const merged = {
         ...(req.query as Record<string, string>),
@@ -517,6 +570,29 @@ export class OAuthServer {
         res
           .status(400)
           .json({ error: 'invalid_request', error_description: 'Missing required fields' });
+        return;
+      }
+
+      // Whether the client wants JSON response (JS fetch) or classic 302 redirect
+      const wantsJson = merged._json === '1';
+
+      const sendError = (msg: string): void => {
+        if (wantsJson) {
+          res.status(400).json({ error: msg });
+        } else {
+          const params = new URLSearchParams({
+            client_id, redirect_uri, response_type: 'code',
+            state: state ?? '', scope: scope ?? '',
+            code_challenge, code_challenge_method: code_challenge_method ?? 'S256',
+            error: msg,
+          });
+          res.redirect(302, `/authorize?${params.toString()}`);
+        }
+      };
+
+      // Require S256 explicitly
+      if (!code_challenge_method || code_challenge_method !== 'S256') {
+        sendError('code_challenge_method must be S256');
         return;
       }
 
@@ -562,22 +638,6 @@ export class OAuthServer {
       // We do NOT validate the credentials here — basic-auth and token auth use different
       // mechanisms, so a 401 simply means the server responded (credentials will be
       // verified on the first real API call).
-      // Whether the client wants JSON response (JS fetch) or classic 302 redirect
-      const wantsJson = merged._json === '1';
-
-      const sendError = (msg: string): void => {
-        if (wantsJson) {
-          res.status(400).json({ error: msg });
-        } else {
-          const params = new URLSearchParams({
-            client_id, redirect_uri, response_type: 'code',
-            state: state ?? '', scope: scope ?? '',
-            code_challenge, code_challenge_method: code_challenge_method ?? 'S256',
-            error: msg,
-          });
-          res.redirect(302, `/authorize?${params.toString()}`);
-        }
-      };
 
       if (process.env.NODERED_SKIP_CREDENTIAL_VALIDATION !== 'true') {
         try {
@@ -606,7 +666,7 @@ export class OAuthServer {
       const callbackParams = new URLSearchParams({ code: authCode.code });
       if (state) callbackParams.set('state', state);
       const callbackUrl = `${redirect_uri}?${callbackParams.toString()}`;
-      console.log('[AUTH POST] success, redirecting to:', callbackUrl.substring(0, 80));
+      console.log('[AUTH POST] success');
 
       if (wantsJson) {
         res.json({ redirect_to: callbackUrl });
@@ -628,7 +688,6 @@ export class OAuthServer {
         string
       >;
 
-      console.log('[TOKEN] grant_type:', grant_type, 'client_id:', client_id?.substring(0, 50), 'code_verifier present:', !!code_verifier, 'redirect_uri:', redirect_uri);
 
       if (grant_type !== 'authorization_code') {
         res.status(400).json({ error: 'unsupported_grant_type' });
@@ -650,7 +709,6 @@ export class OAuthServer {
 
       // Only check client_id if provided — public clients (auth method: none) may omit it
       if (client_id && authCode.clientId !== client_id) {
-        console.log('[TOKEN] client_id mismatch:', authCode.clientId, '!=', client_id);
         res.status(400).json({ error: 'invalid_grant', error_description: 'client_id mismatch' });
         return;
       }
@@ -682,10 +740,10 @@ export class OAuthServer {
         clientId: authCode.clientId,
         userId: authCode.userId,
         scopes: authCode.scopes,
-        ...(authCode.nodeRedCredentials && { nodeRedCredentials: authCode.nodeRedCredentials }),
+        ...(authCode.credentialId && { credentialId: authCode.credentialId }),
       });
 
-      console.log('[TOKEN] success — issued token:', accessToken.token.substring(0,16), 'for userId:', accessToken.userId, 'hasCredentials:', !!accessToken.nodeRedCredentials);
+      console.log('[TOKEN] success — token issued');
       res.json({
         access_token: accessToken.token,
         token_type: 'Bearer',
