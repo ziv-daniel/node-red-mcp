@@ -112,6 +112,7 @@ export class ExpressApp {
       }
     }
 
+    console.log('[AUTH] rejected — no valid token. auth header:', req.headers.authorization?.substring(0,30));
     res.status(401).json({ error: 'Authentication required' });
   };
 
@@ -236,6 +237,16 @@ export class ExpressApp {
     const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
+    // ── Root URL rewrite — Claude.ai POSTs to the bare domain the user registered ──
+    // Rewrite POST / (with JSON-RPC body) to POST /mcp so the MCP handler picks it up
+    this.app.use((req: Request, _res: Response, next: NextFunction) => {
+      if (req.path === '/' && req.method === 'POST' && (req.body as any)?.jsonrpc) {
+        console.log('[ROOT→MCP] rewriting POST / to POST /mcp');
+        req.url = '/mcp';
+      }
+      next();
+    });
+
     // ── MCP Streamable HTTP Transport (spec 2025-03-26) ───────────────────
     // GET /mcp — used by Claude.ai for endpoint discovery / SSE stream
     this.app.get('/mcp', (req: Request, res: Response) => {
@@ -270,6 +281,7 @@ export class ExpressApp {
       '/mcp',
       this.requireAuth,
       asyncHandler(async (req: Request, res: Response) => {
+        console.log('[MCP POST] method:', (req.body as any)?.method, 'auth:', req.headers.authorization?.substring(0,20), 'session:', req.headers['mcp-session-id']);
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         const authReq = req as AuthRequest;
 
