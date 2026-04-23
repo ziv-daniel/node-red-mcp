@@ -57,7 +57,7 @@ export class ExpressApp {
       port: parseInt(process.env.PORT || '3000'),
       host: process.env.HOST || 'localhost',
       cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || '*',
+        origin: process.env.CORS_ORIGIN?.split(',') || ['https://claude.ai', 'https://www.claude.ai'],
         credentials: process.env.CORS_CREDENTIALS === 'true',
       },
       rateLimit: {
@@ -112,7 +112,6 @@ export class ExpressApp {
       }
     }
 
-    console.log('[AUTH] rejected — no valid token. auth header:', req.headers.authorization?.substring(0,30));
     res.status(401).json({ error: 'Authentication required' });
   };
 
@@ -241,7 +240,6 @@ export class ExpressApp {
     // Rewrite POST / (with JSON-RPC body) to POST /mcp so the MCP handler picks it up
     this.app.use((req: Request, _res: Response, next: NextFunction) => {
       if (req.path === '/' && req.method === 'POST' && (req.body as any)?.jsonrpc) {
-        console.log('[ROOT→MCP] rewriting POST / to POST /mcp');
         req.url = '/mcp';
       }
       next();
@@ -281,7 +279,6 @@ export class ExpressApp {
       '/mcp',
       this.requireAuth,
       asyncHandler(async (req: Request, res: Response) => {
-        console.log('[MCP POST] method:', (req.body as any)?.method, 'auth:', req.headers.authorization?.substring(0,20), 'session:', req.headers['mcp-session-id']);
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         const authReq = req as AuthRequest;
 
@@ -318,6 +315,10 @@ export class ExpressApp {
         // Resolve or create session
 
         let session = sessionId ? this.sessionManager.get(sessionId) : undefined;
+        // Verify session ownership — don't allow one user to hijack another's session
+        if (session && authReq.auth?.userId && session.userId !== authReq.auth.userId) {
+          session = undefined; // Don't use another user's session
+        }
         const isNewSession = !session;
         let nodeRedCredentials = undefined;
         if (!session) {
@@ -329,7 +330,9 @@ export class ExpressApp {
             const tokenData = this.oauthServer.validateToken(token);
             if (tokenData) {
               userId = tokenData.userId;
-              nodeRedCredentials = tokenData.nodeRedCredentials;
+              nodeRedCredentials = tokenData.credentialId
+                ? this.oauthServer.getNodeRedCredentials(tokenData.credentialId)
+                : undefined;
             }
           }
           session = this.sessionManager.create(userId);
@@ -338,7 +341,11 @@ export class ExpressApp {
           const auth = req.headers.authorization;
           if (auth?.startsWith('Bearer ')) {
             const tokenData = this.oauthServer.validateToken(auth.slice(7));
-            if (tokenData) nodeRedCredentials = tokenData.nodeRedCredentials;
+            if (tokenData) {
+              nodeRedCredentials = tokenData.credentialId
+                ? this.oauthServer.getNodeRedCredentials(tokenData.credentialId)
+                : undefined;
+            }
           }
         }
 
