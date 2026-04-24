@@ -28,8 +28,9 @@ export interface AuthorizationCode {
   // PKCE
   codeChallenge: string;
   codeChallengeMethod: 'S256' | 'plain';
-  // Node-RED credentials captured at authorization time
+  // Node-RED credentials — stored server-side, referenced by ID (not embedded)
   nodeRedCredentials?: NodeRedCredentials;
+  credentialId?: string;
 }
 
 export interface AccessToken {
@@ -38,8 +39,8 @@ export interface AccessToken {
   userId: string;
   scopes: string[];
   expiresAt: number;
-  // Node-RED credentials bound to this token
-  nodeRedCredentials?: NodeRedCredentials;
+  // Credential reference — credentials stored server-side, token carries only the ID
+  credentialId?: string;
 }
 
 export interface OAuthAuthorizationServerMetadata {

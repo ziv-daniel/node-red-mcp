@@ -399,7 +399,7 @@ export class ExpressApp {
               result = await this.mcpServer.callToolPublic(
                 params.name as string,
                 (params.arguments as Record<string, unknown>) || {},
-                nodeRedCredentials
+                nodeRedCredentials ?? undefined
               );
               break;
 
