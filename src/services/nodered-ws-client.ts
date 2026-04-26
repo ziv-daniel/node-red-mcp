@@ -1,0 +1,217 @@
+/**
+ * Node-RED WebSocket Comms client
+ * Connects to Node-RED's /comms endpoint for real-time push events.
+ */
+
+import WebSocket from 'ws';
+
+import { SSEHandler } from '../server/sse-handler.js';
+import {
+  NodeRedFlowEvent,
+  NodeRedNodeEvent,
+  NodeRedRuntimeEvent,
+  NodeRedStatusEvent,
+} from '../types/nodered.js';
+import { validateNodeRedAuth } from '../utils/auth.js';
+
+export interface NodeRedWsConfig {
+  baseURL: string;
+  maxReconnectDelay?: number;
+  onEvent?: () => void;
+}
+
+interface CommsMessage {
+  topic: string;
+  data?: any;
+}
+
+export class NodeRedWsClient {
+  private ws: WebSocket | null = null;
+  private sseHandler: SSEHandler;
+  private baseURL: string;
+  private maxReconnectDelay: number;
+  private reconnectDelay = 1000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connected = false;
+  private stopped = false;
+  private onEvent?: () => void;
+
+  constructor(sseHandler: SSEHandler, config: NodeRedWsConfig) {
+    this.sseHandler = sseHandler;
+    this.baseURL = config.baseURL;
+    this.maxReconnectDelay = config.maxReconnectDelay ?? 30000;
+    this.onEvent = config.onEvent;
+  }
+
+  connect(): void {
+    this.stopped = false;
+    this.reconnectDelay = 1000;
+    this._connect();
+  }
+
+  private _connect(): void {
+    if (this.stopped) return;
+
+    if (this.ws) {
+      this.ws.terminate();
+      this.ws = null;
+    }
+
+    const wsUrl =
+      this.baseURL
+        .replace(/^https:\/\//, 'wss://')
+        .replace(/^http:\/\//, 'ws://')
+        .replace(/\/$/, '') + '/comms';
+
+    try {
+      this.ws = new WebSocket(wsUrl, { rejectUnauthorized: false });
+    } catch (err) {
+      console.error('NodeRedWsClient: failed to create WebSocket', err);
+      this._scheduleReconnect();
+      return;
+    }
+
+    this.ws.on('open', () => {
+      this.connected = true;
+      this.reconnectDelay = 1000;
+      console.log(`NodeRedWsClient: connected to ${wsUrl}`);
+      this._sendAuth();
+    });
+
+    this.ws.on('message', (raw: WebSocket.RawData) => {
+      try {
+        const msg: CommsMessage = JSON.parse(raw.toString());
+        this._handleMessage(msg);
+      } catch {
+        // ignore malformed frames
+      }
+    });
+
+    this.ws.on('close', () => {
+      this.connected = false;
+      if (!this.stopped) {
+        console.log('NodeRedWsClient: disconnected, scheduling reconnect');
+        this._scheduleReconnect();
+      }
+    });
+
+    this.ws.on('error', err => {
+      // 'close' fires after 'error', which will trigger reconnect
+      console.error('NodeRedWsClient: error —', err.message);
+    });
+  }
+
+  private _sendAuth(): void {
+    const auth = validateNodeRedAuth();
+    if (auth.type === 'bearer' && auth.credentials?.token) {
+      this.ws!.send(JSON.stringify({ auth: auth.credentials.token }));
+    }
+    // basic auth has no WS equivalent — connect unauthenticated
+  }
+
+  private _scheduleReconnect(): void {
+    if (this.stopped) return;
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+    this.reconnectTimer = setTimeout(() => this._connect(), delay);
+  }
+
+  private _handleMessage(msg: CommsMessage): void {
+    this.onEvent?.();
+    const { topic, data } = msg;
+    const timestamp = new Date().toISOString();
+
+    // Auth response
+    if (topic === 'auth') {
+      if (data === 'ok') {
+        console.log('NodeRedWsClient: auth ok');
+      } else if (data === 'fail') {
+        console.error('NodeRedWsClient: auth failed');
+      }
+      return;
+    }
+
+    // Node status: topic = "status/<nodeId>"
+    if (topic.startsWith('status/')) {
+      const nodeId = topic.slice('status/'.length);
+      const event: NodeRedStatusEvent = {
+        type: 'status',
+        timestamp,
+        data: {
+          id: nodeId,
+          status: {
+            fill: data?.fill,
+            shape: data?.shape,
+            text: data?.text,
+          },
+        },
+      };
+      this.sseHandler.broadcast(event);
+      return;
+    }
+
+    // Debug node output
+    if (topic === 'debug') {
+      const event: NodeRedNodeEvent = {
+        type: 'node',
+        timestamp,
+        data: {
+          id: data?.id ?? 'unknown',
+          type: 'debug',
+          event: 'output',
+          msg: data,
+        },
+      };
+      this.sseHandler.broadcast(event);
+      return;
+    }
+
+    // Runtime state change (deploy, start, stop)
+    if (topic === 'notification/runtime-state') {
+      const state: string = data?.state ?? 'unknown';
+      const event: NodeRedRuntimeEvent = {
+        type: 'runtime',
+        timestamp,
+        data: {
+          event: state === 'stop' ? 'stop' : state === 'start' ? 'start' : 'restart',
+          message: `Runtime state: ${state}`,
+        },
+      };
+      this.sseHandler.broadcast(event);
+      return;
+    }
+
+    // Node lifecycle: added, removed, enabled, disabled, upgraded, redeploy
+    if (topic.startsWith('notification/')) {
+      const action = topic.replace('notification/', '');
+      const event: NodeRedNodeEvent = {
+        type: 'node',
+        timestamp,
+        data: {
+          id: data?.id ?? 'unknown',
+          type: data?.type ?? 'unknown',
+          event: 'status',
+          msg: { action, ...data },
+        },
+      };
+      this.sseHandler.broadcast(event);
+    }
+  }
+
+  disconnect(): void {
+    this.stopped = true;
+    this.connected = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.terminate();
+      this.ws = null;
+    }
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+}
