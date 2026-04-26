@@ -236,7 +236,7 @@ export class ExpressApp {
    * Setup API routes
    */
   private setupRoutes(): void {
-    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────
+    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────────
     const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
@@ -1408,7 +1408,7 @@ export class ExpressApp {
     }, intervalMs);
 
     // Start Node-RED event monitoring
-    this.eventListener.startEventMonitoring(5000); // Check every 5 seconds
+    this.eventListener.startEventMonitoring();
   }
 
   /**
