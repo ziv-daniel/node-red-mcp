@@ -40,7 +40,7 @@ export class NodeRedWsClient {
     this.sseHandler = sseHandler;
     this.baseURL = config.baseURL;
     this.maxReconnectDelay = config.maxReconnectDelay ?? 30000;
-    this.onEvent = config.onEvent;
+    if (config.onEvent !== undefined) this.onEvent = config.onEvent;
   }
 
   connect(): void {
@@ -121,7 +121,6 @@ export class NodeRedWsClient {
     const { topic, data } = msg;
     const timestamp = new Date().toISOString();
 
-    // Auth response
     if (topic === 'auth') {
       if (data === 'ok') {
         console.log('NodeRedWsClient: auth ok');
@@ -131,7 +130,6 @@ export class NodeRedWsClient {
       return;
     }
 
-    // Node status: topic = "status/<nodeId>"
     if (topic.startsWith('status/')) {
       const nodeId = topic.slice('status/'.length);
       const event: NodeRedStatusEvent = {
@@ -150,7 +148,6 @@ export class NodeRedWsClient {
       return;
     }
 
-    // Debug node output
     if (topic === 'debug') {
       const event: NodeRedNodeEvent = {
         type: 'node',
@@ -166,7 +163,6 @@ export class NodeRedWsClient {
       return;
     }
 
-    // Runtime state change (deploy, start, stop)
     if (topic === 'notification/runtime-state') {
       const state: string = data?.state ?? 'unknown';
       const event: NodeRedRuntimeEvent = {
@@ -181,7 +177,6 @@ export class NodeRedWsClient {
       return;
     }
 
-    // Node lifecycle: added, removed, enabled, disabled, upgraded, redeploy
     if (topic.startsWith('notification/')) {
       const action = topic.replace('notification/', '');
       const event: NodeRedNodeEvent = {

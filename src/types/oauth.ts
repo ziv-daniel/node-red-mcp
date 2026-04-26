@@ -43,6 +43,15 @@ export interface AccessToken {
   credentialId?: string;
 }
 
+export interface RefreshToken {
+  token: string;
+  clientId: string;
+  userId: string;
+  scopes: string[];
+  expiresAt: number;
+  credentialId?: string;
+}
+
 export interface OAuthAuthorizationServerMetadata {
   issuer: string;
   authorization_endpoint: string;
