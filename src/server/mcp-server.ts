@@ -125,6 +125,7 @@ export class McpNodeRedServer {
         name: 'get_flows',
         description:
           'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data)',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -148,6 +149,7 @@ export class McpNodeRedServer {
       {
         name: 'get_flow',
         description: 'Get specific Node-RED flow by ID',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -159,6 +161,7 @@ export class McpNodeRedServer {
       {
         name: 'create_flow',
         description: 'Create a new Node-RED flow',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -178,6 +181,7 @@ export class McpNodeRedServer {
       {
         name: 'update_flow',
         description: 'Update an existing Node-RED flow',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -190,6 +194,7 @@ export class McpNodeRedServer {
       {
         name: 'enable_flow',
         description: 'Enable a specific Node-RED flow',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -201,6 +206,7 @@ export class McpNodeRedServer {
       {
         name: 'disable_flow',
         description: 'Disable a specific Node-RED flow',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -212,6 +218,7 @@ export class McpNodeRedServer {
       {
         name: 'search_modules',
         description: 'Search for Node-RED palette modules online via npm registry',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -239,6 +246,7 @@ export class McpNodeRedServer {
       {
         name: 'install_module',
         description: 'Install a Node-RED palette module via Node-RED palette management API',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -257,6 +265,7 @@ export class McpNodeRedServer {
       {
         name: 'get_installed_modules',
         description: 'Get list of currently installed Node-RED palette modules',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {},
