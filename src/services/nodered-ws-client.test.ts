@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 
 import { SSEHandler } from '../server/sse-handler.js';
 
+import { validateNodeRedAuth } from '../utils/auth.js';
 import { NodeRedWsClient } from './nodered-ws-client.js';
 
 // Silence auth util so we control the token
@@ -41,6 +42,8 @@ describe('NodeRedWsClient', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
+    // mockReset (vitest.config) clears return values between tests; restore default.
+    vi.mocked(validateNodeRedAuth).mockReturnValue({ type: 'none' });
     mockSSE = makeSSEHandler();
   });
 

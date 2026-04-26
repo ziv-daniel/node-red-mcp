@@ -15,6 +15,11 @@ export default defineConfig({
       NODE_ENV: 'test',
       JWT_SECRET: 'test-secret-key-minimum-32-chars-xxxx',
       NODERED_SKIP_CREDENTIAL_VALIDATION: 'true',
+      // NODE_USE_ENV_PROXY=1 is set in the container environment, which routes
+      // http.request() through the proxy. Bypass proxy for loopback addresses
+      // so in-process test servers (bound to 127.0.0.1) are reachable directly.
+      NO_PROXY: '127.0.0.1,localhost,0.0.0.0',
+      no_proxy: '127.0.0.1,localhost,0.0.0.0',
     },
 
     // Global test setup
