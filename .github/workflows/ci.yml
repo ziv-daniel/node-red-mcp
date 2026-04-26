@@ -284,61 +284,33 @@ jobs:
             NODE_VERSION=${{ env.NODE_VERSION }}
             YARN_VERSION=${{ env.YARN_VERSION }}
 
-  # Job 6: Performance Testing (Disabled - needs proper benchmarking implementation)
-  # Uncomment and implement when ready to add performance testing
-  # performance:
-  #   name: ⚡ Performance Tests
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 15
-  #   needs: [test]
-  #   if: github.event_name == 'schedule' || contains(github.event.pull_request.labels.*.name, 'performance')
-  #
-  #   steps:
-  #     - name: 📥 Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: 🟢 Setup Node.js ${{ env.NODE_VERSION }}
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: ${{ env.NODE_VERSION }}
-  #
-  #     - name: 📥 Install dependencies
-  #       run: |
-  #         corepack enable
-  #         yarn install --immutable
-  #
-  #     - name: 🏗️ Build project
-  #       run: yarn build:prod
-  #
-  #     - name: ⚡ Run performance benchmarks
-  #       run: yarn test:performance  # Add proper performance testing script
-  #       env:
-  #         NODE_ENV: production
+  # Job 7: Deploy to production (SSH + docker compose pull)
+  deploy:
+    name: 🚀 Deploy to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [quality, test, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-  # Job 7: Deployment (Disabled - add deployment logic when ready)
-  # Uncomment and implement when ready to deploy
-  # deploy:
-  #   name: 🚀 Deploy
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 10
-  #   needs: [quality, test, docker]
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #
-  #   environment:
-  #     name: production
-  #     url: https://mcp-nodered-server.example.com
-  #
-  #   steps:
-  #     - name: 📥 Checkout code
-  #       uses: actions/checkout@v4
-  #
-  #     - name: 🚀 Deploy to production
-  #       run: |
-  #         echo "Deploying to production..."
-  #         # Add your deployment logic here
-  #         # Example: kubectl, helm, or cloud provider CLI commands
-  #       env:
-  #         DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+    environment:
+      name: production
+      url: https://mcp.danielshaprvt.work
+
+    steps:
+      - name: 🚀 Pull new image and restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.DEPLOY_USER }} --password-stdin
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
+            echo "Deploy complete — $(docker inspect --format='{{.RepoDigests}}' ghcr.io/ziv-daniel/node-red-mcp:latest)"
 
   # Job 8: Notify (Disabled - uncomment when notification system is configured)
   # notify:

@@ -1,0 +1,63 @@
+#
+# Production Docker Compose — node-red-mcp
+# Uses the pre-built image from ghcr.io (built by CI/CD).
+#
+# Setup:
+#   cp .env.prod.example .env.prod
+#   # edit .env.prod with your values
+#   docker compose -f docker-compose.prod.yml up -d
+#
+
+services:
+  mcp-server:
+    image: ghcr.io/ziv-daniel/node-red-mcp:latest
+    container_name: mcp-nodered-server
+    restart: unless-stopped
+    pull_policy: always
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      NODE_ENV: production
+      MCP_TRANSPORT: http
+      HTTP_ENABLED: "true"
+      PORT: 3000
+
+      # Node-RED — running as HA add-on
+      NODERED_URL: ${NODERED_URL}
+      NODERED_SKIP_CREDENTIAL_VALIDATION: "true"
+
+      # OAuth / public URL (used in discovery metadata + redirect URIs)
+      PUBLIC_URL: ${PUBLIC_URL:-https://mcp.danielshaprvt.work}
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: json
+
+      # CORS — allow Claude.ai and the MCP public URL
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://claude.ai}
+      CORS_CREDENTIALS: "true"
+
+      # Rate limiting
+      RATE_LIMIT_WINDOW: 900000
+      RATE_LIMIT_MAX: 200
+
+    env_file:
+      - .env.prod
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
