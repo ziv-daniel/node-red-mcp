@@ -14,11 +14,13 @@ import type {
   OAuthClient,
   AuthorizationCode,
   AccessToken,
+  RefreshToken,
   NodeRedCredentials,
   OAuthAuthorizationServerMetadata,
 } from '../types/oauth.js';
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Allowed redirect URI prefixes for dynamically registered clients
@@ -47,6 +49,7 @@ export class OAuthServer {
   private clients = new Map<string, OAuthClient>();
   private codes = new Map<string, AuthorizationCode>();
   private tokens = new Map<string, AccessToken>();
+  private refreshTokens = new Map<string, RefreshToken>();
   private credentialStore = new Map<string, { credentials: NodeRedCredentials; expiresAt: number }>();
   private cleanupInterval: NodeJS.Timeout;
 
@@ -61,6 +64,9 @@ export class OAuthServer {
     const now = Date.now();
     for (const [k, v] of this.tokens) {
       if (now > v.expiresAt) this.tokens.delete(k);
+    }
+    for (const [k, v] of this.refreshTokens) {
+      if (now > v.expiresAt) this.refreshTokens.delete(k);
     }
     for (const [k, v] of this.codes) {
       if (now > v.expiresAt) this.codes.delete(k);
@@ -192,6 +198,34 @@ export class OAuthServer {
     this.tokens.delete(token);
   }
 
+  // ── Refresh Token ─────────────────────────────────────────────────────────
+
+  createRefreshToken(params: Omit<RefreshToken, 'token' | 'expiresAt'>): RefreshToken {
+    const refreshToken: RefreshToken = {
+      ...params,
+      token: randomBytes(40).toString('hex'),
+      expiresAt: Date.now() + REFRESH_TOKEN_TTL_MS,
+    };
+    this.refreshTokens.set(refreshToken.token, refreshToken);
+    return refreshToken;
+  }
+
+  consumeRefreshToken(token: string): RefreshToken | null {
+    const entry = this.refreshTokens.get(token);
+    this.refreshTokens.delete(token); // single-use — rotate on refresh
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) return null;
+    return entry;
+  }
+
+  revokeRefreshToken(token: string): void {
+    this.refreshTokens.delete(token);
+  }
+
+  private withCredentialId(id?: string): { credentialId: string } | Record<never, never> {
+    return id ? { credentialId: id } : {};
+  }
+
   // ── PKCE ─────────────────────────────────────────────────────────────────
 
   verifyCodeChallenge(verifier: string, challenge: string, method: 'S256'): boolean {
@@ -219,7 +253,7 @@ export class OAuthServer {
         revocation_endpoint: `${baseUrl}/oauth/revoke`,
         scopes_supported: ['mcp:read', 'mcp:write', 'mcp:admin'],
         response_types_supported: ['code'],
-        grant_types_supported: ['authorization_code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
         token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
         code_challenge_methods_supported: ['S256'],
       };
@@ -683,16 +717,56 @@ export class OAuthServer {
     // ── Token Endpoint ────────────────────────────────────────────────────
     // Claude.ai web hardcodes /token, compliant clients use path from metadata.
     const handleToken = (req: Request, res: Response): void => {
-      const { grant_type, code, redirect_uri, client_id, code_verifier } = req.body as Record<
-        string,
-        string
-      >;
+      const body = req.body as Record<string, string>;
+      const { grant_type, client_id } = body;
 
+      // ── Refresh Token grant (RFC 6749 §6) ──────────────────────────────────
+      if (grant_type === 'refresh_token') {
+        const { refresh_token } = body;
+        if (!refresh_token) {
+          res.status(400).json({ error: 'invalid_request', error_description: 'refresh_token required' });
+          return;
+        }
+        const rt = this.consumeRefreshToken(refresh_token);
+        if (!rt) {
+          res.status(400).json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' });
+          return;
+        }
+        if (client_id && rt.clientId !== client_id) {
+          res.status(400).json({ error: 'invalid_grant', error_description: 'client_id mismatch' });
+          return;
+        }
+        const newAccess = this.createAccessToken({
+          clientId: rt.clientId,
+          userId: rt.userId,
+          scopes: rt.scopes,
+          ...this.withCredentialId(rt.credentialId),
+        });
+        const newRefresh = this.createRefreshToken({
+          clientId: rt.clientId,
+          userId: rt.userId,
+          scopes: rt.scopes,
+          ...this.withCredentialId(rt.credentialId),
+        });
+        console.log('[TOKEN] refresh — new tokens issued');
+        res.json({
+          access_token: newAccess.token,
+          token_type: 'Bearer',
+          expires_in: Math.floor(TOKEN_TTL_MS / 1000),
+          refresh_token: newRefresh.token,
+          refresh_token_expires_in: Math.floor(REFRESH_TOKEN_TTL_MS / 1000),
+          scope: newAccess.scopes.join(' '),
+        });
+        return;
+      }
 
+      // ── Authorization Code grant (RFC 6749 §4.1) ───────────────────────────
       if (grant_type !== 'authorization_code') {
         res.status(400).json({ error: 'unsupported_grant_type' });
         return;
       }
+
+      const { code, redirect_uri, code_verifier } = body;
 
       if (!code) {
         res.status(400).json({ error: 'invalid_request', error_description: 'code required' });
@@ -740,14 +814,22 @@ export class OAuthServer {
         clientId: authCode.clientId,
         userId: authCode.userId,
         scopes: authCode.scopes,
-        ...(authCode.credentialId && { credentialId: authCode.credentialId }),
+        ...this.withCredentialId(authCode.credentialId),
+      });
+      const refreshToken = this.createRefreshToken({
+        clientId: authCode.clientId,
+        userId: authCode.userId,
+        scopes: authCode.scopes,
+        ...this.withCredentialId(authCode.credentialId),
       });
 
-      console.log('[TOKEN] success — token issued');
+      console.log('[TOKEN] success — tokens issued');
       res.json({
         access_token: accessToken.token,
         token_type: 'Bearer',
         expires_in: Math.floor(TOKEN_TTL_MS / 1000),
+        refresh_token: refreshToken.token,
+        refresh_token_expires_in: Math.floor(REFRESH_TOKEN_TTL_MS / 1000),
         scope: accessToken.scopes.join(' '),
       });
     };
@@ -757,9 +839,17 @@ export class OAuthServer {
 
     // ── Token Revocation (RFC 7009) ───────────────────────────────────────
     router.post('/oauth/revoke', (req: Request, res: Response) => {
-      const { token } = req.body as { token?: string };
+      const { token, token_type_hint } = req.body as { token?: string; token_type_hint?: string };
       if (token) {
-        this.revokeToken(token);
+        if (token_type_hint === 'refresh_token') {
+          this.revokeRefreshToken(token);
+        } else if (token_type_hint === 'access_token') {
+          this.revokeToken(token);
+        } else {
+          // RFC 7009 §2.1: try both when hint is absent
+          this.revokeToken(token);
+          this.revokeRefreshToken(token);
+        }
       }
       // RFC 7009: always respond 200 regardless of whether token existed
       res.status(200).end();
