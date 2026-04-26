@@ -45,6 +45,7 @@ export class ExpressApp {
   private oauthServer: OAuthServer;
   private sessionManager: SessionManager;
   private config: ExpressAppConfig;
+  private monitoringInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(mcpServer: McpNodeRedServer, config: Partial<ExpressAppConfig> = {}) {
     this.mcpServer = mcpServer;
@@ -236,7 +237,7 @@ export class ExpressApp {
    * Setup API routes
    */
   private setupRoutes(): void {
-    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────────
+    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────
     const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
@@ -677,7 +678,7 @@ export class ExpressApp {
           // Send connection status
           res.write(`event: connection-status\n`);
           res.write(
-            `data: {"status": "connected", "timestamp": "${new Date().toISOString()}"}\n\n`
+            `data: {"status": "connected", "timestamp": "${new Date().toISOString}"}\n\n`
           );
 
           // Keep connection alive with periodic heartbeat
@@ -1402,12 +1403,9 @@ export class ExpressApp {
    * Start system monitoring (send periodic updates via SSE)
    */
   startSystemMonitoring(intervalMs = 30000): void {
-    // Start system info updates
-    setInterval(() => {
+    this.monitoringInterval = setInterval(() => {
       this.sendSystemInfo();
     }, intervalMs);
-
-    // Start Node-RED event monitoring
     this.eventListener.startEventMonitoring();
   }
 
@@ -1415,6 +1413,10 @@ export class ExpressApp {
    * Stop system monitoring
    */
   stopSystemMonitoring(): void {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = null;
+    }
     this.eventListener.stopEventMonitoring();
   }
 
