@@ -14,6 +14,7 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+
 import request from 'supertest';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -34,8 +35,12 @@ const { mockMcpServer, mockNodeRedClient, MockNodeRedEventListener } = vi.hoiste
     unsubscribe: vi.fn(),
     getSubscriptions: vi.fn(() => ({ eventTypes: [], filters: {} })),
     getStats: vi.fn(() => ({
-      activeConnections: 0, totalConnections: 0,
-      messagesSent: 0, uptime: 0, errors: 0, connectionsByEventType: {},
+      activeConnections: 0,
+      totalConnections: 0,
+      messagesSent: 0,
+      uptime: 0,
+      errors: 0,
+      connectionsByEventType: {},
     })),
     getClients: vi.fn(() => []),
     forceDisconnect: vi.fn(() => true),
@@ -143,45 +148,40 @@ describe('Full OAuth2 + PKCE Authorization Code Flow', () => {
     // Use the server-assigned client_id from registration response
     const registeredClientId = regRes.body?.client_id ?? 'claude-ai-client';
 
-    const res = await request(app)
-      .get('/authorize')
-      .query({
-        client_id: registeredClientId,
-        redirect_uri: REDIRECT_URI,
-        response_type: 'code',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: 'test-state',
-        scope: 'mcp:read',
-      });
+    const res = await request(app).get('/authorize').query({
+      client_id: registeredClientId,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      scope: 'mcp:read',
+    });
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/text\/html/);
     expect(res.text).toContain('התחבר'); // Hebrew "Connect" button
-    expect(res.text).toContain('fetch(');  // Uses JS fetch, not native form submit
+    expect(res.text).toContain('fetch('); // Uses JS fetch, not native form submit
   });
 
   it('POST /authorize with _json=1 returns JSON redirect_to on success', async () => {
     const verifier = makeCodeVerifier();
     const challenge = makeCodeChallenge(verifier);
 
-    const res = await request(app)
-      .post('/authorize')
-      .type('form')
-      .send({
-        _json: '1',
-        client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        response_type: 'code',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: 'test-state',
-        scope: 'mcp:read',
-        nr_url: 'https://nodered.danielshaprvt.work',
-        auth_type: 'basic',
-        nr_username: 'admin',
-        nr_password: 'secret',
-      });
+    const res = await request(app).post('/authorize').type('form').send({
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 'test-state',
+      scope: 'mcp:read',
+      nr_url: 'https://nodered.danielshaprvt.work',
+      auth_type: 'basic',
+      nr_username: 'admin',
+      nr_password: 'secret',
+    });
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('redirect_to');
@@ -197,38 +197,32 @@ describe('Full OAuth2 + PKCE Authorization Code Flow', () => {
     const challenge = makeCodeChallenge(verifier);
 
     // Step 1: Get auth code
-    const authRes = await request(app)
-      .post('/authorize')
-      .type('form')
-      .send({
-        _json: '1',
-        client_id: CLIENT_ID,
-        redirect_uri: REDIRECT_URI,
-        response_type: 'code',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: 'state-123',
-        nr_url: 'https://nodered.danielshaprvt.work',
-        auth_type: 'basic',
-        nr_username: 'admin',
-        nr_password: 'secret',
-      });
+    const authRes = await request(app).post('/authorize').type('form').send({
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 'state-123',
+      nr_url: 'https://nodered.danielshaprvt.work',
+      auth_type: 'basic',
+      nr_username: 'admin',
+      nr_password: 'secret',
+    });
 
     expect(authRes.status).toBe(200);
     const code = new URL(authRes.body.redirect_to).searchParams.get('code');
     expect(code).toBeTruthy();
 
     // Step 2: Exchange code for token
-    const tokenRes = await request(app)
-      .post('/token')
-      .type('form')
-      .send({
-        grant_type: 'authorization_code',
-        code,
-        code_verifier: verifier,
-        redirect_uri: REDIRECT_URI,
-        client_id: CLIENT_ID,
-      });
+    const tokenRes = await request(app).post('/token').type('form').send({
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
+    });
 
     expect(tokenRes.status).toBe(200);
     expect(tokenRes.body).toHaveProperty('access_token');
@@ -249,17 +243,26 @@ describe('Full OAuth2 + PKCE Authorization Code Flow', () => {
 
     // Auth + token
     const authRes = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'admin', nr_password: 'secret',
+      auth_type: 'basic',
+      nr_username: 'admin',
+      nr_password: 'secret',
     });
     const code = new URL(authRes.body.redirect_to).searchParams.get('code')!;
 
     const tokenRes = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
     const accessToken = tokenRes.body.access_token;
 
@@ -268,7 +271,12 @@ describe('Full OAuth2 + PKCE Authorization Code Flow', () => {
       .post('/mcp')
       .set('Authorization', `Bearer ${accessToken}`)
       .set('Content-Type', 'application/json')
-      .send({ jsonrpc: '2.0', method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {} }, id: 1 });
+      .send({
+        jsonrpc: '2.0',
+        method: 'initialize',
+        params: { protocolVersion: '2025-03-26', capabilities: {} },
+        id: 1,
+      });
 
     expect(mcpRes.status).toBe(200);
     expect(mcpRes.body.result).toHaveProperty('protocolVersion');
@@ -286,11 +294,17 @@ describe('PKCE Validation', () => {
   async function getCode(verifier: string): Promise<string | null> {
     const challenge = makeCodeChallenge(verifier);
     const res = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'u', nr_password: 'p',
+      auth_type: 'basic',
+      nr_username: 'u',
+      nr_password: 'p',
     });
     if (res.body.redirect_to) {
       return new URL(res.body.redirect_to).searchParams.get('code');
@@ -304,9 +318,11 @@ describe('PKCE Validation', () => {
     expect(code).toBeTruthy();
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
+      grant_type: 'authorization_code',
+      code,
       code_verifier: shortVerifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(res.status).toBe(400);
@@ -319,9 +335,11 @@ describe('PKCE Validation', () => {
     expect(code).toBeTruthy();
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
+      grant_type: 'authorization_code',
+      code,
       code_verifier: longVerifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(res.status).toBe(400);
@@ -329,14 +347,16 @@ describe('PKCE Validation', () => {
   });
 
   it('rejects code verifier with invalid characters', async () => {
-    const invalidVerifier = 'a'.repeat(43) + '!@#$'; // invalid chars
+    const invalidVerifier = `${'a'.repeat(43)}!@#$`; // invalid chars
     const code = await getCode(invalidVerifier);
     expect(code).toBeTruthy();
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
+      grant_type: 'authorization_code',
+      code,
       code_verifier: invalidVerifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(res.status).toBe(400);
@@ -349,9 +369,11 @@ describe('PKCE Validation', () => {
     expect(code).toBeTruthy();
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
+      grant_type: 'authorization_code',
+      code,
       code_verifier: validVerifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(res.status).toBe(200);
@@ -363,8 +385,10 @@ describe('PKCE Validation', () => {
     const code = await getCode(verifier);
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
       // code_verifier deliberately omitted
     });
 
@@ -378,9 +402,11 @@ describe('PKCE Validation', () => {
     const code = await getCode(correctVerifier);
 
     const res = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code,
+      grant_type: 'authorization_code',
+      code,
       code_verifier: wrongVerifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(res.status).toBe(400);
@@ -481,7 +507,8 @@ describe('Error Response Format — no [object Object]', () => {
   });
 
   it('404 handler returns structured error object', async () => {
-    const res = await request(app).post('/nonexistent-route')
+    const res = await request(app)
+      .post('/nonexistent-route')
       .set('Content-Type', 'application/json')
       .send({ test: true });
 
@@ -518,17 +545,26 @@ describe('Credential Store Security', () => {
     const SECRET_PASSWORD = 'super-secret-nodered-password';
 
     const authRes = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'admin', nr_password: SECRET_PASSWORD,
+      auth_type: 'basic',
+      nr_username: 'admin',
+      nr_password: SECRET_PASSWORD,
     });
 
     const code = new URL(authRes.body.redirect_to).searchParams.get('code')!;
     const tokenRes = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     const rawToken = tokenRes.body.access_token;
@@ -543,17 +579,26 @@ describe('Credential Store Security', () => {
     const challenge = makeCodeChallenge(verifier);
 
     const authRes = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      _json: '1',
+      client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI,
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'admin', nr_password: 'p',
+      auth_type: 'basic',
+      nr_username: 'admin',
+      nr_password: 'p',
     });
 
     const code = new URL(authRes.body.redirect_to).searchParams.get('code')!;
     const tokenRes = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
-      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
     });
 
     expect(tokenRes.body.access_token).not.toContain('nodered');
@@ -567,10 +612,18 @@ describe('Credential Store Security', () => {
     const challenge = makeCodeChallenge(verifier);
 
     const code = srv.createAuthorizationCode({
-      clientId: 'c', redirectUri: REDIRECT_URI,
-      userId: 'u', scopes: ['mcp:read'],
-      codeChallenge: challenge, codeChallengeMethod: 'S256',
-      nodeRedCredentials: { url: 'https://nodered.example.com', authType: 'basic', username: 'admin', password: 'pw' } as any,
+      clientId: 'c',
+      redirectUri: REDIRECT_URI,
+      userId: 'u',
+      scopes: ['mcp:read'],
+      codeChallenge: challenge,
+      codeChallengeMethod: 'S256',
+      nodeRedCredentials: {
+        url: 'https://nodered.example.com',
+        authType: 'basic',
+        username: 'admin',
+        password: 'pw',
+      } as any,
     });
 
     const authCode = srv.consumeAuthorizationCode(code.code);
@@ -595,16 +648,14 @@ describe('SSRF Protection on client_id metadata fetch', () => {
     const challenge = makeCodeChallenge(verifier);
 
     // Send internal IP as client_id
-    await request(app)
-      .get('/authorize')
-      .query({
-        client_id: 'http://192.168.68.1/evil-metadata',
-        redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
-        response_type: 'code',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: 's',
-      });
+    await request(app).get('/authorize').query({
+      client_id: 'http://192.168.68.1/evil-metadata',
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
+    });
 
     // global fetch must NOT have been called with internal IP
     const internalFetchCalls = fetchSpy.mock.calls.filter(
@@ -618,16 +669,14 @@ describe('SSRF Protection on client_id metadata fetch', () => {
     const verifier = makeCodeVerifier();
     const challenge = makeCodeChallenge(verifier);
 
-    const res = await request(app)
-      .get('/authorize')
-      .query({
-        client_id: 'https://claude.ai/oauth/client-metadata.json',
-        redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
-        response_type: 'code',
-        code_challenge: challenge,
-        code_challenge_method: 'S256',
-        state: 's',
-      });
+    const res = await request(app).get('/authorize').query({
+      client_id: 'https://claude.ai/oauth/client-metadata.json',
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
+    });
 
     // Should show form (200) even if metadata fetch fails in test env
     expect([200, 400]).toContain(res.status);
@@ -723,27 +772,38 @@ describe('Token Exchange Security', () => {
     const challenge = makeCodeChallenge(verifier);
 
     const authRes = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: 'test',
+      _json: '1',
+      client_id: 'test',
       redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'u', nr_password: 'p',
+      auth_type: 'basic',
+      nr_username: 'u',
+      nr_password: 'p',
     });
 
     const code = new URL(authRes.body.redirect_to).searchParams.get('code')!;
 
     // First use — should succeed
     const first = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
-      redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client_id: 'test',
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      client_id: 'test',
     });
     expect(first.status).toBe(200);
 
     // Second use (replay) — must fail
     const second = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
-      redirect_uri: 'https://claude.ai/api/mcp/auth_callback', client_id: 'test',
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
+      client_id: 'test',
     });
     expect(second.status).toBe(400);
     expect(second.body.error).toBe('invalid_grant');
@@ -754,19 +814,26 @@ describe('Token Exchange Security', () => {
     const challenge = makeCodeChallenge(verifier);
 
     const authRes = await request(app).post('/authorize').type('form').send({
-      _json: '1', client_id: 'public-client',
+      _json: '1',
+      client_id: 'public-client',
       redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
-      response_type: 'code', code_challenge: challenge,
-      code_challenge_method: 'S256', state: 's',
+      response_type: 'code',
+      code_challenge: challenge,
+      code_challenge_method: 'S256',
+      state: 's',
       nr_url: 'https://nodered.danielshaprvt.work',
-      auth_type: 'basic', nr_username: 'u', nr_password: 'p',
+      auth_type: 'basic',
+      nr_username: 'u',
+      nr_password: 'p',
     });
 
     const code = new URL(authRes.body.redirect_to).searchParams.get('code')!;
 
     // Token exchange WITHOUT client_id (Claude.ai sometimes omits it)
     const tokenRes = await request(app).post('/token').type('form').send({
-      grant_type: 'authorization_code', code, code_verifier: verifier,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
       redirect_uri: 'https://claude.ai/api/mcp/auth_callback',
       // client_id omitted
     });
@@ -810,8 +877,9 @@ describe('MCP Endpoint Authentication', () => {
     expect(res.status).toBe(401);
     // Must not be a "NOT_FOUND" error
     if (res.body.error) {
-      expect(typeof res.body.error === 'string' ? res.body.error : res.body.error?.code)
-        .not.toBe('NOT_FOUND');
+      expect(typeof res.body.error === 'string' ? res.body.error : res.body.error?.code).not.toBe(
+        'NOT_FOUND'
+      );
     }
   });
 });
@@ -839,9 +907,7 @@ describe('OAuth Discovery Endpoints', () => {
   });
 
   it('GET /mcp returns server info JSON', async () => {
-    const res = await request(app)
-      .get('/mcp')
-      .set('Accept', 'application/json');
+    const res = await request(app).get('/mcp').set('Accept', 'application/json');
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('name');

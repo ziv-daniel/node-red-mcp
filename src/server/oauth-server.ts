@@ -50,7 +50,10 @@ export class OAuthServer {
   private codes = new Map<string, AuthorizationCode>();
   private tokens = new Map<string, AccessToken>();
   private refreshTokens = new Map<string, RefreshToken>();
-  private credentialStore = new Map<string, { credentials: NodeRedCredentials; expiresAt: number }>();
+  private credentialStore = new Map<
+    string,
+    { credentials: NodeRedCredentials; expiresAt: number }
+  >();
   private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
@@ -146,7 +149,9 @@ export class OAuthServer {
   // ── Authorization Code ────────────────────────────────────────────────────
 
   createAuthorizationCode(
-    params: Omit<AuthorizationCode, 'code' | 'expiresAt' | 'credentialId'> & { nodeRedCredentials?: NodeRedCredentials }
+    params: Omit<AuthorizationCode, 'code' | 'expiresAt' | 'credentialId'> & {
+      nodeRedCredentials?: NodeRedCredentials;
+    }
   ): AuthorizationCode {
     const { nodeRedCredentials, ...rest } = params;
     const credentialId = nodeRedCredentials ? this.storeCredentials(nodeRedCredentials) : undefined;
@@ -170,10 +175,17 @@ export class OAuthServer {
 
   // ── Access Token ─────────────────────────────────────────────────────────
 
-  createAccessToken(params: Omit<AccessToken, 'token' | 'expiresAt' | 'credentialId'> & { nodeRedCredentials?: NodeRedCredentials; credentialId?: string }): AccessToken {
+  createAccessToken(
+    params: Omit<AccessToken, 'token' | 'expiresAt' | 'credentialId'> & {
+      nodeRedCredentials?: NodeRedCredentials;
+      credentialId?: string;
+    }
+  ): AccessToken {
     const { nodeRedCredentials, credentialId: incomingCredentialId, ...rest } = params;
     // Prefer an already-stored credentialId; otherwise store fresh credentials if provided
-    const credentialId = incomingCredentialId ?? (nodeRedCredentials ? this.storeCredentials(nodeRedCredentials) : undefined);
+    const credentialId =
+      incomingCredentialId ??
+      (nodeRedCredentials ? this.storeCredentials(nodeRedCredentials) : undefined);
     const token: AccessToken = {
       ...rest,
       ...(credentialId && { credentialId }),
@@ -341,7 +353,7 @@ export class OAuthServer {
         // Cloudflare or other auth (e.g. claude.ai). Instead we trust the origin
         // and validate redirect_uri against ALLOWED_REDIRECT_ORIGINS below.
         const trustedOrigin = ALLOWED_REDIRECT_ORIGINS.find(origin =>
-          client_id.startsWith(origin + '/')
+          client_id.startsWith(`${origin}/`)
         );
         if (trustedOrigin) {
           const newClient: OAuthClient = {
@@ -354,7 +366,12 @@ export class OAuthServer {
           client = newClient;
         } else if (client_id.startsWith('https://') || client_id.startsWith('http://')) {
           // Only allow known trusted origins (Claude.ai, localhost for dev)
-          const allowedClientMetadataHosts = ['claude.ai', 'www.claude.ai', 'localhost', '127.0.0.1'];
+          const allowedClientMetadataHosts = [
+            'claude.ai',
+            'www.claude.ai',
+            'localhost',
+            '127.0.0.1',
+          ];
           const parsedClientId = new URL(client_id);
           const hostAllowed = allowedClientMetadataHosts.some(
             h => parsedClientId.hostname === h || parsedClientId.hostname.endsWith('.claude.ai')
@@ -371,40 +388,40 @@ export class OAuthServer {
             this.clients.set(client_id, newClient);
             client = newClient;
           } else {
-          // Trusted origin — try fetching the metadata document
-          try {
-            const metaResp = await axios.get<{
-              redirect_uris?: string[];
-              client_name?: string;
-              scope?: string;
-            }>(client_id, { timeout: 5000 });
-            const meta = metaResp.data;
-            const redirectUris: string[] = meta.redirect_uris ?? [];
-            const allowed = redirectUris.some(uri =>
-              ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin))
-            );
-            if (!allowed && redirectUris.length > 0) {
+            // Trusted origin — try fetching the metadata document
+            try {
+              const metaResp = await axios.get<{
+                redirect_uris?: string[];
+                client_name?: string;
+                scope?: string;
+              }>(client_id, { timeout: 5000 });
+              const meta = metaResp.data;
+              const redirectUris: string[] = meta.redirect_uris ?? [];
+              const allowed = redirectUris.some(uri =>
+                ALLOWED_REDIRECT_ORIGINS.some(origin => uri.startsWith(origin))
+              );
+              if (!allowed && redirectUris.length > 0) {
+                res.status(400).json({
+                  error: 'invalid_client',
+                  error_description: 'Client redirect URIs not from allowed origins',
+                });
+                return;
+              }
+              const newClient: OAuthClient = {
+                clientId: client_id,
+                redirectUris,
+                name: meta.client_name ?? client_id,
+                scopes: (meta.scope ?? 'mcp:read mcp:write mcp:admin').split(' '),
+              };
+              this.clients.set(client_id, newClient);
+              client = newClient;
+            } catch {
               res.status(400).json({
                 error: 'invalid_client',
-                error_description: 'Client redirect URIs not from allowed origins',
+                error_description: 'Could not fetch client metadata document',
               });
               return;
             }
-            const newClient: OAuthClient = {
-              clientId: client_id,
-              redirectUris,
-              name: meta.client_name ?? client_id,
-              scopes: (meta.scope ?? 'mcp:read mcp:write mcp:admin').split(' '),
-            };
-            this.clients.set(client_id, newClient);
-            client = newClient;
-          } catch {
-            res.status(400).json({
-              error: 'invalid_client',
-              error_description: 'Could not fetch client metadata document',
-            });
-            return;
-          }
           }
         } else {
           res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id' });
@@ -615,9 +632,13 @@ export class OAuthServer {
           res.status(400).json({ error: msg });
         } else {
           const params = new URLSearchParams({
-            client_id, redirect_uri, response_type: 'code',
-            state: state ?? '', scope: scope ?? '',
-            code_challenge, code_challenge_method: code_challenge_method ?? 'S256',
+            client_id,
+            redirect_uri,
+            response_type: 'code',
+            state: state ?? '',
+            scope: scope ?? '',
+            code_challenge,
+            code_challenge_method: code_challenge_method ?? 'S256',
             error: msg,
           });
           res.redirect(302, `/authorize?${params.toString()}`);
@@ -724,12 +745,19 @@ export class OAuthServer {
       if (grant_type === 'refresh_token') {
         const { refresh_token } = body;
         if (!refresh_token) {
-          res.status(400).json({ error: 'invalid_request', error_description: 'refresh_token required' });
+          res
+            .status(400)
+            .json({ error: 'invalid_request', error_description: 'refresh_token required' });
           return;
         }
         const rt = this.consumeRefreshToken(refresh_token);
         if (!rt) {
-          res.status(400).json({ error: 'invalid_grant', error_description: 'Refresh token invalid or expired' });
+          res
+            .status(400)
+            .json({
+              error: 'invalid_grant',
+              error_description: 'Refresh token invalid or expired',
+            });
           return;
         }
         if (client_id && rt.clientId !== client_id) {

@@ -12,6 +12,7 @@ import {
   NodeRedStatusEvent,
   NodeRedErrorEvent,
 } from '../types/nodered.js';
+
 import { NodeRedAPIClient } from './nodered-api.js';
 import { NodeRedWsClient } from './nodered-ws-client.js';
 
@@ -21,11 +22,7 @@ export class NodeRedEventListener {
   private isMonitoring = false;
   private lastEventTimestamp: number = Date.now();
 
-  constructor(
-    sseHandler: SSEHandler,
-    nodeRedClient: NodeRedAPIClient,
-    wsClient?: NodeRedWsClient
-  ) {
+  constructor(sseHandler: SSEHandler, nodeRedClient: NodeRedAPIClient, wsClient?: NodeRedWsClient) {
     this.sseHandler = sseHandler;
     if (wsClient) {
       this.wsClient = wsClient;
@@ -36,7 +33,9 @@ export class NodeRedEventListener {
         'http://localhost:1880';
       this.wsClient = new NodeRedWsClient(sseHandler, {
         baseURL,
-        onEvent: () => { this.lastEventTimestamp = Date.now(); },
+        onEvent: () => {
+          this.lastEventTimestamp = Date.now();
+        },
       });
     }
   }
