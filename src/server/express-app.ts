@@ -58,7 +58,10 @@ export class ExpressApp {
       port: parseInt(process.env.PORT || '3000'),
       host: process.env.HOST || 'localhost',
       cors: {
-        origin: process.env.CORS_ORIGIN?.split(',') || ['https://claude.ai', 'https://www.claude.ai'],
+        origin: process.env.CORS_ORIGIN?.split(',') || [
+          'https://claude.ai',
+          'https://www.claude.ai',
+        ],
         credentials: process.env.CORS_CREDENTIALS === 'true',
       },
       rateLimit: {
@@ -244,7 +247,8 @@ export class ExpressApp {
     // ── Root URL rewrite — Claude.ai POSTs to the bare domain the user registered ──
     // Rewrite POST / (with JSON-RPC body) to POST /mcp so the MCP handler picks it up
     this.app.use((req: Request, _res: Response, next: NextFunction) => {
-      if (req.path === '/' && req.method === 'POST' && (req.body as any)?.jsonrpc) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      if (req.path === '/' && req.method === 'POST' && req.body?.jsonrpc) {
         req.url = '/mcp';
       }
       next();
@@ -678,7 +682,7 @@ export class ExpressApp {
           // Send connection status
           res.write(`event: connection-status\n`);
           res.write(
-            `data: {"status": "connected", "timestamp": "${new Date().toISOString}"}\n\n`
+            `data: {"status": "connected", "timestamp": "${new Date().toISOString()}"}\n\n`
           );
 
           // Keep connection alive with periodic heartbeat

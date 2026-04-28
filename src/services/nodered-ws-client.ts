@@ -57,11 +57,10 @@ export class NodeRedWsClient {
       this.ws = null;
     }
 
-    const wsUrl =
-      this.baseURL
-        .replace(/^https:\/\//, 'wss://')
-        .replace(/^http:\/\//, 'ws://')
-        .replace(/\/$/, '') + '/comms';
+    const wsUrl = `${this.baseURL
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://')
+      .replace(/\/$/, '')}/comms`;
 
     try {
       this.ws = new WebSocket(wsUrl, { rejectUnauthorized: false });
@@ -80,6 +79,7 @@ export class NodeRedWsClient {
 
     this.ws.on('message', (raw: WebSocket.RawData) => {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         const msg: CommsMessage = JSON.parse(raw.toString());
         this._handleMessage(msg);
       } catch {

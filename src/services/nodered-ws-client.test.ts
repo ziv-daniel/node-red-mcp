@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { SSEHandler } from '../server/sse-handler.js';
-
 import { validateNodeRedAuth } from '../utils/auth.js';
+
 import { NodeRedWsClient } from './nodered-ws-client.js';
 
 // Silence auth util so we control the token
@@ -21,7 +21,11 @@ function makeSSEHandler(): { broadcast: ReturnType<typeof vi.fn> } {
   return { broadcast: vi.fn() };
 }
 
-function startWsServer(): Promise<{ wss: WebSocketServer; port: number; close: () => Promise<void> }> {
+function startWsServer(): Promise<{
+  wss: WebSocketServer;
+  port: number;
+  close: () => Promise<void>;
+}> {
   return new Promise(resolve => {
     const server = createServer();
     const wss = new WebSocketServer({ server });
@@ -76,7 +80,12 @@ describe('NodeRedWsClient', () => {
 
     await new Promise<void>(resolve => {
       wss.once('connection', (ws: WebSocket) => {
-        ws.send(JSON.stringify({ topic: 'status/node-abc', data: { fill: 'green', shape: 'dot', text: 'ok' } }));
+        ws.send(
+          JSON.stringify({
+            topic: 'status/node-abc',
+            data: { fill: 'green', shape: 'dot', text: 'ok' },
+          })
+        );
         resolve();
       });
       client.connect();
@@ -161,7 +170,9 @@ describe('NodeRedWsClient', () => {
 
     await new Promise<void>(resolve => {
       wss.once('connection', (ws: WebSocket) => {
-        ws.send(JSON.stringify({ topic: 'notification/node/added', data: { id: 'n1', type: 'inject' } }));
+        ws.send(
+          JSON.stringify({ topic: 'notification/node/added', data: { id: 'n1', type: 'inject' } })
+        );
         resolve();
       });
       client.connect();
@@ -196,6 +207,7 @@ describe('NodeRedWsClient', () => {
     await new Promise<void>(resolve => {
       wss.once('connection', (ws: WebSocket) => {
         ws.on('message', (msg: WebSocket.RawData) => {
+          // eslint-disable-next-line @typescript-eslint/no-base-to-string
           receivedMessages.push(msg.toString());
           resolve();
         });
@@ -221,11 +233,11 @@ describe('NodeRedWsClient', () => {
     await new Promise(r => setTimeout(r, 30));
     client.disconnect();
 
-    const callCountAfterDisconnect = (mockSSE.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
+    const callCountAfterDisconnect = mockSSE.broadcast.mock.calls.length;
     await new Promise(r => setTimeout(r, 200));
 
     // No new broadcasts after disconnect
-    expect((mockSSE.broadcast as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callCountAfterDisconnect);
+    expect(mockSSE.broadcast.mock.calls.length).toBe(callCountAfterDisconnect);
     expect(client.isConnected()).toBe(false);
   });
 
