@@ -3,6 +3,9 @@
  * Connects to Node-RED's /comms endpoint for real-time push events.
  */
 
+import https from 'https';
+
+import axios from 'axios';
 import WebSocket from 'ws';
 
 import { SSEHandler } from '../server/sse-handler.js';
@@ -35,6 +38,23 @@ export class NodeRedWsClient {
   private connected = false;
   private stopped = false;
   private onEvent?: () => void;
+  private accessToken: string | null = null;
+
+  private async fetchOAuthToken(): Promise<string | null> {
+    const username = process.env.NODERED_USERNAME;
+    const password = process.env.NODERED_PASSWORD;
+    if (!username || !password) return null;
+    try {
+      const resp = await axios.post<{ access_token: string }>(
+        `${this.baseURL}/auth/token`,
+        { client_id: 'node-red-admin', grant_type: 'password', username, password },
+        { httpsAgent: new https.Agent({ rejectUnauthorized: false }) }
+      );
+      return resp.data.access_token;
+    } catch {
+      return null;
+    }
+  }
 
   constructor(sseHandler: SSEHandler, config: NodeRedWsConfig) {
     this.sseHandler = sseHandler;
@@ -51,10 +71,21 @@ export class NodeRedWsClient {
 
   private _connect(): void {
     if (this.stopped) return;
+    // Fetch OAuth token before connecting, then proceed
+    void this._connectWithAuth();
+  }
+
+  private async _connectWithAuth(): Promise<void> {
+    if (this.stopped) return;
 
     if (this.ws) {
       this.ws.terminate();
       this.ws = null;
+    }
+
+    // Obtain OAuth token for handshake (clears on 401 to force re-login)
+    if (!this.accessToken) {
+      this.accessToken = await this.fetchOAuthToken();
     }
 
     const wsUrl = `${this.baseURL
@@ -62,8 +93,13 @@ export class NodeRedWsClient {
       .replace(/^http:\/\//, 'ws://')
       .replace(/\/$/, '')}/comms`;
 
+    const wsOpts: WebSocket.ClientOptions = { rejectUnauthorized: false };
+    if (this.accessToken) {
+      wsOpts.headers = { Authorization: `Bearer ${this.accessToken}` };
+    }
+
     try {
-      this.ws = new WebSocket(wsUrl, { rejectUnauthorized: false });
+      this.ws = new WebSocket(wsUrl, wsOpts);
     } catch (err) {
       console.error('NodeRedWsClient: failed to create WebSocket', err);
       this._scheduleReconnect();
@@ -96,7 +132,10 @@ export class NodeRedWsClient {
     });
 
     this.ws.on('error', err => {
-      // 'close' fires after 'error', which will trigger reconnect
+      // On 401, clear the cached token so reconnect will re-authenticate
+      if (err.message.includes('401')) {
+        this.accessToken = null;
+      }
       console.error('NodeRedWsClient: error —', err.message);
     });
   }
