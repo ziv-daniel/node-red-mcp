@@ -6,8 +6,8 @@
 import { createHash, randomBytes } from 'crypto';
 
 import express from 'express';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { OAuthServer } from '../../src/server/oauth-server.js';
 
@@ -320,16 +320,13 @@ describe('OAuthServer', () => {
         codeChallengeMethod: 'S256',
       });
 
-      const res = await request(app)
-        .post('/token')
-        .type('form')
-        .send({
-          grant_type: 'authorization_code',
-          code,
-          code_verifier: verifier,
-          redirect_uri: 'https://claude.ai/oauth/callback',
-          client_id: 'c1',
-        });
+      const res = await request(app).post('/token').type('form').send({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        redirect_uri: 'https://claude.ai/oauth/callback',
+        client_id: 'c1',
+      });
 
       expect(res.status).toBe(200);
       expect(res.body.access_token).toBeTruthy();
@@ -384,10 +381,7 @@ describe('OAuthServer', () => {
     it('no hint tries both token stores', async () => {
       const at = server.createAccessToken({ clientId: 'c1', userId: 'u1', scopes: [] });
 
-      const res = await request(app)
-        .post('/oauth/revoke')
-        .type('form')
-        .send({ token: at.token });
+      const res = await request(app).post('/oauth/revoke').type('form').send({ token: at.token });
 
       expect(res.status).toBe(200);
       expect(server.validateToken(at.token)).toBeNull();

@@ -752,12 +752,10 @@ export class OAuthServer {
         }
         const rt = this.consumeRefreshToken(refresh_token);
         if (!rt) {
-          res
-            .status(400)
-            .json({
-              error: 'invalid_grant',
-              error_description: 'Refresh token invalid or expired',
-            });
+          res.status(400).json({
+            error: 'invalid_grant',
+            error_description: 'Refresh token invalid or expired',
+          });
           return;
         }
         if (client_id && rt.clientId !== client_id) {
