@@ -204,7 +204,7 @@ describe('NodeRedWsClient', () => {
     let receivedAuthHeader: string | undefined;
     await new Promise<void>(resolve => {
       wss.once('connection', (_ws: WebSocket, req) => {
-        receivedAuthHeader = req.headers['authorization'];
+        receivedAuthHeader = req.headers.authorization;
         setTimeout(resolve, 20);
       });
       client.connect();
