@@ -8,13 +8,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { SSEHandler } from '../server/sse-handler.js';
-import { validateNodeRedAuth } from '../utils/auth.js';
+import { getNodeRedAuthHeader } from '../utils/auth.js';
 
 import { NodeRedWsClient } from './nodered-ws-client.js';
 
-// Silence auth util so we control the token
+// Silence auth util so we control what headers are returned
 vi.mock('../utils/auth.js', () => ({
-  validateNodeRedAuth: vi.fn().mockReturnValue({ type: 'none' }),
+  getNodeRedAuthHeader: vi.fn().mockReturnValue({}),
 }));
 
 function makeSSEHandler(): { broadcast: ReturnType<typeof vi.fn> } {
@@ -47,7 +47,7 @@ describe('NodeRedWsClient', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // mockReset (vitest.config) clears return values between tests; restore default.
-    vi.mocked(validateNodeRedAuth).mockReturnValue({ type: 'none' });
+    vi.mocked(getNodeRedAuthHeader).mockReturnValue({});
     mockSSE = makeSSEHandler();
   });
 
@@ -191,11 +191,9 @@ describe('NodeRedWsClient', () => {
     await close();
   });
 
-  it('sends auth token on connect when bearer token is set', async () => {
-    const { validateNodeRedAuth } = await import('../utils/auth.js');
-    vi.mocked(validateNodeRedAuth).mockReturnValue({
-      type: 'bearer',
-      credentials: { token: 'my-token' },
+  it('passes auth headers in WS handshake when Basic auth is configured', async () => {
+    vi.mocked(getNodeRedAuthHeader).mockReturnValue({
+      Authorization: 'Basic dXNlcjpwYXNz',
     });
 
     const { wss, port, close } = await startWsServer();
@@ -203,21 +201,17 @@ describe('NodeRedWsClient', () => {
       baseURL: `http://localhost:${port}`,
     });
 
-    const receivedMessages: string[] = [];
+    let receivedAuthHeader: string | undefined;
     await new Promise<void>(resolve => {
-      wss.once('connection', (ws: WebSocket) => {
-        ws.on('message', (msg: WebSocket.RawData) => {
-          // eslint-disable-next-line @typescript-eslint/no-base-to-string
-          receivedMessages.push(msg.toString());
-          resolve();
-        });
+      wss.once('connection', (_ws: WebSocket, req) => {
+        receivedAuthHeader = req.headers['authorization'];
+        setTimeout(resolve, 20);
       });
       client.connect();
     });
 
-    await new Promise(r => setTimeout(r, 50));
-
-    expect(receivedMessages).toContain(JSON.stringify({ auth: 'my-token' }));
+    expect(receivedAuthHeader).toBe('Basic dXNlcjpwYXNz');
+    expect(getNodeRedAuthHeader).toHaveBeenCalled();
 
     client.disconnect();
     await close();
