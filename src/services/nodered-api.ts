@@ -18,7 +18,7 @@ import {
   NodeRedDeploymentOptions,
   NodeRedAPIError,
 } from '../types/nodered.js';
-// getNodeRedAuthHeader removed — auth is now handled via OAuth Bearer token interceptor
+import { getNodeRedAuthHeader } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
@@ -59,8 +59,6 @@ export class NodeRedAPIClient {
   private config: NodeRedAPIConfig;
   private circuitBreaker: CircuitBreaker;
   private retryOptions: RetryOptions;
-  private bearerToken: string | null = null;
-  private tokenFetchPromise: Promise<void> | null = null;
 
   constructor(config: Partial<NodeRedAPIConfig> = {}) {
     this.config = {
@@ -112,6 +110,7 @@ export class NodeRedAPIClient {
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         'Content-Type': 'application/json',
+        ...getNodeRedAuthHeader(),
         ...this.config.headers,
       },
     });
@@ -119,44 +118,6 @@ export class NodeRedAPIClient {
     this.setupInterceptors();
   }
 
-  private async ensureAuthenticated(): Promise<void> {
-    // Static API token takes precedence — no login needed
-    const staticToken = process.env.NODERED_API_TOKEN;
-    if (staticToken) {
-      this.bearerToken = staticToken;
-      return;
-    }
-    if (this.bearerToken) return;
-
-    const username = process.env.NODERED_USERNAME;
-    const password = process.env.NODERED_PASSWORD;
-    if (!username || !password) return;
-
-    // Prevent concurrent login attempts
-    if (this.tokenFetchPromise) {
-      await this.tokenFetchPromise;
-      return;
-    }
-
-    this.tokenFetchPromise = (async () => {
-      try {
-        const response = await this.client.post<{ access_token: string }>(
-          '/auth/token',
-          { client_id: 'node-red-admin', grant_type: 'password', username, password },
-          { headers: { 'x-skip-nodered-auth': '1' } }
-        );
-        this.bearerToken = response.data.access_token;
-      } catch (err) {
-        console.error('Node-RED OAuth login failed:', err instanceof Error ? err.message : err);
-      }
-    })();
-
-    try {
-      await this.tokenFetchPromise;
-    } finally {
-      this.tokenFetchPromise = null;
-    }
-  }
   /**
    * Validate that response contains JSON, not HTML
    */
@@ -190,18 +151,8 @@ export class NodeRedAPIClient {
    * Setup axios interceptors for retries and error handling
    */
   private setupInterceptors(): void {
-    // Request interceptor: inject Bearer token (skip for the login call itself)
     this.client.interceptors.request.use(
-      async config => {
-        if (!config.headers?.['x-skip-nodered-auth']) {
-          await this.ensureAuthenticated();
-          if (this.bearerToken) {
-            config.headers = config.headers || {};
-            config.headers.Authorization = `Bearer ${this.bearerToken}`;
-          }
-        }
-        return config;
-      },
+      config => config,
       error => Promise.reject(error)
     );
 
@@ -229,42 +180,14 @@ export class NodeRedAPIClient {
         }
         return response;
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (error: any) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      async error => {
         const config = error.config;
 
-        // On 401, clear cached token and retry once to re-authenticate
-        if (
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          error.response?.status === 401 &&
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          !config._authRetried &&
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          !config.headers?.['x-skip-nodered-auth']
-        ) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          config._authRetried = true;
-          this.bearerToken = null;
-          await this.ensureAuthenticated();
-          if (this.bearerToken) {
-            const token = this.bearerToken;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
-            config.headers.Authorization = `Bearer ${token}`;
-
-            return this.client(config);
-          }
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (!config._retry && config._retryCount < this.config.retries) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           config._retry = true;
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
           config._retryCount = (config._retryCount || 0) + 1;
 
           // Exponential backoff
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument
           const delay = Math.pow(2, config._retryCount) * 1000;
           await new Promise(resolve => setTimeout(resolve, delay));
 
