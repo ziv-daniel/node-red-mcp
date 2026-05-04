@@ -249,6 +249,11 @@ export function validateNodeRedAuth(): {
 /**
  * Generate Node-RED authorization header
  */
+
+export function getTlsRejectUnauthorized(): boolean {
+  return process.env.NODERED_TLS_REJECT_UNAUTHORIZED !== 'false';
+}
+
 export function getNodeRedAuthHeader(): Record<string, string> {
   const authConfig = validateNodeRedAuth();
 
