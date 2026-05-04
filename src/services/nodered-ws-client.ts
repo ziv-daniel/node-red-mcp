@@ -12,7 +12,7 @@ import {
   NodeRedRuntimeEvent,
   NodeRedStatusEvent,
 } from '../types/nodered.js';
-import { getNodeRedAuthHeader } from '../utils/auth.js';
+import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
 
 export interface NodeRedWsConfig {
   baseURL: string;
@@ -65,7 +65,7 @@ export class NodeRedWsClient {
 
     try {
       this.ws = new WebSocket(wsUrl, {
-        rejectUnauthorized: false,
+        rejectUnauthorized: getTlsRejectUnauthorized(),
         headers: getNodeRedAuthHeader(),
       });
     } catch (err) {
