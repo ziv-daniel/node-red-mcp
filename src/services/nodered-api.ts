@@ -18,7 +18,7 @@ import {
   NodeRedDeploymentOptions,
   NodeRedAPIError,
 } from '../types/nodered.js';
-import { getNodeRedAuthHeader } from '../utils/auth.js';
+import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
@@ -106,8 +106,7 @@ export class NodeRedAPIClient {
     this.client = axios.create({
       baseURL: this.config.baseURL,
       timeout: this.config.timeout,
-      // Allow self-signed certs for local HAOS/homelab HTTPS endpoints
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
       headers: {
         'Content-Type': 'application/json',
         ...getNodeRedAuthHeader(),
