@@ -15,6 +15,7 @@ import { NodeRedWsClient } from './nodered-ws-client.js';
 // Silence auth util so we control what headers are returned
 vi.mock('../utils/auth.js', () => ({
   getNodeRedAuthHeader: vi.fn().mockReturnValue({}),
+  getTlsRejectUnauthorized: vi.fn().mockReturnValue(true),
 }));
 
 function makeSSEHandler(): { broadcast: ReturnType<typeof vi.fn> } {

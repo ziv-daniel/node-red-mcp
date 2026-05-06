@@ -58,6 +58,7 @@ vi.mock('axios', () => {
 // Mock auth utility
 vi.mock('../utils/auth.js', () => ({
   getNodeRedAuthHeader: vi.fn(() => ({})),
+  getTlsRejectUnauthorized: vi.fn(() => true),
 }));
 
 describe('NodeRedAPIClient', () => {

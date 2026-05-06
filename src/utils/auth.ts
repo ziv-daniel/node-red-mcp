@@ -143,7 +143,65 @@ export function authenticateAPIKey(req: AuthRequest, res: Response, next: NextFu
 }
 
 /**
- * Flexible authentication middleware (JWT or API key)
+ * Middleware for HTTP Basic authentication (MCP_USERNAME / MCP_PASSWORD env vars)
+ */
+export function authenticateBasic(req: AuthRequest, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith('Basic ')) {
+    res.status(401).json({ error: 'Basic authentication required' });
+    return;
+  }
+
+  const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+  const colonIndex = decoded.indexOf(':');
+  if (colonIndex === -1) {
+    res.status(401).json({ error: 'Invalid Basic auth format' });
+    return;
+  }
+
+  const username = decoded.slice(0, colonIndex);
+  const password = decoded.slice(colonIndex + 1);
+
+  const expectedUsername = process.env.MCP_USERNAME;
+  const expectedPassword = process.env.MCP_PASSWORD;
+
+  if (!expectedUsername || !expectedPassword) {
+    res.status(401).json({ error: 'Basic auth not configured' });
+    return;
+  }
+
+  let valid = false;
+  try {
+    const u = Buffer.from(username);
+    const eu = Buffer.from(expectedUsername);
+    const p = Buffer.from(password);
+    const ep = Buffer.from(expectedPassword);
+    valid =
+      u.length === eu.length &&
+      p.length === ep.length &&
+      timingSafeEqual(u, eu) &&
+      timingSafeEqual(p, ep);
+  } catch {
+    valid = false;
+  }
+
+  if (!valid) {
+    res.status(401).json({ error: 'Invalid credentials' });
+    return;
+  }
+
+  req.auth = {
+    userId: username,
+    permissions: ['*'],
+    isAuthenticated: true,
+  };
+
+  next();
+}
+
+/**
+ * Flexible authentication middleware (JWT, API key, or Basic)
  */
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
@@ -151,6 +209,10 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
 
   if (apiKey) {
     return authenticateAPIKey(req, res, next);
+  }
+
+  if (authHeader?.startsWith('Basic ')) {
+    return authenticateBasic(req, res, next);
   }
 
   if (authHeader) {
