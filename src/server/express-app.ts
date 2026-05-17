@@ -9,7 +9,13 @@ import helmet from 'helmet';
 
 import { NodeRedEventListener } from '../services/nodered-event-listener.js';
 import type { ApiResponse } from '../types/mcp-extensions.js';
-import { authenticate, authenticateAPIKey, authenticateBasic, verifyToken, getRateLimitKey } from '../utils/auth.js';
+import {
+  authenticate,
+  authenticateAPIKey,
+  authenticateBasic,
+  verifyToken,
+  getRateLimitKey,
+} from '../utils/auth.js';
 import type { AuthRequest } from '../utils/auth.js';
 import {
   errorHandler,
