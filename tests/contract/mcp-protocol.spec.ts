@@ -26,8 +26,6 @@ vi.mock('../../src/services/nodered-event-listener.js', () => ({
   })),
 }));
 
-vi.mock('../../src/utils/telemetry.js', () => ({ initTelemetry: vi.fn() }));
-
 // ── Build a minimal express app with only the /mcp endpoint ──────────────────
 
 import express from 'express';

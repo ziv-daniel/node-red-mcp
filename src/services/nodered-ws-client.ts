@@ -57,11 +57,10 @@ export class NodeRedWsClient {
       this.ws = null;
     }
 
-    const wsUrl =
-      this.baseURL
-        .replace(/^https:\/\//, 'wss://')
-        .replace(/^http:\/\//, 'ws://')
-        .replace(/\/$/, '') + '/comms';
+    const wsUrl = `${this.baseURL
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://')
+      .replace(/\/$/, '')}/comms`;
 
     try {
       this.ws = new WebSocket(wsUrl, {
