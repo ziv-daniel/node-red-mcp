@@ -9,7 +9,7 @@ import helmet from 'helmet';
 
 import { NodeRedEventListener } from '../services/nodered-event-listener.js';
 import type { ApiResponse } from '../types/mcp-extensions.js';
-import { authenticate, authenticateAPIKey, verifyToken, getRateLimitKey } from '../utils/auth.js';
+import { authenticate, authenticateAPIKey, authenticateBasic, verifyToken, getRateLimitKey } from '../utils/auth.js';
 import type { AuthRequest } from '../utils/auth.js';
 import {
   errorHandler,
@@ -89,6 +89,10 @@ export class ExpressApp {
     }
 
     const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Basic ')) {
+      return authenticateBasic(req as AuthRequest, res, next);
+    }
+
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.slice(7);
 
