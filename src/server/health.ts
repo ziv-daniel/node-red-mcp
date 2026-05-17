@@ -11,8 +11,6 @@ import type { Request, Response } from 'express';
 
 import { appConfig } from '../utils/config.js';
 import { logger, logPerformance } from '../utils/logger.js';
-// Metrics imports available if needed
-// import { mcpMetrics, nodeRedMetrics } from '../utils/telemetry.js';
 
 interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';

@@ -40,7 +40,6 @@
 ### 📊 **Observability**
 
 - **Structured Logging** with Pino
-- **OpenTelemetry Integration** for distributed tracing
 - **Circuit Breaker Metrics** and health monitoring
 - **Request Correlation IDs** for debugging
 - **Performance Metrics** collection
@@ -165,3 +164,83 @@ Add to your Claude Desktop configuration
 | `search_modules`        | Search Node-RED palette modules   | `query: string, category?: string`     |
 | `install_module`        | Install a Node-RED module         | `moduleName: string, version?: string` |
 | `get_installed_modules` | Get installed modules             | None                                   |
+
+## 🔌 Connecting to the Server
+
+The MCP server supports multiple transport modes and authentication methods.
+Choose the one that fits your setup.
+
+### Transport Modes
+
+| Mode                | Env Var               | Endpoint     | Use Case                              |
+| ------------------- | --------------------- | ------------ | ------------------------------------- |
+| **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`  | Production deployments, remote agents |
+| **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop local integration      |
+
+### Authentication
+
+The server supports two authentication methods (configured via environment
+variables):
+
+1. **HTTP Basic Auth** — Set `MCP_USERNAME` and `MCP_PASSWORD`. Clients send an
+   `Authorization: Basic <base64>` header.
+2. **Bearer Token (JWT)** — After authenticating, clients receive a JWT for
+   subsequent requests. Requires `JWT_SECRET` to be set.
+
+### Connecting via Streamable HTTP (Remote)
+
+For remote MCP clients (Claude Code, custom agents, etc.), point them to the
+`/mcp` endpoint:
+
+```bash
+# Generic connection parameters
+URL: https://<your-server-host>/mcp
+Transport: streamable-http
+Auth header: Authorization: Basic <base64(username:password)>
+```
+
+**Claude Code CLI example:**
+
+```bash
+claude mcp add node-red \
+  --transport streamable-http \
+  --url https://<your-server-host>/mcp \
+  --header "Authorization: Basic <base64-credentials>"
+```
+
+### Connecting via Stdio (Local)
+
+For Claude Desktop or other local MCP hosts, use stdio mode:
+
+```json
+{
+  "mcpServers": {
+    "nodered": {
+      "command": "node",
+      "args": ["path/to/nodered_mcp/dist/index.mjs"],
+      "env": {
+        "MCP_TRANSPORT": "stdio",
+        "NODERED_URL": "https://your-nodered-instance.com",
+        "NODERED_USERNAME": "your-username",
+        "NODERED_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
+| Variable           | Required | Description                       |
+| ------------------ | -------- | --------------------------------- |
+| `NODERED_URL`      | Yes      | URL of your Node-RED instance     |
+| `NODERED_USERNAME` | Yes      | Node-RED admin credentials        |
+| `NODERED_PASSWORD` | Yes      | Node-RED admin credentials        |
+| `MCP_TRANSPORT`    | No       | `http` (default) or `stdio`       |
+| `MCP_USERNAME`     | No       | MCP server auth username          |
+| `MCP_PASSWORD`     | No       | MCP server auth password          |
+| `JWT_SECRET`       | No       | Secret for JWT token signing      |
+| `HOST`             | No       | Bind address (default: `0.0.0.0`) |
+| `PORT`             | No       | Listen port (default: `3000`)     |
+| `CORS_ORIGIN`      | No       | Allowed CORS origins              |
+| `LOG_LEVEL`        | No       | `debug`, `info`, `warn`, `error`  |
