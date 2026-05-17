@@ -24,10 +24,10 @@ import {
 
 describe('Logger Module', () => {
   beforeEach(() => {
-    vi.spyOn(logger, 'info').mockImplementation(() => undefined as any);
-    vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
-    vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
-    vi.spyOn(logger, 'debug').mockImplementation(() => undefined as any);
+    vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(logger, 'debug').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -231,7 +231,7 @@ describe('Logger Module', () => {
 
   describe('mcpLog', () => {
     beforeEach(() => {
-      vi.spyOn(mcpLogger, 'info').mockImplementation(() => undefined as any);
+      vi.spyOn(mcpLogger, 'info').mockImplementation(() => undefined);
     });
 
     describe('toolCall', () => {
@@ -300,7 +300,7 @@ describe('Logger Module', () => {
 
   describe('nodeRedLog', () => {
     beforeEach(() => {
-      vi.spyOn(nodeRedLogger, 'info').mockImplementation(() => undefined as any);
+      vi.spyOn(nodeRedLogger, 'info').mockImplementation(() => undefined);
     });
 
     describe('flowOperation', () => {
