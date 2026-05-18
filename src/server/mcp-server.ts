@@ -32,6 +32,14 @@ import { SSEHandler } from './sse-handler.js';
 const SEARCH_RESULTS_LIMIT = 10;
 const SEARCH_SKIP_PROPS = new Set(['id', 'z', 'x', 'y', 'wires']);
 
+interface FlowSearchMatch {
+  nodeId: string;
+  nodeType: string;
+  nodeName: string;
+  flowId: string;
+  flowLabel: string;
+}
+
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
@@ -344,6 +352,32 @@ export class McpNodeRedServer {
         },
       },
       {
+        name: 'delete_flow',
+        description:
+          'Delete a Node-RED flow. Default is dry-run — shows what would be deleted without acting. To delete for real: set dryRun: false AND confirm: true.',
+        annotations: { readOnlyHint: false, destructiveHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            flowId: {
+              type: 'string',
+              description: 'ID of the flow to delete',
+            },
+            dryRun: {
+              type: 'boolean',
+              description: 'When true (default), returns flow details without deleting',
+              default: true,
+            },
+            confirm: {
+              type: 'boolean',
+              description:
+                'Must be true when dryRun is false — explicit confirmation of destructive action',
+            },
+          },
+          required: ['flowId'],
+        },
+      },
+      {
         name: 'search_flows',
         description:
           'Search for nodes in Node-RED flows by type, name, or property value. At least one parameter is required.',
@@ -531,6 +565,30 @@ export class McpNodeRedServer {
           break;
         }
 
+        case 'delete_flow': {
+          validateRequired(args, ['flowId']);
+          const dryRun = args?.dryRun !== false;
+          const flow = await this.nodeRedClient.getFlow(args.flowId);
+          const flowInfo = {
+            id: flow.id,
+            label: flow.label ?? '',
+            nodeCount: flow.nodes?.length ?? 0,
+          };
+
+          if (dryRun) {
+            result = { success: true, data: { dryRun: true, wouldDelete: flowInfo }, timestamp };
+            break;
+          }
+
+          if (!args?.confirm) {
+            throw new Error('Deletion requires confirm: true and dryRun: false');
+          }
+
+          await this.nodeRedClient.deleteFlow(args.flowId);
+          result = { success: true, data: { deleted: flowInfo }, timestamp };
+          break;
+        }
+
         case 'search_flows': {
           const typeFilter = args?.type as string | undefined;
           const query = args?.query as string | undefined;
@@ -543,13 +601,8 @@ export class McpNodeRedServer {
           const flows = await this.nodeRedClient.getFlows();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
-          const matches: {
-            nodeId: string;
-            nodeType: string;
-            nodeName: string;
-            flowId: string;
-            flowLabel: string;
-          }[] = [];
+          const matches: FlowSearchMatch[] = [];
+          let total = 0;
 
           for (const flow of flows) {
             if (filterFlowId && flow.id !== filterFlowId) continue;
@@ -566,19 +619,22 @@ export class McpNodeRedServer {
                 );
                 if (!nameMatch && !propMatch) continue;
               }
-              matches.push({
-                nodeId: node.id,
-                nodeType: node.type,
-                nodeName: node.name ?? '',
-                flowId: flow.id,
-                flowLabel: flow.label ?? '',
-              });
+              total++;
+              if (matches.length < SEARCH_RESULTS_LIMIT) {
+                matches.push({
+                  nodeId: node.id,
+                  nodeType: node.type,
+                  nodeName: node.name ?? '',
+                  flowId: flow.id,
+                  flowLabel: flow.label ?? '',
+                });
+              }
             }
           }
 
           result = {
             success: true,
-            data: { matches: matches.slice(0, SEARCH_RESULTS_LIMIT), total: matches.length },
+            data: { matches, total },
             timestamp,
           };
           break;
