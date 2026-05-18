@@ -483,6 +483,25 @@ export class McpNodeRedServer {
           required: [],
         },
       },
+      {
+        name: 'get_flow_state',
+        description: 'Get the runtime state of Node-RED flows (running or stopped)',
+        annotations: { readOnlyHint: true },
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'get_settings',
+        description: 'Get Node-RED runtime settings (HTTP root paths, logging configuration, etc.)',
+        annotations: { readOnlyHint: true },
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'get_runtime_info',
+        description:
+          'Get Node-RED runtime information including version, installed node types, and memory usage',
+        annotations: { readOnlyHint: true },
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
     ];
   }
 
@@ -726,6 +745,21 @@ export class McpNodeRedServer {
             data: { matches, total },
             timestamp,
           };
+          break;
+        }
+
+        case 'get_flow_state': {
+          result = { success: true, data: await this.nodeRedClient.getFlowStatus(), timestamp };
+          break;
+        }
+
+        case 'get_settings': {
+          result = { success: true, data: await this.nodeRedClient.getSettings(), timestamp };
+          break;
+        }
+
+        case 'get_runtime_info': {
+          result = { success: true, data: await this.nodeRedClient.getRuntimeInfo(), timestamp };
           break;
         }
 
