@@ -15,12 +15,14 @@ import {
   mockFlowTab,
   mockFlowSummaries,
   mockCreatedFlow,
+  mockFlowStatus,
 } from '../../test/fixtures/flows.js';
 import {
   mockSearchResult,
   mockInstallSuccess,
   mockInstalledModules,
   mockRuntimeInfo,
+  mockSettings,
 } from '../../test/fixtures/responses.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
 
@@ -47,6 +49,8 @@ const mockNodeRedClient = {
   getFlowContext: vi.fn(),
   setFlowContext: vi.fn(),
   deleteFlow: vi.fn(),
+  getFlowStatus: vi.fn(),
+  getSettings: vi.fn(),
 };
 
 const mockSSEHandler = {
@@ -121,6 +125,8 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.getFlowContext.mockResolvedValue({});
     mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
     mockNodeRedClient.deleteFlow.mockResolvedValue(undefined);
+    mockNodeRedClient.getFlowStatus.mockResolvedValue(mockFlowStatus);
+    mockNodeRedClient.getSettings.mockResolvedValue(mockSettings);
 
     mcpServer = new McpNodeRedServer();
   });
@@ -273,9 +279,33 @@ describe('McpNodeRedServer', () => {
       expect(validateFlowTool?.inputSchema.required).toContain('flowId');
     });
 
-    it('should have exactly 15 tools defined', () => {
+    it('should include get_flow_state tool', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(15);
+      const tool = tools.find(t => t.name === 'get_flow_state');
+
+      expect(tool).toBeDefined();
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+    });
+
+    it('should include get_settings tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const tool = tools.find(t => t.name === 'get_settings');
+
+      expect(tool).toBeDefined();
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+    });
+
+    it('should include get_runtime_info tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const tool = tools.find(t => t.name === 'get_runtime_info');
+
+      expect(tool).toBeDefined();
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+    });
+
+    it('should have exactly 18 tools defined', () => {
+      const tools = mcpServer.getToolDefinitions();
+      expect(tools.length).toBe(18);
     });
   });
 
@@ -847,6 +877,68 @@ describe('McpNodeRedServer', () => {
       expect(deleteFlowTool).toBeDefined();
       expect(deleteFlowTool?.annotations?.destructiveHint).toBe(true);
       expect(deleteFlowTool?.annotations?.readOnlyHint).toBe(false);
+    });
+  });
+
+  describe('Tool Execution - get_flow_state', () => {
+    it('should return flow state', async () => {
+      const result = await mcpServer.callTool('get_flow_state', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.getFlowStatus).toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.state).toBe('start');
+      expect(Array.isArray(parsed.data.flows)).toBe(true);
+    });
+
+    it('should propagate API errors', async () => {
+      mockNodeRedClient.getFlowStatus.mockRejectedValueOnce(new Error('Connection refused'));
+      const result = await mcpServer.callTool('get_flow_state', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Connection refused');
+    });
+  });
+
+  describe('Tool Execution - get_settings', () => {
+    it('should return runtime settings', async () => {
+      const result = await mcpServer.callTool('get_settings', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.getSettings).toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toHaveProperty('httpNodeRoot');
+    });
+
+    it('should propagate API errors', async () => {
+      mockNodeRedClient.getSettings.mockRejectedValueOnce(new Error('Unauthorized'));
+      const result = await mcpServer.callTool('get_settings', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Unauthorized');
+    });
+  });
+
+  describe('Tool Execution - get_runtime_info', () => {
+    it('should return runtime info', async () => {
+      const result = await mcpServer.callTool('get_runtime_info', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.getRuntimeInfo).toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.version).toBe('3.1.0');
+      expect(parsed.data).toHaveProperty('memory');
+    });
+
+    it('should propagate API errors', async () => {
+      mockNodeRedClient.getRuntimeInfo.mockRejectedValueOnce(new Error('Service unavailable'));
+      const result = await mcpServer.callTool('get_runtime_info', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Service unavailable');
     });
   });
 
