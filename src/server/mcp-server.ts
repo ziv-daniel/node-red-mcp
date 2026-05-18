@@ -40,6 +40,65 @@ interface FlowSearchMatch {
   flowLabel: string;
 }
 
+interface FlowValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
+  const errors: string[] = [];
+  const nodes = Array.isArray(flow?.nodes) ? (flow.nodes as Record<string, unknown>[]) : [];
+  const nodeIds = new Set<string>();
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const id = typeof node.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+
+    if (!id) errors.push(`${label}: missing required field "id"`);
+    if (!node.type) errors.push(`${label}: missing required field "type"`);
+
+    if (id) {
+      if (nodeIds.has(id)) {
+        errors.push(`Duplicate node ID: "${id}"`);
+      } else {
+        nodeIds.add(id);
+      }
+    }
+  }
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const id = typeof node.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+    if (!Array.isArray(node.wires)) continue;
+    for (const group of node.wires as unknown[]) {
+      if (!Array.isArray(group)) {
+        errors.push(`${label}: wires must be an array of arrays`);
+        continue;
+      }
+      for (const target of group as unknown[]) {
+        if (typeof target !== 'string') {
+          errors.push(`${label}: wire target must be a string`);
+          continue;
+        }
+        if (!nodeIds.has(target)) {
+          errors.push(`${label}: wire references unknown node "${target}"`);
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function validateFlowOrThrow(flowData: { nodes?: unknown[] }): void {
+  const validation = validateFlowData(flowData);
+  if (!validation.valid) {
+    throw new Error(`Validation failed:\n${validation.errors.map(e => `- ${e}`).join('\n')}`);
+  }
+}
+
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
@@ -170,6 +229,19 @@ export class McpNodeRedServer {
         },
       },
       {
+        name: 'validate_flow',
+        description:
+          'Validate a Node-RED flow for structural errors: missing required node fields, duplicate node IDs, and wire references to non-existent nodes.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            flowId: { type: 'string', description: 'ID of the flow to fetch and validate' },
+          },
+          required: ['flowId'],
+        },
+      },
+      {
         name: 'create_flow',
         description: 'Create a new Node-RED flow',
         annotations: { readOnlyHint: false },
@@ -185,6 +257,11 @@ export class McpNodeRedServer {
                 disabled: { type: 'boolean' },
               },
             },
+            validate: {
+              type: 'boolean',
+              description: 'If true, validate flowData for structural errors before creating',
+              default: false,
+            },
           },
           required: ['flowData'],
         },
@@ -198,6 +275,11 @@ export class McpNodeRedServer {
           properties: {
             flowId: { type: 'string', description: 'Flow ID to update' },
             flowData: { type: 'object', description: 'Updated flow data' },
+            validate: {
+              type: 'boolean',
+              description: 'If true, validate flowData for structural errors before updating',
+              default: false,
+            },
           },
           required: ['flowId', 'flowData'],
         },
@@ -439,8 +521,16 @@ export class McpNodeRedServer {
           };
           break;
 
+        case 'validate_flow': {
+          validateRequired(args, ['flowId']);
+          const flow = await this.nodeRedClient.getFlow(args.flowId);
+          result = { success: true, data: validateFlowData(flow), timestamp };
+          break;
+        }
+
         case 'create_flow':
           validateRequired(args, ['flowData']);
+          if (args?.validate) validateFlowOrThrow(args.flowData);
           const createdFlow = await this.nodeRedClient.createFlow(args.flowData);
           return {
             content: [
@@ -453,6 +543,7 @@ export class McpNodeRedServer {
 
         case 'update_flow':
           validateRequired(args, ['flowId', 'flowData']);
+          if (args?.validate) validateFlowOrThrow(args.flowData);
           await this.nodeRedClient.updateFlow(args.flowId, args.flowData);
           return {
             content: [
