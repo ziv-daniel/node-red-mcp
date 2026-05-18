@@ -50,8 +50,7 @@ function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
   const nodes = Array.isArray(flow?.nodes) ? (flow.nodes as Record<string, unknown>[]) : [];
   const nodeIds = new Set<string>();
 
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
+  for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
     const label = id ? `Node "${id}"` : `Node[${i}]`;
 
@@ -67,8 +66,7 @@ function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
     }
   }
 
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
+  for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
     const label = id ? `Node "${id}"` : `Node[${i}]`;
     if (!Array.isArray(node.wires)) continue;
