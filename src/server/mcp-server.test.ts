@@ -251,9 +251,20 @@ describe('McpNodeRedServer', () => {
       expect(getInstalledTool?.inputSchema.required).toEqual([]);
     });
 
-    it('should have exactly 12 tools defined', () => {
+    it('should include search_flows tool', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(12);
+      const searchFlowsTool = tools.find(t => t.name === 'search_flows');
+
+      expect(searchFlowsTool).toBeDefined();
+      expect(searchFlowsTool?.annotations?.readOnlyHint).toBe(true);
+      expect(searchFlowsTool?.inputSchema.properties).toHaveProperty('type');
+      expect(searchFlowsTool?.inputSchema.properties).toHaveProperty('query');
+      expect(searchFlowsTool?.inputSchema.properties).toHaveProperty('flowId');
+    });
+
+    it('should have exactly 13 tools defined', () => {
+      const tools = mcpServer.getToolDefinitions();
+      expect(tools.length).toBe(13);
     });
   });
 
@@ -522,6 +533,118 @@ describe('McpNodeRedServer', () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('key');
+    });
+  });
+
+  describe('Tool Execution - search_flows', () => {
+    const searchFlowsFixture = [
+      {
+        id: 'tab-1',
+        type: 'tab',
+        label: 'Main Flow',
+        nodes: [
+          { id: 'n1', type: 'inject', name: 'Trigger MQTT', z: 'tab-1' },
+          { id: 'n2', type: 'mqtt out', name: 'Publish', topic: 'sensors/temp', z: 'tab-1' },
+          { id: 'n3', type: 'function', name: 'Transform', func: 'return msg;', z: 'tab-1' },
+        ],
+      },
+      {
+        id: 'tab-2',
+        type: 'tab',
+        label: 'HTTP Flow',
+        nodes: [
+          { id: 'n4', type: 'http in', name: 'API Endpoint', url: '/api/data', z: 'tab-2' },
+          { id: 'n5', type: 'http response', name: '', z: 'tab-2' },
+        ],
+      },
+    ];
+
+    beforeEach(() => {
+      mockNodeRedClient.getFlows.mockResolvedValue(searchFlowsFixture);
+    });
+
+    it('should filter nodes by type (substring, case-insensitive)', async () => {
+      const result = await mcpServer.callTool('search_flows', { type: 'mqtt' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.matches.every((m: any) => m.nodeType.toLowerCase().includes('mqtt'))).toBe(true);
+      expect(parsed.data.total).toBe(1);
+    });
+
+    it('should filter nodes by query matching name', async () => {
+      const result = await mcpServer.callTool('search_flows', { query: 'trigger' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.total).toBe(1);
+      expect(parsed.data.matches[0].nodeName).toBe('Trigger MQTT');
+    });
+
+    it('should filter nodes by query matching a string property value', async () => {
+      const result = await mcpServer.callTool('search_flows', { query: '/api/data' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.total).toBe(1);
+      expect(parsed.data.matches[0].nodeId).toBe('n4');
+    });
+
+    it('should restrict search to a specific flowId', async () => {
+      const result = await mcpServer.callTool('search_flows', { flowId: 'tab-2' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.matches.every((m: any) => m.flowId === 'tab-2')).toBe(true);
+      expect(parsed.data.total).toBe(2);
+    });
+
+    it('should AND multiple criteria together', async () => {
+      const result = await mcpServer.callTool('search_flows', { type: 'http', flowId: 'tab-2' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      // Both http in and http response are in tab-2
+      expect(parsed.data.total).toBe(2);
+      expect(parsed.data.matches.every((m: any) => m.flowId === 'tab-2')).toBe(true);
+    });
+
+    it('should return error when no search parameters provided', async () => {
+      const result = await mcpServer.callTool('search_flows', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('At least one search parameter is required');
+    });
+
+    it('should include nodeId, nodeType, nodeName, flowId, flowLabel in results', async () => {
+      const result = await mcpServer.callTool('search_flows', { type: 'inject' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      const match = parsed.data.matches[0];
+      expect(match).toHaveProperty('nodeId');
+      expect(match).toHaveProperty('nodeType');
+      expect(match).toHaveProperty('nodeName');
+      expect(match).toHaveProperty('flowId');
+      expect(match).toHaveProperty('flowLabel');
+    });
+
+    it('should cap results at 10 and report full total', async () => {
+      const manyNodes = Array.from({ length: 15 }, (_, i) => ({
+        id: `fn-${i}`,
+        type: 'function',
+        name: `Func ${i}`,
+        z: 'tab-1',
+      }));
+      mockNodeRedClient.getFlows.mockResolvedValue([
+        { id: 'tab-1', type: 'tab', label: 'Big Flow', nodes: manyNodes },
+      ]);
+
+      const result = await mcpServer.callTool('search_flows', { type: 'function' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.data.matches.length).toBe(10);
+      expect(parsed.data.total).toBe(15);
     });
   });
 
