@@ -272,6 +272,74 @@ export class McpNodeRedServer {
           required: [],
         },
       },
+      {
+        name: 'get_context',
+        description: 'Read Node-RED context variables (global or flow scope).',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            scope: {
+              type: 'string',
+              enum: ['global', 'flow'],
+              description: 'Context scope (default: "global")',
+              default: 'global',
+            },
+            key: {
+              type: 'string',
+              description: 'Variable name to read. Omit to return all variables in this scope.',
+            },
+            flowId: {
+              type: 'string',
+              description: 'Flow tab ID (required when scope is "flow")',
+            },
+          },
+          required: [],
+        },
+      },
+      {
+        name: 'set_context',
+        description: 'Write a Node-RED context variable.',
+        annotations: { readOnlyHint: false },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            scope: {
+              type: 'string',
+              enum: ['global', 'flow'],
+              description: 'Context scope (default: "global")',
+              default: 'global',
+            },
+            key: {
+              type: 'string',
+              description: 'Variable name to write',
+            },
+            value: {
+              description: 'Value to store (any JSON-serialisable type)',
+            },
+            flowId: {
+              type: 'string',
+              description: 'Flow tab ID (required when scope is "flow")',
+            },
+          },
+          required: ['key', 'value'],
+        },
+      },
+      {
+        name: 'delete_context',
+        description: 'Delete a Node-RED global context variable.',
+        annotations: { readOnlyHint: false },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            key: {
+              type: 'string',
+              description: 'Variable name to delete',
+            },
+          },
+          required: ['key'],
+        },
+      },
     ];
   }
 
@@ -399,6 +467,40 @@ export class McpNodeRedServer {
               },
             ],
           };
+
+        case 'get_context': {
+          const scope = args?.scope || 'global';
+          const key = args?.key;
+          if (scope === 'flow') {
+            validateRequired(args, ['flowId']);
+          }
+          const contextData =
+            scope === 'flow'
+              ? await this.nodeRedClient.getFlowContext(args.flowId, key)
+              : await this.nodeRedClient.getGlobalContext(key);
+          result = { success: true, data: contextData, timestamp };
+          break;
+        }
+
+        case 'set_context': {
+          validateRequired(args, ['key', 'value']);
+          const scope = args?.scope || 'global';
+          if (scope === 'flow') {
+            validateRequired(args, ['flowId']);
+            await this.nodeRedClient.setFlowContext(args.flowId, args.key, args.value);
+          } else {
+            await this.nodeRedClient.setGlobalContext(args.key, args.value);
+          }
+          result = { success: true, data: { scope, key: args.key }, timestamp };
+          break;
+        }
+
+        case 'delete_context': {
+          validateRequired(args, ['key']);
+          await this.nodeRedClient.deleteGlobalContext(args.key);
+          result = { success: true, data: { key: args.key }, timestamp };
+          break;
+        }
 
         default:
           throw new Error(`Unknown tool: ${name}`);
