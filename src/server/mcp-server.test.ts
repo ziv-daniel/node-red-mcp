@@ -264,9 +264,18 @@ describe('McpNodeRedServer', () => {
       expect(searchFlowsTool?.inputSchema.properties).toHaveProperty('flowId');
     });
 
-    it('should have exactly 14 tools defined', () => {
+    it('should include validate_flow tool', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(14);
+      const validateFlowTool = tools.find(t => t.name === 'validate_flow');
+
+      expect(validateFlowTool).toBeDefined();
+      expect(validateFlowTool?.annotations?.readOnlyHint).toBe(true);
+      expect(validateFlowTool?.inputSchema.required).toContain('flowId');
+    });
+
+    it('should have exactly 15 tools defined', () => {
+      const tools = mcpServer.getToolDefinitions();
+      expect(tools.length).toBe(15);
     });
   });
 
@@ -649,6 +658,139 @@ describe('McpNodeRedServer', () => {
 
       expect(parsed.data.matches.length).toBe(10);
       expect(parsed.data.total).toBe(15);
+    });
+  });
+
+  describe('Tool Execution - validate_flow', () => {
+    it('should return valid:true for a structurally correct flow', async () => {
+      const result = await mcpServer.callTool('validate_flow', { flowId: 'flow-1' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.valid).toBe(true);
+      expect(parsed.data.errors).toEqual([]);
+    });
+
+    it('should detect duplicate node IDs', async () => {
+      mockNodeRedClient.getFlow.mockResolvedValueOnce({
+        id: 'flow-dup',
+        nodes: [
+          { id: 'n1', type: 'inject' },
+          { id: 'n1', type: 'debug' },
+        ],
+      });
+
+      const result = await mcpServer.callTool('validate_flow', { flowId: 'flow-dup' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.data.valid).toBe(false);
+      expect(parsed.data.errors.some((e: string) => e.includes('Duplicate'))).toBe(true);
+    });
+
+    it('should detect missing required fields', async () => {
+      mockNodeRedClient.getFlow.mockResolvedValueOnce({
+        id: 'flow-missing',
+        nodes: [{ type: 'inject' }, { id: 'n2' }],
+      });
+
+      const result = await mcpServer.callTool('validate_flow', { flowId: 'flow-missing' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.data.valid).toBe(false);
+      expect(parsed.data.errors.some((e: string) => e.includes('"id"'))).toBe(true);
+      expect(parsed.data.errors.some((e: string) => e.includes('"type"'))).toBe(true);
+    });
+
+    it('should detect dangling wire references', async () => {
+      mockNodeRedClient.getFlow.mockResolvedValueOnce({
+        id: 'flow-wire',
+        nodes: [{ id: 'n1', type: 'inject', wires: [['n-nonexistent']] }],
+      });
+
+      const result = await mcpServer.callTool('validate_flow', { flowId: 'flow-wire' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.data.valid).toBe(false);
+      expect(parsed.data.errors.some((e: string) => e.includes('n-nonexistent'))).toBe(true);
+    });
+
+    it('should return validation error when flowId is missing', async () => {
+      const result = await mcpServer.callTool('validate_flow', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('flowId');
+    });
+  });
+
+  describe('Tool Execution - create_flow with validate flag', () => {
+    it('should create flow without validation when validate is false', async () => {
+      const flowData = { label: 'New Flow', nodes: [] };
+      const result = await mcpServer.callTool('create_flow', { flowData, validate: false });
+
+      expect(mockNodeRedClient.createFlow).toHaveBeenCalledWith(flowData);
+      expect(result.content[0].text).toContain('Flow created');
+    });
+
+    it('should block create when validate:true and flowData has errors', async () => {
+      const flowData = {
+        nodes: [{ id: 'n1', type: 'inject', wires: [['n-ghost']] }],
+      };
+      const result = await mcpServer.callTool('create_flow', { flowData, validate: true });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.createFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Validation failed');
+    });
+
+    it('should create flow when validate:true and flowData is valid', async () => {
+      const flowData = {
+        label: 'Good Flow',
+        nodes: [
+          { id: 'n1', type: 'inject', wires: [['n2']] },
+          { id: 'n2', type: 'debug', wires: [] },
+        ],
+      };
+      const result = await mcpServer.callTool('create_flow', { flowData, validate: true });
+
+      expect(mockNodeRedClient.createFlow).toHaveBeenCalledWith(flowData);
+      expect(result.content[0].text).toContain('Flow created');
+    });
+  });
+
+  describe('Tool Execution - update_flow with validate flag', () => {
+    it('should block update when validate:true and flowData has duplicate IDs', async () => {
+      const flowData = {
+        nodes: [
+          { id: 'dup', type: 'inject' },
+          { id: 'dup', type: 'debug' },
+        ],
+      };
+      const result = await mcpServer.callTool('update_flow', {
+        flowId: 'flow-1',
+        flowData,
+        validate: true,
+      });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.updateFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('Validation failed');
+    });
+
+    it('should update flow when validate:true and flowData is valid', async () => {
+      const flowData = {
+        nodes: [{ id: 'n1', type: 'inject' }],
+      };
+      const result = await mcpServer.callTool('update_flow', {
+        flowId: 'flow-1',
+        flowData,
+        validate: true,
+      });
+
+      expect(mockNodeRedClient.updateFlow).toHaveBeenCalledWith('flow-1', flowData);
+      expect(result.content[0].text).toContain('updated successfully');
     });
   });
 
