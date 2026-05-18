@@ -15,6 +15,7 @@ import {
   mockFlowTab,
   mockFlowSummaries,
   mockCreatedFlow,
+  mockFlowStatus,
 } from '../../test/fixtures/flows.js';
 import {
   mockSearchResult,
@@ -23,7 +24,6 @@ import {
   mockRuntimeInfo,
   mockSettings,
 } from '../../test/fixtures/responses.js';
-import { mockFlowStatus } from '../../test/fixtures/flows.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
 
 import { McpNodeRedServer } from './mcp-server.js';
