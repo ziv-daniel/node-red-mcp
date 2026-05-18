@@ -46,6 +46,7 @@ const mockNodeRedClient = {
   deleteGlobalContext: vi.fn(),
   getFlowContext: vi.fn(),
   setFlowContext: vi.fn(),
+  deleteFlow: vi.fn(),
 };
 
 const mockSSEHandler = {
@@ -119,6 +120,7 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.deleteGlobalContext.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowContext.mockResolvedValue({});
     mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
+    mockNodeRedClient.deleteFlow.mockResolvedValue(undefined);
 
     mcpServer = new McpNodeRedServer();
   });
@@ -262,9 +264,9 @@ describe('McpNodeRedServer', () => {
       expect(searchFlowsTool?.inputSchema.properties).toHaveProperty('flowId');
     });
 
-    it('should have exactly 13 tools defined', () => {
+    it('should have exactly 14 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(13);
+      expect(tools.length).toBe(14);
     });
   });
 
@@ -647,6 +649,62 @@ describe('McpNodeRedServer', () => {
 
       expect(parsed.data.matches.length).toBe(10);
       expect(parsed.data.total).toBe(15);
+    });
+  });
+
+  describe('Tool Execution - delete_flow', () => {
+    it('should return flow info without deleting when dryRun is true (default)', async () => {
+      const result = await mcpServer.callTool('delete_flow', { flowId: 'flow-1' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.deleteFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.dryRun).toBe(true);
+      expect(parsed.data.wouldDelete).toEqual({ id: 'flow-1', label: 'Test Flow', nodeCount: 2 });
+    });
+
+    it('should delete flow when dryRun is false and confirm is true', async () => {
+      const result = await mcpServer.callTool('delete_flow', {
+        flowId: 'flow-1',
+        dryRun: false,
+        confirm: true,
+      });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.deleteFlow).toHaveBeenCalledWith('flow-1');
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.deleted).toEqual({ id: 'flow-1', label: 'Test Flow', nodeCount: 2 });
+    });
+
+    it('should return error when dryRun is false but confirm is missing', async () => {
+      const result = await mcpServer.callTool('delete_flow', {
+        flowId: 'flow-1',
+        dryRun: false,
+      });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeRedClient.deleteFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('confirm');
+    });
+
+    it('should return validation error when flowId is missing', async () => {
+      const result = await mcpServer.callTool('delete_flow', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('flowId');
+    });
+
+    it('should have destructiveHint annotation', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const deleteFlowTool = tools.find(t => t.name === 'delete_flow');
+
+      expect(deleteFlowTool).toBeDefined();
+      expect(deleteFlowTool?.annotations?.destructiveHint).toBe(true);
+      expect(deleteFlowTool?.annotations?.readOnlyHint).toBe(false);
     });
   });
 
