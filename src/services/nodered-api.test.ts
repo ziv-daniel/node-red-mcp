@@ -14,6 +14,8 @@ import {
   mockFlowStatus,
   mockCreatedFlow,
   mockDisabledFlow,
+  mockFlowWithoutLabel,
+  mockConfigNode,
 } from '../../test/fixtures/flows.js';
 import {
   mockSettings,
@@ -825,7 +827,6 @@ describe('NodeRedAPIClient', () => {
 
   describe('JSON Response Validation', () => {
     it('should throw error when response data is HTML string with Node-RED content', async () => {
-      // getFlows has additional validation that checks if response data looks like HTML
       mockAxiosInstance.get.mockResolvedValueOnce({
         data: 'Node-RED dashboard login page content',
         headers: { 'content-type': 'application/json' },
@@ -835,7 +836,6 @@ describe('NodeRedAPIClient', () => {
     });
 
     it('should throw error when response data contains Node-RED HTML', async () => {
-      // The validation specifically looks for 'Node-RED' string in the response
       mockAxiosInstance.get.mockResolvedValueOnce({
         data: '<!DOCTYPE html><html><title>Node-RED</title><body>Login</body></html>',
         headers: { 'content-type': 'application/json' },
@@ -852,6 +852,289 @@ describe('NodeRedAPIClient', () => {
 
       const flows = await client.getFlows();
       expect(Array.isArray(flows)).toBe(true);
+    });
+  });
+
+  describe('installNodeModule — input validation', () => {
+    it('should throw for module name with spaces', async () => {
+      await expect(client.installNodeModule('invalid name!')).rejects.toThrow(
+        /Invalid module name/
+      );
+    });
+
+    it('should throw for module name starting with a dash', async () => {
+      await expect(client.installNodeModule('-bad-module')).rejects.toThrow(/Invalid module name/);
+    });
+
+    it('should throw for an invalid semver version', async () => {
+      await expect(client.installNodeModule('node-red-contrib-test', 'latest')).rejects.toThrow(
+        /Invalid module version/
+      );
+    });
+
+    it.each([
+      ['@scope/node-red-contrib-test', undefined],
+      ['node-red-contrib-test', '1.2.3'],
+      ['node-red-contrib-test', '1.0.0-beta.1'],
+    ])('should accept valid input: %s@%s', async (name, version) => {
+      mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
+      await expect(client.installNodeModule(name, version)).resolves.not.toThrow();
+    });
+  });
+
+  describe('getFlowSummaries — branch coverage', () => {
+    function mockFlowAndStatus(flow: object, statusFlows: object[] = []) {
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({ data: [flow] })
+        .mockResolvedValueOnce({ data: { state: 'start', flows: statusFlows } });
+    }
+
+    it('should mark flow as inactive when flow status state is stop', async () => {
+      mockFlowAndStatus(mockFlowTab, [{ id: mockFlowTab.id, type: 'tab', state: 'stop' }]);
+
+      const summaries = await client.getFlowSummaries();
+
+      expect(summaries[0]!.status).toBe('inactive');
+    });
+
+    it('should omit label when flow has no label', async () => {
+      mockFlowAndStatus(mockFlowWithoutLabel);
+
+      const summaries = await client.getFlowSummaries();
+
+      expect(summaries[0]!.label).toBeUndefined();
+    });
+
+    it('should omit nodeCount when flow has no nodes', async () => {
+      mockFlowAndStatus(mockDisabledFlow);
+
+      const summaries = await client.getFlowSummaries();
+
+      expect(summaries[0]!.nodeCount).toBeUndefined();
+    });
+
+    it('should omit info when flow info is empty', async () => {
+      const flowNoInfo = {
+        id: 'tab-1',
+        type: 'tab',
+        label: 'Flow',
+        disabled: false,
+        info: '',
+        nodes: [{ id: 'n1', type: 'inject', x: 0, y: 0 }],
+      };
+      mockFlowAndStatus(flowNoInfo);
+
+      const summaries = await client.getFlowSummaries();
+
+      expect(summaries[0]!.info).toBeUndefined();
+    });
+
+    it('should exclude config nodes from default summary', async () => {
+      const tab = {
+        id: 'tab-1',
+        type: 'tab',
+        label: 'Flow',
+        disabled: false,
+        nodes: [{ id: 'n1', type: 'inject', x: 0, y: 0 }],
+      };
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({ data: [tab, mockConfigNode] })
+        .mockResolvedValueOnce({ data: { state: 'start', flows: [] } });
+
+      const summaries = await client.getFlowSummaries();
+
+      expect(summaries.find(s => s.id === mockConfigNode.id)).toBeUndefined();
+      expect(summaries.find(s => s.id === 'tab-1')).toBeDefined();
+    });
+  });
+
+  describe('createFlow — node ID generation', () => {
+    it('should generate IDs for nodes that have no id', async () => {
+      mockAxiosInstance.post.mockResolvedValueOnce({ data: mockCreatedFlow });
+
+      await client.createFlow({
+        label: 'Flow',
+        nodes: [
+          { ...mockFlowTab.nodes[0], id: '' } as any,
+          { ...mockFlowTab.nodes[1], id: undefined } as any,
+        ],
+      });
+
+      const posted = mockAxiosInstance.post.mock.calls[0][1];
+      expect(posted.nodes[0].id).toBeTruthy();
+      expect(posted.nodes[1].id).toBeTruthy();
+    });
+  });
+
+  describe('Error propagation', () => {
+    let err: Error;
+    beforeEach(() => {
+      err = new Error('API failure');
+    });
+
+    it('createFlow propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.createFlow({ label: 'x' })).rejects.toThrow();
+    });
+
+    it('updateFlow propagates error', async () => {
+      mockAxiosInstance.put.mockRejectedValueOnce(err);
+      await expect(client.updateFlow('flow-1', {})).rejects.toThrow();
+    });
+
+    it('deleteFlow propagates error', async () => {
+      mockAxiosInstance.delete.mockRejectedValueOnce(err);
+      await expect(client.deleteFlow('flow-1')).rejects.toThrow();
+    });
+
+    it('deployFlows propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.deployFlows()).rejects.toThrow();
+    });
+
+    it('enableFlow propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.enableFlow('flow-1')).rejects.toThrow();
+    });
+
+    it('disableFlow propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.disableFlow('flow-1')).rejects.toThrow();
+    });
+
+    it('getNodeTypes propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getNodeTypes()).rejects.toThrow();
+    });
+
+    it('getNodeType propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getNodeType('inject')).rejects.toThrow();
+    });
+
+    it('enableNodeType propagates error', async () => {
+      mockAxiosInstance.put.mockRejectedValueOnce(err);
+      await expect(client.enableNodeType('inject')).rejects.toThrow();
+    });
+
+    it('disableNodeType propagates error', async () => {
+      mockAxiosInstance.put.mockRejectedValueOnce(err);
+      await expect(client.disableNodeType('inject')).rejects.toThrow();
+    });
+
+    it('installNodeModule propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.installNodeModule('node-red-contrib-test')).rejects.toThrow();
+    });
+
+    it('uninstallNodeModule propagates error', async () => {
+      mockAxiosInstance.delete.mockRejectedValueOnce(err);
+      await expect(client.uninstallNodeModule('node-red-contrib-test')).rejects.toThrow();
+    });
+
+    it('getSettings propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getSettings()).rejects.toThrow();
+    });
+
+    it('getRuntimeInfo propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getRuntimeInfo()).rejects.toThrow();
+    });
+
+    it('getFlowStatus propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getFlowStatus()).rejects.toThrow();
+    });
+
+    it('startFlows propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.startFlows()).rejects.toThrow();
+    });
+
+    it('stopFlows propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.stopFlows()).rejects.toThrow();
+    });
+
+    it('getVersion propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getVersion()).rejects.toThrow();
+    });
+
+    it('getGlobalContext propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getGlobalContext()).rejects.toThrow();
+    });
+
+    it('setGlobalContext propagates error', async () => {
+      mockAxiosInstance.put.mockRejectedValueOnce(err);
+      await expect(client.setGlobalContext('key', 'value')).rejects.toThrow();
+    });
+
+    it('deleteGlobalContext propagates error', async () => {
+      mockAxiosInstance.delete.mockRejectedValueOnce(err);
+      await expect(client.deleteGlobalContext('key')).rejects.toThrow();
+    });
+
+    it('getFlowContext propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getFlowContext('flow-1')).rejects.toThrow();
+    });
+
+    it('setFlowContext propagates error', async () => {
+      mockAxiosInstance.put.mockRejectedValueOnce(err);
+      await expect(client.setFlowContext('flow-1', 'key', 'val')).rejects.toThrow();
+    });
+
+    it('getLibraryEntries propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getLibraryEntries()).rejects.toThrow();
+    });
+
+    it('saveToLibrary propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.saveToLibrary('flows', 'path', {})).rejects.toThrow();
+    });
+
+    it('loadFromLibrary propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.loadFromLibrary('flows', 'path')).rejects.toThrow();
+    });
+
+    it('login propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.login('user', 'pass')).rejects.toThrow();
+    });
+
+    it('refreshToken propagates error', async () => {
+      mockAxiosInstance.post.mockRejectedValueOnce(err);
+      await expect(client.refreshToken('token')).rejects.toThrow();
+    });
+
+    it('getAuthStatus propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getAuthStatus()).rejects.toThrow();
+    });
+
+    it('searchModules propagates error', async () => {
+      (axios.get as Mock).mockRejectedValueOnce(err);
+      await expect(client.searchModules('mqtt')).rejects.toThrow();
+    });
+
+    it('getInstalledModules propagates error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getInstalledModules()).rejects.toThrow();
+    });
+
+    it('getFlows propagates non-HTML error', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getFlows()).rejects.toThrow();
+    });
+
+    it('getFlowSummaries propagates error from getFlows', async () => {
+      mockAxiosInstance.get.mockRejectedValueOnce(err);
+      await expect(client.getFlowSummaries()).rejects.toThrow();
     });
   });
 });
