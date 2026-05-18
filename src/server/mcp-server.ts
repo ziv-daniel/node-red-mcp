@@ -29,6 +29,9 @@ import { validateRequired, validateTypes } from '../utils/error-handling.js';
 
 import { SSEHandler } from './sse-handler.js';
 
+const SEARCH_RESULTS_LIMIT = 10;
+const SEARCH_SKIP_PROPS = new Set(['id', 'z', 'x', 'y', 'wires']);
+
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
@@ -340,6 +343,32 @@ export class McpNodeRedServer {
           required: ['key'],
         },
       },
+      {
+        name: 'search_flows',
+        description:
+          'Search for nodes in Node-RED flows by type, name, or property value. At least one parameter is required.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              description:
+                'Substring match on node type (case-insensitive, e.g. "function", "mqtt")',
+            },
+            query: {
+              type: 'string',
+              description:
+                'Substring match on node name or any string property value (case-insensitive)',
+            },
+            flowId: {
+              type: 'string',
+              description: 'Restrict search to a specific flow ID',
+            },
+          },
+          required: [],
+        },
+      },
     ];
   }
 
@@ -499,6 +528,59 @@ export class McpNodeRedServer {
           validateRequired(args, ['key']);
           await this.nodeRedClient.deleteGlobalContext(args.key);
           result = { success: true, data: { key: args.key }, timestamp };
+          break;
+        }
+
+        case 'search_flows': {
+          const typeFilter = args?.type as string | undefined;
+          const query = args?.query as string | undefined;
+          const filterFlowId = args?.flowId as string | undefined;
+
+          if (!typeFilter && !query && !filterFlowId) {
+            throw new Error('At least one search parameter is required: type, query, or flowId');
+          }
+
+          const flows = await this.nodeRedClient.getFlows();
+          const typeFilterLower = typeFilter?.toLowerCase();
+          const queryLower = query?.toLowerCase();
+          const matches: {
+            nodeId: string;
+            nodeType: string;
+            nodeName: string;
+            flowId: string;
+            flowLabel: string;
+          }[] = [];
+
+          for (const flow of flows) {
+            if (filterFlowId && flow.id !== filterFlowId) continue;
+            for (const node of flow.nodes ?? []) {
+              if (typeFilterLower && !node.type.toLowerCase().includes(typeFilterLower)) continue;
+              if (queryLower) {
+                const nameMatch = (node.name ?? '').toLowerCase().includes(queryLower);
+                const propMatch = Object.entries(node).some(
+                  ([k, v]) =>
+                    !SEARCH_SKIP_PROPS.has(k) &&
+                    k !== 'name' &&
+                    typeof v === 'string' &&
+                    v.toLowerCase().includes(queryLower)
+                );
+                if (!nameMatch && !propMatch) continue;
+              }
+              matches.push({
+                nodeId: node.id,
+                nodeType: node.type,
+                nodeName: node.name ?? '',
+                flowId: flow.id,
+                flowLabel: flow.label ?? '',
+              });
+            }
+          }
+
+          result = {
+            success: true,
+            data: { matches: matches.slice(0, SEARCH_RESULTS_LIMIT), total: matches.length },
+            timestamp,
+          };
           break;
         }
 
