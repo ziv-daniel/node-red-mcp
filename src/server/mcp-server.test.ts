@@ -568,7 +568,9 @@ describe('McpNodeRedServer', () => {
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.success).toBe(true);
-      expect(parsed.data.matches.every((m: any) => m.nodeType.toLowerCase().includes('mqtt'))).toBe(true);
+      expect(parsed.data.matches.every((m: any) => m.nodeType.toLowerCase().includes('mqtt'))).toBe(
+        true
+      );
       expect(parsed.data.total).toBe(1);
     });
 

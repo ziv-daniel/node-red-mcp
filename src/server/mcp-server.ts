@@ -345,18 +345,21 @@ export class McpNodeRedServer {
       },
       {
         name: 'search_flows',
-        description: 'Search for nodes in Node-RED flows by type, name, or property value. At least one parameter is required.',
+        description:
+          'Search for nodes in Node-RED flows by type, name, or property value. At least one parameter is required.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
             type: {
               type: 'string',
-              description: 'Substring match on node type (case-insensitive, e.g. "function", "mqtt")',
+              description:
+                'Substring match on node type (case-insensitive, e.g. "function", "mqtt")',
             },
             query: {
               type: 'string',
-              description: 'Substring match on node name or any string property value (case-insensitive)',
+              description:
+                'Substring match on node name or any string property value (case-insensitive)',
             },
             flowId: {
               type: 'string',
