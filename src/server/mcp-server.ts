@@ -540,13 +540,13 @@ export class McpNodeRedServer {
           const flows = await this.nodeRedClient.getFlows();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
-          const matches: Array<{
+          const matches: {
             nodeId: string;
             nodeType: string;
             nodeName: string;
             flowId: string;
             flowLabel: string;
-          }> = [];
+          }[] = [];
 
           for (const flow of flows) {
             if (filterFlowId && flow.id !== filterFlowId) continue;
