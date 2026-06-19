@@ -12,6 +12,7 @@ import {
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
+import { promptRegistry } from '../prompts/index.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
 import {
   McpServerConfig,
@@ -882,53 +883,17 @@ export class McpNodeRedServer {
   }
 
   /**
-   * Get prompt definitions
+   * Get prompt definitions (delegates to prompt registry)
    */
   private getPromptDefinitions() {
-    return [
-      {
-        name: 'create_simple_flow',
-        description: 'Create a simple Node-RED flow with common patterns',
-      },
-      {
-        name: 'debug_flow_issues',
-        description: 'Help debug common Node-RED flow issues',
-      },
-      {
-        name: 'optimize_flow_performance',
-        description: 'Suggestions for optimizing Node-RED flow performance',
-      },
-      {
-        name: 'flow_documentation',
-        description: 'Generate documentation for a Node-RED flow',
-      },
-    ];
+    return promptRegistry.list();
   }
 
   /**
-   * Get specific prompt
+   * Get specific prompt (delegates to prompt registry)
    */
   private async getPrompt(name: string, args: any) {
-    // This would contain prompt templates for common Node-RED tasks
-    const prompts = {
-      create_simple_flow: `Create a simple Node-RED flow that demonstrates best practices...`,
-      debug_flow_issues: `Help debug this Node-RED flow by analyzing common issues...`,
-      optimize_flow_performance: `Analyze this Node-RED flow for performance optimizations...`,
-      flow_documentation: `Generate comprehensive documentation for this Node-RED flow...`,
-    };
-
-    return {
-      description: `Node-RED ${name} prompt`,
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: prompts[name as keyof typeof prompts] || 'Prompt not found',
-          },
-        },
-      ],
-    };
+    return await promptRegistry.get(name, args);
   }
 
   /**
