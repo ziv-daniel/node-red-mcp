@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import type { PromptDefinition } from './types.js';
-import { userMessage } from './types.js';
+import { userMessage, type PromptDefinition } from './types.js';
 
 const argsSchema = z.object({
   flowId: z.string().min(1, 'flowId is required'),
@@ -22,7 +21,7 @@ export const debugFlowPrompt: PromptDefinition<typeof argsSchema> = {
   ],
   argsSchema,
   render: ({ flowId, symptom }) => {
-    const symptomLine = symptom && symptom.trim().length > 0 ? symptom : 'none';
+    const symptomLine = symptom?.trim() || 'none';
     const text = [
       'You are debugging a Node-RED flow.',
       '',

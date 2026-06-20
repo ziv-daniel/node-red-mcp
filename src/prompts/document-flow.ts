@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import type { PromptDefinition } from './types.js';
-import { userMessage } from './types.js';
+import { userMessage, type PromptDefinition } from './types.js';
 
 const argsSchema = z.object({
   flowId: z.string().min(1, 'flowId is required'),
