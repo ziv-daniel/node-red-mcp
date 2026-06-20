@@ -285,50 +285,6 @@ jobs:
             NODE_VERSION=${{ env.NODE_VERSION }}
             YARN_VERSION=${{ env.YARN_VERSION }}
 
-  # Job 7: Deploy to production (SSH + docker compose pull)
-  deploy:
-    name: 🚀 Deploy to production
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [quality, test, docker]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    environment:
-      name: production
-      url: https://mcp.danielshaprvt.work
-
-    steps:
-      - name: 🚀 Pull new image and restart
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.DEPLOY_USER }} --password-stdin
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
-            echo "Deploy complete — $(docker inspect --format='{{.RepoDigests}}' ghcr.io/ziv-daniel/node-red-mcp:latest)"
-
-  # Job 8: Notify (Disabled - uncomment when notification system is configured)
-  # notify:
-  #   name: 📢 Notify
-  #   runs-on: ubuntu-latest
-  #   needs: [quality, test, docker]
-  #   if: always()
-  #
-  #   steps:
-  #     - name: 📢 Notify on success
-  #       if: success()
-  #       run: |
-  #         echo "✅ Pipeline successful!"
-  #         # Add notification logic (Slack, Discord, email, etc.)
-  #
-  #     - name: 📢 Notify on failure
-  #       if: failure()
-  #       run: |
-  #         echo "❌ Pipeline failed!"
-  #         # Add failure notification logic
+  # Deployment: Dokploy on the production host auto-pulls
+  # ghcr.io/ziv-daniel/node-red-mcp:latest after the docker job
+  # finishes pushing. No CI step needed.
