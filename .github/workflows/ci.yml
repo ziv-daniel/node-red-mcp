@@ -181,6 +181,7 @@ jobs:
           HTTP_ENABLED: true
           NODERED_URL: http://localhost:1880
           JWT_SECRET: ci-test-secret-minimum-32-characters-ok
+          CORS_ORIGIN: http://localhost:3000
 
       - name: ⏳ Wait for MCP server to be ready
         run: |
