@@ -180,7 +180,8 @@ export class McpNodeRedServer {
 
     this.server.setRequestHandler(GetPromptRequestSchema, async request => {
       const { name, arguments: args } = request.params;
-      return await this.getPrompt(name, args || {});
+      const rendered = await this.getPrompt(name, args || {});
+      return { description: rendered.description, messages: rendered.messages };
     });
   }
 
