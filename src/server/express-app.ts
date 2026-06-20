@@ -166,11 +166,14 @@ export class ExpressApp {
           }
 
           // Allow Claude.ai domains and configured origins
+          const configuredOrigins = Array.isArray(this.config.cors.origin)
+            ? this.config.cors.origin
+            : [this.config.cors.origin];
           const allowedOrigins = [
             'https://claude.ai',
             'https://www.claude.ai',
             'https://app.claude.ai',
-            this.config.cors.origin,
+            ...configuredOrigins,
           ].filter(Boolean);
 
           // Also allow the server's own public URL (form is served from our domain)
@@ -183,7 +186,7 @@ export class ExpressApp {
           } else if (this.config.cors.origin === '*') {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(null, false);
           }
         },
         credentials: this.config.cors.credentials,
