@@ -1033,55 +1033,53 @@ describe('McpNodeRedServer', () => {
       expect(result.prompts.length).toBeGreaterThan(0);
     });
 
-    it('should include create_simple_flow prompt', async () => {
+    it('should include debug_flow prompt', async () => {
       const result = await mcpServer.listPrompts();
 
-      const prompt = result.prompts.find((p: any) => p.name === 'create_simple_flow');
+      const prompt = result.prompts.find((p: any) => p.name === 'debug_flow');
       expect(prompt).toBeDefined();
       expect(prompt?.description).toBeDefined();
     });
 
-    it('should include debug_flow_issues prompt', async () => {
+    it('should include explain_automation prompt', async () => {
       const result = await mcpServer.listPrompts();
 
-      const prompt = result.prompts.find((p: any) => p.name === 'debug_flow_issues');
+      const prompt = result.prompts.find((p: any) => p.name === 'explain_automation');
       expect(prompt).toBeDefined();
     });
 
-    it('should include optimize_flow_performance prompt', async () => {
+    it('should include audit_security prompt', async () => {
       const result = await mcpServer.listPrompts();
 
-      const prompt = result.prompts.find((p: any) => p.name === 'optimize_flow_performance');
+      const prompt = result.prompts.find((p: any) => p.name === 'audit_security');
       expect(prompt).toBeDefined();
     });
 
-    it('should include flow_documentation prompt', async () => {
+    it('should include document_flow prompt', async () => {
       const result = await mcpServer.listPrompts();
 
-      const prompt = result.prompts.find((p: any) => p.name === 'flow_documentation');
+      const prompt = result.prompts.find((p: any) => p.name === 'document_flow');
       expect(prompt).toBeDefined();
     });
   });
 
   describe('Prompt Retrieval', () => {
-    it('should get create_simple_flow prompt', async () => {
-      const result = await mcpServer.getPromptPublic('create_simple_flow', {});
+    it('should get debug_flow prompt', async () => {
+      const result = await mcpServer.getPromptPublic('debug_flow', { flowId: 'flow-1' });
 
       expect(result.description).toBeDefined();
       expect(result.messages).toBeDefined();
       expect(result.messages[0]?.role).toBe('user');
     });
 
-    it('should get debug_flow_issues prompt', async () => {
-      const result = await mcpServer.getPromptPublic('debug_flow_issues', {});
+    it('should get explain_automation prompt', async () => {
+      const result = await mcpServer.getPromptPublic('explain_automation', { flowId: 'flow-1' });
 
       expect((result.messages[0]?.content as any)?.type).toBe('text');
     });
 
-    it('should handle unknown prompt', async () => {
-      const result = await mcpServer.getPromptPublic('unknown_prompt', {});
-
-      expect((result.messages[0]?.content as any)?.text).toContain('not found');
+    it('should throw PromptNotFoundError for unknown prompt', async () => {
+      await expect(mcpServer.getPromptPublic('unknown_prompt', {})).rejects.toThrow(/not found/);
     });
   });
 
@@ -1147,7 +1145,7 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should expose getPromptPublic method', async () => {
-      const result = await mcpServer.getPromptPublic('create_simple_flow', {});
+      const result = await mcpServer.getPromptPublic('debug_flow', { flowId: 'flow-1' });
 
       expect(result.description).toBeDefined();
       expect(result.messages).toBeDefined();
