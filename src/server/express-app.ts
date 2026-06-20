@@ -183,7 +183,7 @@ export class ExpressApp {
           } else if (this.config.cors.origin === '*') {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(null, false);
           }
         },
         credentials: this.config.cors.credentials,
