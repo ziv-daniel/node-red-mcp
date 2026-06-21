@@ -28,7 +28,14 @@ import {
 import type { NodeRedCredentials } from '../types/oauth.js';
 import { validateRequired, validateTypes } from '../utils/error-handling.js';
 
-import { applyPagination, isPaginated, stableSortBy } from './pagination.js';
+import {
+  applyPagination,
+  caseInsensitiveIncludes,
+  isPaginated,
+  parsePagination,
+  parseSort,
+  stableSortBy,
+} from './pagination.js';
 import { SSEHandler } from './sse-handler.js';
 
 const SEARCH_RESULTS_LIMIT = 10;
@@ -102,12 +109,11 @@ function validateFlowOrThrow(flowData: { nodes?: unknown[] }): void {
 const FLOW_SORT_KEYS = ['label', 'nodeCount', 'disabled'] as const;
 type FlowSortKey = (typeof FLOW_SORT_KEYS)[number];
 
-function flowSortKeyFn(field: FlowSortKey): (f: any) => string | number | boolean {
-  if (field === 'label') return (f: any) => String(f?.label ?? '').toLowerCase();
-  if (field === 'nodeCount')
-    return (f: any) => (typeof f?.nodeCount === 'number' ? f.nodeCount : (f?.nodes?.length ?? 0));
-  return (f: any) => Boolean(f?.disabled);
-}
+const FLOW_SORT_KEY_FNS: Record<FlowSortKey, (f: any) => string | number | boolean> = {
+  label: f => String(f?.label ?? '').toLowerCase(),
+  nodeCount: f => (typeof f?.nodeCount === 'number' ? f.nodeCount : (f?.nodes?.length ?? 0)),
+  disabled: f => Boolean(f?.disabled),
+};
 
 export class McpNodeRedServer {
   private server: Server;
@@ -237,7 +243,7 @@ export class McpNodeRedServer {
             },
             sortBy: {
               type: 'string',
-              enum: ['label', 'nodeCount', 'disabled'],
+              enum: [...FLOW_SORT_KEYS],
               description: 'Sort key. Secondary sort by id keeps slice boundaries deterministic.',
             },
             order: {
@@ -623,30 +629,19 @@ export class McpNodeRedServer {
             ? await this.nodeRedClient.getFlows()
             : await this.nodeRedClient.getFlowSummaries(types);
 
-          const sortBy = args?.sortBy as string | undefined;
-          const order = args?.order as string | undefined;
-          if (sortBy !== undefined && !FLOW_SORT_KEYS.includes(sortBy as FlowSortKey)) {
-            throw new Error(`Invalid sortBy: must be one of ${FLOW_SORT_KEYS.join(', ')}`);
-          }
-          if (order !== undefined && order !== 'asc' && order !== 'desc') {
-            throw new Error('Invalid order: must be "asc" or "desc"');
-          }
+          const { sortBy, order } = parseSort(args, FLOW_SORT_KEYS);
 
           if (args?.disabled !== undefined) {
             const wantDisabled = Boolean(args.disabled);
             flowData = flowData.filter((f: any) => Boolean(f?.disabled) === wantDisabled);
           }
           if (typeof args?.labelContains === 'string') {
-            const q = args.labelContains.toLowerCase();
-            flowData = flowData.filter((f: any) =>
-              String(f?.label ?? '')
-                .toLowerCase()
-                .includes(q)
-            );
+            const q = args.labelContains;
+            flowData = flowData.filter((f: any) => caseInsensitiveIncludes(f?.label, q));
           }
 
           if (sortBy) {
-            flowData = stableSortBy(flowData, flowSortKeyFn(sortBy as FlowSortKey), order);
+            flowData = stableSortBy(flowData, FLOW_SORT_KEY_FNS[sortBy], order);
           }
 
           if (isPaginated(args)) {
@@ -774,10 +769,9 @@ export class McpNodeRedServer {
 
           let modules: any[] = Array.isArray(installedModules) ? installedModules : [];
           if (typeof queryFilter === 'string') {
-            const q = queryFilter.toLowerCase();
             modules = modules.filter((m: any) => {
               const name = typeof m === 'string' ? m : (m?.name ?? m?.id ?? '');
-              return String(name).toLowerCase().includes(q);
+              return caseInsensitiveIncludes(name, queryFilter);
             });
           }
           result = { success: true, data: applyPagination(modules, args), timestamp };
@@ -861,7 +855,14 @@ export class McpNodeRedServer {
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
           const nodeTypePrefixLower = nodeTypePrefix?.toLowerCase();
-          const allMatches: FlowSearchMatch[] = [];
+
+          const paginated = isPaginated(args);
+          const { limit: pageLimit, offset: pageOffset } = paginated
+            ? parsePagination(args)
+            : { limit: SEARCH_RESULTS_LIMIT, offset: 0 };
+          const windowEnd = pageOffset + pageLimit;
+          const matches: FlowSearchMatch[] = [];
+          let total = 0;
 
           for (const flow of flows) {
             if (filterFlowId && flow.id !== filterFlowId) continue;
@@ -884,21 +885,32 @@ export class McpNodeRedServer {
                 }
                 if (!matched) continue;
               }
-              allMatches.push({
-                nodeId: node.id,
-                nodeType: node.type,
-                nodeName: node.name ?? '',
-                flowId: flow.id,
-                flowLabel: flow.label ?? '',
-              });
+              if (total >= pageOffset && total < windowEnd) {
+                matches.push({
+                  nodeId: node.id,
+                  nodeType: node.type,
+                  nodeName: node.name ?? '',
+                  flowId: flow.id,
+                  flowLabel: flow.label ?? '',
+                });
+              }
+              total++;
             }
           }
 
-          if (isPaginated(args)) {
-            result = { success: true, data: applyPagination(allMatches, args), timestamp };
+          if (paginated) {
+            result = {
+              success: true,
+              data: {
+                items: matches,
+                total,
+                limit: pageLimit,
+                offset: pageOffset,
+                hasMore: pageOffset + matches.length < total,
+              },
+              timestamp,
+            };
           } else {
-            const total = allMatches.length;
-            const matches = allMatches.slice(0, SEARCH_RESULTS_LIMIT);
             result = { success: true, data: { matches, total }, timestamp };
           }
           break;
