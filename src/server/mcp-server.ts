@@ -232,15 +232,13 @@ export class McpNodeRedServer {
             },
             offset: {
               type: 'number',
-              description:
-                'Items to skip. When set, response is wrapped in pagination envelope.',
+              description: 'Items to skip. When set, response is wrapped in pagination envelope.',
               minimum: 0,
             },
             sortBy: {
               type: 'string',
               enum: ['label', 'nodeCount', 'disabled'],
-              description:
-                'Sort key. Secondary sort by id keeps slice boundaries deterministic.',
+              description: 'Sort key. Secondary sort by id keeps slice boundaries deterministic.',
             },
             order: {
               type: 'string',
@@ -250,8 +248,7 @@ export class McpNodeRedServer {
             },
             disabled: {
               type: 'boolean',
-              description:
-                'Filter by disabled state (true = only disabled, false = only enabled).',
+              description: 'Filter by disabled state (true = only disabled, false = only enabled).',
             },
             labelContains: {
               type: 'string',
@@ -562,8 +559,7 @@ export class McpNodeRedServer {
             },
             offset: {
               type: 'number',
-              description:
-                'Matches to skip. When set, response is wrapped in pagination envelope.',
+              description: 'Matches to skip. When set, response is wrapped in pagination envelope.',
               minimum: 0,
             },
           },
@@ -630,9 +626,7 @@ export class McpNodeRedServer {
           const sortBy = args?.sortBy as string | undefined;
           const order = args?.order as string | undefined;
           if (sortBy !== undefined && !FLOW_SORT_KEYS.includes(sortBy as FlowSortKey)) {
-            throw new Error(
-              `Invalid sortBy: must be one of ${FLOW_SORT_KEYS.join(', ')}`
-            );
+            throw new Error(`Invalid sortBy: must be one of ${FLOW_SORT_KEYS.join(', ')}`);
           }
           if (order !== undefined && order !== 'asc' && order !== 'desc') {
             throw new Error('Invalid order: must be "asc" or "desc"');
@@ -645,7 +639,9 @@ export class McpNodeRedServer {
           if (typeof args?.labelContains === 'string') {
             const q = args.labelContains.toLowerCase();
             flowData = flowData.filter((f: any) =>
-              String(f?.label ?? '').toLowerCase().includes(q)
+              String(f?.label ?? '')
+                .toLowerCase()
+                .includes(q)
             );
           }
 
@@ -763,8 +759,7 @@ export class McpNodeRedServer {
         case 'get_installed_modules': {
           const installedModules = await this.nodeRedClient.getInstalledModules();
           const queryFilter = args?.query;
-          const hasNewParams =
-            isPaginated(args) || typeof queryFilter === 'string';
+          const hasNewParams = isPaginated(args) || typeof queryFilter === 'string';
 
           if (!hasNewParams) {
             return {

@@ -138,9 +138,7 @@ describe('Pagination + filters', () => {
     });
 
     it('sorts by nodeCount descending', async () => {
-      const parsed = parse(
-        await mcp.callTool('get_flows', { sortBy: 'nodeCount', order: 'desc' })
-      );
+      const parsed = parse(await mcp.callTool('get_flows', { sortBy: 'nodeCount', order: 'desc' }));
       expect(parsed.data.map((f: any) => f.id)).toEqual(['c', 'b', 'a', 'd']);
     });
 
@@ -188,7 +186,12 @@ describe('Pagination + filters', () => {
     beforeEach(() => {
       mockNodeRedClient.getFlows.mockResolvedValue([
         { id: 'tab-1', type: 'tab', label: 'Big', nodes: manyNodes },
-        { id: 'tab-2', type: 'tab', label: 'MQTT', nodes: [namespacedNodes[0], namespacedNodes[1]] },
+        {
+          id: 'tab-2',
+          type: 'tab',
+          label: 'MQTT',
+          nodes: [namespacedNodes[0], namespacedNodes[1]],
+        },
         { id: 'tab-3', type: 'tab', label: 'Debug', nodes: [namespacedNodes[2]] },
       ]);
     });
@@ -200,9 +203,7 @@ describe('Pagination + filters', () => {
     });
 
     it('replaces 10-cap with envelope when limit is set', async () => {
-      const parsed = parse(
-        await mcp.callTool('search_flows', { type: 'function', limit: 12 })
-      );
+      const parsed = parse(await mcp.callTool('search_flows', { type: 'function', limit: 12 }));
       expect(parsed.data.items).toHaveLength(12);
       expect(parsed.data.total).toBe(15);
       expect(parsed.data.hasMore).toBe(true);
@@ -218,9 +219,7 @@ describe('Pagination + filters', () => {
     });
 
     it('filters by nodeTypePrefix', async () => {
-      const parsed = parse(
-        await mcp.callTool('search_flows', { nodeTypePrefix: 'mqtt' })
-      );
+      const parsed = parse(await mcp.callTool('search_flows', { nodeTypePrefix: 'mqtt' }));
       expect(parsed.data.total).toBe(2);
       expect(parsed.data.matches.every((m: any) => m.nodeType.startsWith('mqtt'))).toBe(true);
     });
@@ -236,9 +235,7 @@ describe('Pagination + filters', () => {
     });
 
     it('accepts nodeTypePrefix alone as a valid search parameter', async () => {
-      const parsed = parse(
-        await mcp.callTool('search_flows', { nodeTypePrefix: 'deb' })
-      );
+      const parsed = parse(await mcp.callTool('search_flows', { nodeTypePrefix: 'deb' }));
       expect(parsed.success).toBe(true);
       expect(parsed.data.total).toBe(1);
       expect(parsed.data.matches[0].nodeId).toBe('d1');
@@ -274,9 +271,7 @@ describe('Pagination + filters', () => {
     });
 
     it('filters by query and returns envelope', async () => {
-      const parsed = parse(
-        await mcp.callTool('get_installed_modules', { query: 'contrib' })
-      );
+      const parsed = parse(await mcp.callTool('get_installed_modules', { query: 'contrib' }));
       expect(parsed.success).toBe(true);
       expect(parsed.data.total).toBe(2);
       expect(parsed.data.items.every((m: any) => m.name.includes('contrib'))).toBe(true);
@@ -296,9 +291,7 @@ describe('Pagination + filters', () => {
         'node-red-contrib-foo',
         'node-red-bar',
       ]);
-      const parsed = parse(
-        await mcp.callTool('get_installed_modules', { query: 'contrib' })
-      );
+      const parsed = parse(await mcp.callTool('get_installed_modules', { query: 'contrib' }));
       expect(parsed.data.items).toEqual(['node-red-contrib-foo']);
     });
   });
