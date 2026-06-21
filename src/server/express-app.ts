@@ -1022,7 +1022,7 @@ export class ExpressApp {
       '/api/events/subscriptions/:connectionId',
       authenticate,
       asyncHandler(async (req: AuthRequest, res: Response) => {
-        const connectionId = req.params.connectionId as string;
+        const connectionId = req.params.connectionId!;
 
         if (!connectionId) {
           throw new ValidationError('Connection ID is required');
@@ -1093,7 +1093,7 @@ export class ExpressApp {
       '/api/events/clients/:connectionId',
       authenticate,
       (req: Request, res: Response) => {
-        const connectionId = req.params.connectionId as string;
+        const connectionId = req.params.connectionId!;
         if (!connectionId) {
           const response: ApiResponse = {
             success: false,
