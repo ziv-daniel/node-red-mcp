@@ -91,6 +91,7 @@ vi.mock('@modelcontextprotocol/sdk/server/index.js', () => {
         this.handlers.set(schema, handler);
       });
       connect = vi.fn();
+      elicitInput = vi.fn();
     },
   };
 });
@@ -1206,6 +1207,77 @@ describe('McpNodeRedServer', () => {
 
       expect(result.description).toBeDefined();
       expect(result.messages).toBeDefined();
+    });
+  });
+
+  describe('Elicitation', () => {
+    let serverInstance: any;
+
+    beforeEach(() => {
+      serverInstance = mcpServer.getServer();
+      serverInstance.elicitInput = vi.fn();
+    });
+
+    it('should elicit flowId for get_flow when not provided and use it', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { flowId: 'flow-1' } });
+      const result = await mcpServer.callTool('get_flow', {});
+      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should return error when flowId elicitation is declined', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'decline', content: null });
+      const result = await mcpServer.callTool('get_flow', {});
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('flowId');
+    });
+
+    it('should fall back to error when elicitInput throws (no active session)', async () => {
+      serverInstance.elicitInput.mockRejectedValueOnce(new Error('No active session'));
+      const result = await mcpServer.callTool('get_flow', {});
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('flowId');
+    });
+
+    it('should not call elicitInput when flowId is already provided', async () => {
+      const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
+      expect(serverInstance.elicitInput).not.toHaveBeenCalled();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+    });
+
+    it('should elicit flowId for enable_flow and enable the flow', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { flowId: 'flow-1' } });
+      const result = await mcpServer.callTool('enable_flow', {});
+      expect(mockNodeRedClient.enableFlow).toHaveBeenCalledWith('flow-1');
+      expect(result.content[0].text).toContain('enabled');
+    });
+
+    it('should elicit confirmation for delete_flow when dryRun:false and confirm is missing', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { confirmed: true } });
+      const result = await mcpServer.callTool('delete_flow', { flowId: 'flow-1', dryRun: false });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.deleted).toBeDefined();
+      expect(mockNodeRedClient.deleteFlow).toHaveBeenCalledWith('flow-1');
+    });
+
+    it('should block deletion when confirmation elicitation is declined', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { confirmed: false } });
+      const result = await mcpServer.callTool('delete_flow', { flowId: 'flow-1', dryRun: false });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('confirm');
+      expect(mockNodeRedClient.deleteFlow).not.toHaveBeenCalled();
+    });
+
+    it('should elicit search query for search_modules when not provided', async () => {
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { query: 'mqtt' } });
+      await mcpServer.callTool('search_modules', {});
+      expect(mockNodeRedClient.searchModules).toHaveBeenCalledWith('mqtt', 'all', 10);
     });
   });
 });

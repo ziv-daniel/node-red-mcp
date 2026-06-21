@@ -190,7 +190,8 @@ export class McpNodeRedServer {
           resources: this.config.capabilities.resources ? {} : undefined,
           prompts: this.config.capabilities.prompts ? {} : undefined,
           logging: this.config.capabilities.logging ? {} : undefined,
-        },
+          elicitation: {},
+        } as any,
       }
     );
 
@@ -234,6 +235,73 @@ export class McpNodeRedServer {
       const rendered = await this.getPrompt(name, args || {});
       return { description: rendered.description, messages: rendered.messages };
     });
+  }
+
+  private async tryElicitString(
+    message: string,
+    title: string,
+    field: string
+  ): Promise<string | null> {
+    try {
+      const res = await (this.server as any).elicitInput({
+        mode: 'form',
+        message,
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            [field]: { type: 'string', title },
+          },
+          required: [field],
+        },
+      });
+      if (res?.action === 'accept' && res.content?.[field]) {
+        return String(res.content[field]);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async tryElicitFlowId(verb: string): Promise<string | null> {
+    let list = '';
+    try {
+      const flows = await this.nodeRedClient.getFlowSummaries(['tab', 'subflow']);
+      list = `\n\nAvailable flows:\n${flows
+        .slice(0, 15)
+        .map((f: any) => `• ${f.label || '(no label)'} — ${f.id}`)
+        .join('\n')}`;
+    } catch {
+      // getFlowSummaries failed — proceed without list
+    }
+    return this.tryElicitString(
+      `Which flow do you want to ${verb}?${list}`,
+      'Flow ID',
+      'flowId'
+    );
+  }
+
+  private async tryElicitConfirm(message: string): Promise<boolean> {
+    try {
+      const res = await (this.server as any).elicitInput({
+        mode: 'form',
+        message,
+        requestedSchema: {
+          type: 'object',
+          properties: {
+            confirmed: {
+              type: 'boolean',
+              title: 'Confirm',
+              description: 'Set to true to proceed, false to cancel',
+            },
+          },
+          required: ['confirmed'],
+        },
+      });
+      return res?.action === 'accept' && res.content?.confirmed === true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -686,18 +754,17 @@ export class McpNodeRedServer {
           break;
         }
 
-        case 'get_flow':
-          validateRequired(args, ['flowId']);
-          result = {
-            success: true,
-            data: await this.nodeRedClient.getFlow(args.flowId),
-            timestamp,
-          };
+        case 'get_flow': {
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('get'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
+          result = { success: true, data: await this.nodeRedClient.getFlow(flowId), timestamp };
           break;
+        }
 
         case 'validate_flow': {
-          validateRequired(args, ['flowId']);
-          const flow = await this.nodeRedClient.getFlow(args.flowId);
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('validate'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flow = await this.nodeRedClient.getFlow(flowId);
           result = { success: true, data: validateFlowData(flow), timestamp };
           break;
         }
@@ -715,61 +782,47 @@ export class McpNodeRedServer {
             ],
           };
 
-        case 'update_flow':
-          validateRequired(args, ['flowId', 'flowData']);
+        case 'update_flow': {
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('update'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
+          if (!args?.flowData) throw new Error('Missing required parameter: flowData');
           if (args?.validate) validateFlowOrThrow(args.flowData);
-          await this.nodeRedClient.updateFlow(args.flowId, args.flowData);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Flow ${args.flowId} updated successfully`,
-              },
-            ],
-          };
+          await this.nodeRedClient.updateFlow(flowId, args.flowData);
+          return { content: [{ type: 'text', text: `Flow ${flowId} updated successfully` }] };
+        }
 
-        case 'enable_flow':
-          validateRequired(args, ['flowId']);
-          await this.nodeRedClient.enableFlow(args.flowId);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Flow ${args.flowId} enabled`,
-              },
-            ],
-          };
+        case 'enable_flow': {
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('enable'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
+          await this.nodeRedClient.enableFlow(flowId);
+          return { content: [{ type: 'text', text: `Flow ${flowId} enabled` }] };
+        }
 
-        case 'disable_flow':
-          validateRequired(args, ['flowId']);
-          await this.nodeRedClient.disableFlow(args.flowId);
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `Flow ${args.flowId} disabled`,
-              },
-            ],
-          };
+        case 'disable_flow': {
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('disable'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
+          await this.nodeRedClient.disableFlow(flowId);
+          return { content: [{ type: 'text', text: `Flow ${flowId} disabled` }] };
+        }
 
-        case 'search_modules':
-          validateRequired(args, ['query']);
-          const searchQuery = args.query;
-          const searchCategory = args.category || 'all';
-          const searchLimit = args.limit || 10;
+        case 'search_modules': {
+          const query =
+            args?.query ??
+            (await this.tryElicitString(
+              'What would you like to search for in Node-RED modules? (e.g., "mqtt", "dashboard")',
+              'Search query',
+              'query'
+            ));
+          if (!query) throw new Error('Missing required parameter: query');
+          const searchCategory = args?.category || 'all';
+          const searchLimit = args?.limit || 10;
           const searchResults = await this.nodeRedClient.searchModules(
-            searchQuery,
+            query,
             searchCategory,
             searchLimit
           );
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(searchResults, null, 2),
-              },
-            ],
-          };
+          return { content: [{ type: 'text', text: JSON.stringify(searchResults, null, 2) }] };
+        }
 
         case 'install_module':
           validateRequired(args, ['moduleName']);
@@ -847,9 +900,10 @@ export class McpNodeRedServer {
         }
 
         case 'delete_flow': {
-          validateRequired(args, ['flowId']);
+          const flowId = args?.flowId ?? (await this.tryElicitFlowId('delete'));
+          if (!flowId) throw new Error('Missing required parameter: flowId');
           const dryRun = args?.dryRun !== false;
-          const flow = await this.nodeRedClient.getFlow(args.flowId);
+          const flow = await this.nodeRedClient.getFlow(flowId);
           const flowInfo = {
             id: flow.id,
             label: flow.label ?? '',
@@ -861,11 +915,15 @@ export class McpNodeRedServer {
             break;
           }
 
-          if (!args?.confirm) {
-            throw new Error('Deletion requires confirm: true and dryRun: false');
+          let confirmed = Boolean(args?.confirm);
+          if (!confirmed) {
+            confirmed = await this.tryElicitConfirm(
+              `Delete flow "${flowInfo.label || flowId}"? This will permanently remove ${flowInfo.nodeCount} node(s) and cannot be undone.`
+            );
           }
+          if (!confirmed) throw new Error('Deletion requires confirm: true and dryRun: false');
 
-          await this.nodeRedClient.deleteFlow(args.flowId);
+          await this.nodeRedClient.deleteFlow(flowId);
           result = { success: true, data: { deleted: flowInfo }, timestamp };
           break;
         }
