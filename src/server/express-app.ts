@@ -253,7 +253,7 @@ export class ExpressApp {
    * Setup API routes
    */
   private setupRoutes(): void {
-    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────
+    // ── OAuth 2.0 routes (must be before auth middleware) ─────────────────────
     const baseUrl = process.env.PUBLIC_URL || `http://${this.config.host}:${this.config.port}`;
     this.app.use(this.oauthServer.createRouter(baseUrl));
 
@@ -267,7 +267,7 @@ export class ExpressApp {
       next();
     });
 
-    // ── MCP Streamable HTTP Transport (spec 2025-03-26) ───────────────────
+    // ── MCP Streamable HTTP Transport (spec 2025-03-26) ─────────────────────
     // GET /mcp — used by Claude.ai for endpoint discovery / SSE stream
     this.app.get('/mcp', (req: Request, res: Response) => {
       // If client wants SSE, open a stream; otherwise return server info
@@ -1022,7 +1022,7 @@ export class ExpressApp {
       '/api/events/subscriptions/:connectionId',
       authenticate,
       asyncHandler(async (req: AuthRequest, res: Response) => {
-        const { connectionId } = req.params;
+        const connectionId = req.params.connectionId as string;
 
         if (!connectionId) {
           throw new ValidationError('Connection ID is required');
@@ -1093,7 +1093,7 @@ export class ExpressApp {
       '/api/events/clients/:connectionId',
       authenticate,
       (req: Request, res: Response) => {
-        const { connectionId } = req.params;
+        const connectionId = req.params.connectionId as string;
         if (!connectionId) {
           const response: ApiResponse = {
             success: false,
