@@ -159,7 +159,7 @@ describe('Pagination + filters', () => {
     it('combines filter + sort + pagination deterministically', async () => {
       const parsed = parse(
         await mcp.callTool('get_flows', {
-          labelContains: 'a',
+          labelContains: 'l',
           sortBy: 'label',
           order: 'asc',
           limit: 1,
