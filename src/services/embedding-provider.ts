@@ -33,13 +33,7 @@ export class BM25Provider implements EmbeddingProvider {
     const df = new Map<string, number>();
     const tokenizedDocs = documents.map(doc => {
       const tokens = tokenize(doc.text);
-      const seen = new Set<string>();
-      for (const t of tokens) {
-        if (!seen.has(t)) {
-          df.set(t, (df.get(t) ?? 0) + 1);
-          seen.add(t);
-        }
-      }
+      for (const t of new Set(tokens)) df.set(t, (df.get(t) ?? 0) + 1);
       return { doc, tokens };
     });
 
@@ -57,8 +51,7 @@ export class BM25Provider implements EmbeddingProvider {
         const idf = Math.log((N - dfVal + 0.5) / (dfVal + 0.5) + 1);
         const tfVal = tf.get(term) ?? 0;
         const tfNorm =
-          (tfVal * (BM25_K1 + 1)) /
-          (tfVal + BM25_K1 * (1 - BM25_B + BM25_B * (dl / avgDL)));
+          (tfVal * (BM25_K1 + 1)) / (tfVal + BM25_K1 * (1 - BM25_B + BM25_B * (dl / avgDL)));
         score += idf * tfNorm;
       }
       return { id: doc.id, score, metadata: doc.metadata };
@@ -98,13 +91,16 @@ export class ExternalApiProvider implements EmbeddingProvider {
     const texts = [query, ...documents.map(d => d.text)];
     const embeddings = await this.embed(texts);
     const queryVec = embeddings[0];
-    return documents
-      .map((doc, i) => ({
-        id: doc.id,
-        score: cosineSimilarity(queryVec, embeddings[i + 1]),
-        metadata: doc.metadata,
-      }))
+    const raw = documents.map((doc, i) => ({
+      id: doc.id,
+      score: cosineSimilarity(queryVec, embeddings[i + 1]),
+      metadata: doc.metadata,
+    }));
+    const maxScore = Math.max(...raw.map(r => r.score));
+    if (maxScore <= 0) return [];
+    return raw
       .filter(r => r.score > 0)
+      .map(r => ({ ...r, score: r.score / maxScore }))
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
   }
@@ -113,7 +109,7 @@ export class ExternalApiProvider implements EmbeddingProvider {
     const res = await fetch(`${this.apiUrl}/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: texts, ...(this.model ? { model: this.model } : {}) }),
+      body: JSON.stringify({ input: texts, model: this.model || undefined }),
     });
     if (!res.ok) throw new Error(`Embedding API error: ${res.status} ${res.statusText}`);
     const data = (await res.json()) as { data: { embedding: number[] }[] };

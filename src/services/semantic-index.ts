@@ -11,13 +11,16 @@ const SKIP_NODE_KEYS = new Set([
   'outputLabels',
   'icon',
   'links',
+  'name',
+  'info',
+  'type',
 ]);
 const MAX_STRING_VALUE_LEN = 1000;
 const DEFAULT_TTL_MS = 60_000;
 
 export class SemanticFlowIndex {
   private documents: IndexedDocument[] = [];
-  private lastIndexedAt = 0;
+  private lastIndexedAt = -Infinity; // forces refresh on first access
 
   constructor(
     private readonly client: NodeRedAPIClient,
@@ -68,8 +71,7 @@ export class SemanticFlowIndex {
       for (const node of flow.nodes ?? []) {
         const parts: string[] = [node.type, node.name, node.info].filter(Boolean);
         for (const [key, val] of Object.entries(node)) {
-          if (SKIP_NODE_KEYS.has(key) || key === 'name' || key === 'info' || key === 'type')
-            continue;
+          if (SKIP_NODE_KEYS.has(key)) continue;
           if (typeof val === 'string' && val.length > 0 && val.length <= MAX_STRING_VALUE_LEN)
             parts.push(val);
         }
