@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 import {
   BM25Provider,
@@ -97,8 +97,8 @@ describe('ExternalApiProvider', () => {
         method: 'POST',
       })
     );
-    expect(results[0].id).toBe('a');
-    expect(results[0].score).toBeCloseTo(1.0);
+    expect(results[0]!.id).toBe('a');
+    expect(results[0]!.score).toBeCloseTo(1.0);
 
     fetchSpy.mockRestore();
   });

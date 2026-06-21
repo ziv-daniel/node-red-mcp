@@ -73,9 +73,9 @@ function cosineSimilarity(a: number[], b: number[]): number {
     na = 0,
     nb = 0;
   for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
+    dot += a[i]! * b[i]!;
+    na += a[i]! * a[i]!;
+    nb += b[i]! * b[i]!;
   }
   return na === 0 || nb === 0 ? 0 : dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
@@ -90,10 +90,10 @@ export class ExternalApiProvider implements EmbeddingProvider {
     if (documents.length === 0) return [];
     const texts = [query, ...documents.map(d => d.text)];
     const embeddings = await this.embed(texts);
-    const queryVec = embeddings[0];
+    const queryVec = embeddings[0]!;
     const raw = documents.map((doc, i) => ({
       id: doc.id,
-      score: cosineSimilarity(queryVec, embeddings[i + 1]),
+      score: cosineSimilarity(queryVec, embeddings[i + 1]!),
       metadata: doc.metadata,
     }));
     const maxScore = Math.max(...raw.map(r => r.score));
