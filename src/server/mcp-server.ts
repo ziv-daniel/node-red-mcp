@@ -41,6 +41,40 @@ import { SSEHandler } from './sse-handler.js';
 const SEARCH_RESULTS_LIMIT = 10;
 const SEARCH_SKIP_PROPS = new Set(['id', 'z', 'x', 'y', 'wires']);
 
+const NODERED_RESOURCE_META: Record<string, { name: string; description: string }> = {
+  flows: { name: 'Node-RED Flows', description: 'All flow tabs in the Node-RED instance' },
+  subflows: { name: 'Node-RED Subflows', description: 'All reusable subflow definitions' },
+  nodes: {
+    name: 'Installed Node Modules',
+    description: 'Node-RED palette modules currently installed',
+  },
+  'context/global': {
+    name: 'Global Context',
+    description: 'Node-RED global context store (all key/value pairs)',
+  },
+};
+
+function buildCollectionResponse(
+  uri: string,
+  name: string,
+  description: string,
+  payload: object
+) {
+  return {
+    contents: [
+      {
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          { uri, name, description, mimeType: 'application/json', ...payload },
+          null,
+          2
+        ),
+      },
+    ],
+  };
+}
+
 interface FlowSearchMatch {
   nodeId: string;
   nodeType: string;
@@ -967,10 +1001,23 @@ export class McpNodeRedServer {
    * Get list of available resources
    */
   public async getResourceList() {
-    const resources = [];
+    const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> =
+      [
+        ...Object.entries(NODERED_RESOURCE_META).map(([path, { name, description }]) => ({
+          uri: `nodered://${path}`,
+          name,
+          description,
+          mimeType: 'application/json' as const,
+        })),
+        {
+          uri: 'system://runtime',
+          name: 'Node-RED System Info',
+          description: 'Node-RED runtime and connection status',
+          mimeType: 'application/json',
+        },
+      ];
 
     try {
-      // Add flow resources
       const flows = await this.nodeRedClient.getFlows();
       for (const flow of flows) {
         resources.push({
@@ -980,16 +1027,8 @@ export class McpNodeRedServer {
           mimeType: 'application/json',
         });
       }
-
-      // Add system resource
-      resources.push({
-        uri: 'system://runtime',
-        name: 'Node-RED System Info',
-        description: 'Node-RED runtime and connection status',
-        mimeType: 'application/json',
-      });
-    } catch (error) {
-      // Error silently handled
+    } catch {
+      // Dynamic per-flow resources unavailable; static collection resources still listed
     }
 
     return resources;
@@ -1053,6 +1092,46 @@ export class McpNodeRedServer {
             },
           ],
         };
+      }
+
+      case 'nodered': {
+        const meta = NODERED_RESOURCE_META[path];
+        if (!meta) throw new Error(`Unsupported nodered resource path: ${path}`);
+        const { name, description } = meta;
+        const timestamp = new Date().toISOString();
+        switch (path) {
+          case 'flows': {
+            const items = await this.nodeRedClient.getFlowSummaries(['tab']);
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
+          }
+          case 'subflows': {
+            const items = await this.nodeRedClient.getFlowSummaries(['subflow']);
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
+          }
+          case 'nodes': {
+            const modules = await this.nodeRedClient.getInstalledModules();
+            const items = Array.isArray(modules) ? modules : [];
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
+          }
+          case 'context/global': {
+            const data = await this.nodeRedClient.getGlobalContext();
+            return buildCollectionResponse(uri, name, description, {
+              data,
+              metadata: { timestamp },
+            });
+          }
+          default:
+            throw new Error(`Unsupported nodered resource path: ${path}`);
+        }
       }
 
       default:

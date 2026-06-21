@@ -993,7 +993,10 @@ describe('McpNodeRedServer', () => {
 
       const result = await mcpServer.listResources();
 
-      expect(result.resources).toEqual([]);
+      // Static collection resources are always present even when the API errors
+      expect(result.resources.find((r: any) => r.uri === 'nodered://flows')).toBeDefined();
+      // Individual flow:// entries are absent when getFlows() fails
+      expect(result.resources.find((r: any) => r.uri.startsWith('flow://'))).toBeUndefined();
     });
   });
 
@@ -1021,6 +1024,60 @@ describe('McpNodeRedServer', () => {
 
     it('should throw error when flow path is missing', async () => {
       await expect(mcpServer.readResource('flow://')).rejects.toThrow(/Flow path is required/);
+    });
+  });
+
+  describe('Resource Management - nodered:// collection resources', () => {
+    it('should include all nodered:// collection resources in resource list', async () => {
+      const { resources } = await mcpServer.listResources();
+      const uris = resources.map((r: any) => r.uri);
+      expect(uris).toContain('nodered://flows');
+      expect(uris).toContain('nodered://subflows');
+      expect(uris).toContain('nodered://nodes');
+      expect(uris).toContain('nodered://context/global');
+      expect(resources.find((r: any) => r.uri === 'nodered://flows')?.mimeType).toBe('application/json');
+    });
+
+    it('should read nodered://flows and return summary envelope', async () => {
+      const result = await mcpServer.readResource('nodered://flows');
+      expect(result.contents).toHaveLength(1);
+      const parsed = JSON.parse(result.contents[0]!.text);
+      expect(parsed.uri).toBe('nodered://flows');
+      expect(Array.isArray(parsed.items)).toBe(true);
+      expect(parsed.metadata.count).toBe(parsed.items.length);
+      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['tab']);
+    });
+
+    it('should read nodered://subflows and return summary envelope', async () => {
+      const result = await mcpServer.readResource('nodered://subflows');
+      const parsed = JSON.parse(result.contents[0]!.text);
+      expect(parsed.uri).toBe('nodered://subflows');
+      expect(Array.isArray(parsed.items)).toBe(true);
+      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['subflow']);
+    });
+
+    it('should read nodered://nodes and return modules envelope', async () => {
+      const result = await mcpServer.readResource('nodered://nodes');
+      const parsed = JSON.parse(result.contents[0]!.text);
+      expect(parsed.uri).toBe('nodered://nodes');
+      expect(Array.isArray(parsed.items)).toBe(true);
+      expect(parsed.metadata.count).toBe(parsed.items.length);
+      expect(mockNodeRedClient.getInstalledModules).toHaveBeenCalled();
+    });
+
+    it('should read nodered://context/global and return context data', async () => {
+      mockNodeRedClient.getGlobalContext.mockResolvedValueOnce({ temperature: 23, armed: false });
+      const result = await mcpServer.readResource('nodered://context/global');
+      const parsed = JSON.parse(result.contents[0]!.text);
+      expect(parsed.uri).toBe('nodered://context/global');
+      expect(parsed.data).toEqual({ temperature: 23, armed: false });
+      expect(parsed.metadata.timestamp).toBeDefined();
+    });
+
+    it('should throw for unknown nodered:// path', async () => {
+      await expect(mcpServer.readResource('nodered://unknown')).rejects.toThrow(
+        /Unsupported nodered resource path/
+      );
     });
   });
 
