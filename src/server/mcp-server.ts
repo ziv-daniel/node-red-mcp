@@ -41,6 +41,40 @@ import { SSEHandler } from './sse-handler.js';
 const SEARCH_RESULTS_LIMIT = 10;
 const SEARCH_SKIP_PROPS = new Set(['id', 'z', 'x', 'y', 'wires']);
 
+const NODERED_RESOURCE_META: Record<string, { name: string; description: string }> = {
+  flows: { name: 'Node-RED Flows', description: 'All flow tabs in the Node-RED instance' },
+  subflows: { name: 'Node-RED Subflows', description: 'All reusable subflow definitions' },
+  nodes: {
+    name: 'Installed Node Modules',
+    description: 'Node-RED palette modules currently installed',
+  },
+  'context/global': {
+    name: 'Global Context',
+    description: 'Node-RED global context store (all key/value pairs)',
+  },
+};
+
+function buildCollectionResponse(
+  uri: string,
+  name: string,
+  description: string,
+  payload: object
+) {
+  return {
+    contents: [
+      {
+        uri,
+        mimeType: 'application/json',
+        text: JSON.stringify(
+          { uri, name, description, mimeType: 'application/json', ...payload },
+          null,
+          2
+        ),
+      },
+    ],
+  };
+}
+
 interface FlowSearchMatch {
   nodeId: string;
   nodeType: string;
@@ -969,30 +1003,12 @@ export class McpNodeRedServer {
   public async getResourceList() {
     const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> =
       [
-        {
-          uri: 'nodered://flows',
-          name: 'Node-RED Flows',
-          description: 'All flow tabs in the Node-RED instance',
-          mimeType: 'application/json',
-        },
-        {
-          uri: 'nodered://subflows',
-          name: 'Node-RED Subflows',
-          description: 'All reusable subflow definitions',
-          mimeType: 'application/json',
-        },
-        {
-          uri: 'nodered://nodes',
-          name: 'Installed Node Modules',
-          description: 'Node-RED palette modules currently installed',
-          mimeType: 'application/json',
-        },
-        {
-          uri: 'nodered://context/global',
-          name: 'Global Context',
-          description: 'Node-RED global context store (all key/value pairs)',
-          mimeType: 'application/json',
-        },
+        ...Object.entries(NODERED_RESOURCE_META).map(([path, { name, description }]) => ({
+          uri: `nodered://${path}`,
+          name,
+          description,
+          mimeType: 'application/json' as const,
+        })),
         {
           uri: 'system://runtime',
           name: 'Node-RED System Info',
@@ -1079,99 +1095,39 @@ export class McpNodeRedServer {
       }
 
       case 'nodered': {
+        const meta = NODERED_RESOURCE_META[path];
+        if (!meta) throw new Error(`Unsupported nodered resource path: ${path}`);
+        const { name, description } = meta;
+        const timestamp = new Date().toISOString();
         switch (path) {
           case 'flows': {
-            const flows = await this.nodeRedClient.getFlowSummaries(['tab']);
-            return {
-              contents: [
-                {
-                  uri,
-                  mimeType: 'application/json',
-                  text: JSON.stringify(
-                    {
-                      uri,
-                      name: 'Node-RED Flows',
-                      description: 'All flow tabs in the Node-RED instance',
-                      mimeType: 'application/json',
-                      items: flows,
-                      metadata: { count: flows.length, timestamp: new Date().toISOString() },
-                    },
-                    null,
-                    2
-                  ),
-                },
-              ],
-            };
+            const items = await this.nodeRedClient.getFlowSummaries(['tab']);
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
           }
           case 'subflows': {
-            const subflows = await this.nodeRedClient.getFlowSummaries(['subflow']);
-            return {
-              contents: [
-                {
-                  uri,
-                  mimeType: 'application/json',
-                  text: JSON.stringify(
-                    {
-                      uri,
-                      name: 'Node-RED Subflows',
-                      description: 'All reusable subflow definitions',
-                      mimeType: 'application/json',
-                      items: subflows,
-                      metadata: { count: subflows.length, timestamp: new Date().toISOString() },
-                    },
-                    null,
-                    2
-                  ),
-                },
-              ],
-            };
+            const items = await this.nodeRedClient.getFlowSummaries(['subflow']);
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
           }
           case 'nodes': {
             const modules = await this.nodeRedClient.getInstalledModules();
-            const moduleList = Array.isArray(modules) ? modules : [];
-            return {
-              contents: [
-                {
-                  uri,
-                  mimeType: 'application/json',
-                  text: JSON.stringify(
-                    {
-                      uri,
-                      name: 'Installed Node Modules',
-                      description: 'Node-RED palette modules currently installed',
-                      mimeType: 'application/json',
-                      items: moduleList,
-                      metadata: { count: moduleList.length, timestamp: new Date().toISOString() },
-                    },
-                    null,
-                    2
-                  ),
-                },
-              ],
-            };
+            const items = Array.isArray(modules) ? modules : [];
+            return buildCollectionResponse(uri, name, description, {
+              items,
+              metadata: { count: items.length, timestamp },
+            });
           }
           case 'context/global': {
-            const context = await this.nodeRedClient.getGlobalContext();
-            return {
-              contents: [
-                {
-                  uri,
-                  mimeType: 'application/json',
-                  text: JSON.stringify(
-                    {
-                      uri,
-                      name: 'Global Context',
-                      description: 'Node-RED global context store (all key/value pairs)',
-                      mimeType: 'application/json',
-                      data: context,
-                      metadata: { timestamp: new Date().toISOString() },
-                    },
-                    null,
-                    2
-                  ),
-                },
-              ],
-            };
+            const data = await this.nodeRedClient.getGlobalContext();
+            return buildCollectionResponse(uri, name, description, {
+              data,
+              metadata: { timestamp },
+            });
           }
           default:
             throw new Error(`Unsupported nodered resource path: ${path}`);

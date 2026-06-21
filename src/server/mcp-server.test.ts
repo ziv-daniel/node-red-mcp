@@ -1028,28 +1028,14 @@ describe('McpNodeRedServer', () => {
   });
 
   describe('Resource Management - nodered:// collection resources', () => {
-    it('should include nodered://flows in resource list', async () => {
-      const result = await mcpServer.listResources();
-      const r = result.resources.find((r: any) => r.uri === 'nodered://flows');
-      expect(r).toBeDefined();
-      expect(r?.mimeType).toBe('application/json');
-    });
-
-    it('should include nodered://subflows in resource list', async () => {
-      const result = await mcpServer.listResources();
-      expect(result.resources.find((r: any) => r.uri === 'nodered://subflows')).toBeDefined();
-    });
-
-    it('should include nodered://nodes in resource list', async () => {
-      const result = await mcpServer.listResources();
-      expect(result.resources.find((r: any) => r.uri === 'nodered://nodes')).toBeDefined();
-    });
-
-    it('should include nodered://context/global in resource list', async () => {
-      const result = await mcpServer.listResources();
-      expect(
-        result.resources.find((r: any) => r.uri === 'nodered://context/global')
-      ).toBeDefined();
+    it('should include all nodered:// collection resources in resource list', async () => {
+      const { resources } = await mcpServer.listResources();
+      const uris = resources.map((r: any) => r.uri);
+      expect(uris).toContain('nodered://flows');
+      expect(uris).toContain('nodered://subflows');
+      expect(uris).toContain('nodered://nodes');
+      expect(uris).toContain('nodered://context/global');
+      expect(resources.find((r: any) => r.uri === 'nodered://flows')?.mimeType).toBe('application/json');
     });
 
     it('should read nodered://flows and return summary envelope', async () => {
