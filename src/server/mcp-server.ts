@@ -28,6 +28,7 @@ import {
 import type { NodeRedCredentials } from '../types/oauth.js';
 import { validateRequired, validateTypes } from '../utils/error-handling.js';
 
+import { applyPagination, isPaginated, stableSortBy } from './pagination.js';
 import { SSEHandler } from './sse-handler.js';
 
 const SEARCH_RESULTS_LIMIT = 10;
@@ -96,6 +97,16 @@ function validateFlowOrThrow(flowData: { nodes?: unknown[] }): void {
   if (!validation.valid) {
     throw new Error(`Validation failed:\n${validation.errors.map(e => `- ${e}`).join('\n')}`);
   }
+}
+
+const FLOW_SORT_KEYS = ['label', 'nodeCount', 'disabled'] as const;
+type FlowSortKey = (typeof FLOW_SORT_KEYS)[number];
+
+function flowSortKeyFn(field: FlowSortKey): (f: any) => string | number | boolean {
+  if (field === 'label') return (f: any) => String(f?.label ?? '').toLowerCase();
+  if (field === 'nodeCount')
+    return (f: any) => (typeof f?.nodeCount === 'number' ? f.nodeCount : (f?.nodes?.length ?? 0));
+  return (f: any) => Boolean(f?.disabled);
 }
 
 export class McpNodeRedServer {
@@ -194,7 +205,7 @@ export class McpNodeRedServer {
       {
         name: 'get_flows',
         description:
-          'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data)',
+          'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data). Supports pagination (limit/offset), sorting (label/nodeCount/disabled), and filtering by disabled state or label substring.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
@@ -211,6 +222,40 @@ export class McpNodeRedServer {
               description:
                 'Flow types to include (default: ["tab", "subflow"]). Options: "tab" (main flows), "subflow" (reusable subflows)',
               default: ['tab', 'subflow'],
+            },
+            limit: {
+              type: 'number',
+              description:
+                'Maximum items to return (1-500). When set, response is wrapped in pagination envelope { items, total, limit, offset, hasMore }.',
+              minimum: 1,
+              maximum: 500,
+            },
+            offset: {
+              type: 'number',
+              description:
+                'Items to skip. When set, response is wrapped in pagination envelope.',
+              minimum: 0,
+            },
+            sortBy: {
+              type: 'string',
+              enum: ['label', 'nodeCount', 'disabled'],
+              description:
+                'Sort key. Secondary sort by id keeps slice boundaries deterministic.',
+            },
+            order: {
+              type: 'string',
+              enum: ['asc', 'desc'],
+              description: 'Sort order (default: asc).',
+              default: 'asc',
+            },
+            disabled: {
+              type: 'boolean',
+              description:
+                'Filter by disabled state (true = only disabled, false = only enabled).',
+            },
+            labelContains: {
+              type: 'string',
+              description: 'Case-insensitive substring filter on flow label.',
             },
           },
           required: [],
@@ -357,11 +402,28 @@ export class McpNodeRedServer {
       },
       {
         name: 'get_installed_modules',
-        description: 'Get list of currently installed Node-RED palette modules',
+        description:
+          'Get list of currently installed Node-RED palette modules. Supports pagination (limit/offset) and a case-insensitive substring filter (query). When any of these is provided, response is wrapped in pagination envelope.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Case-insensitive substring filter on module name.',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum items to return (1-500).',
+              minimum: 1,
+              maximum: 500,
+            },
+            offset: {
+              type: 'number',
+              description: 'Items to skip.',
+              minimum: 0,
+            },
+          },
           required: [],
         },
       },
@@ -462,7 +524,7 @@ export class McpNodeRedServer {
       {
         name: 'search_flows',
         description:
-          'Search for nodes in Node-RED flows by type, name, or property value. At least one parameter is required.',
+          'Search for nodes in Node-RED flows by type, name, or property value. At least one search parameter is required. Supports pagination (limit/offset replaces the internal 10-cap), node type prefix filter, and flow exclusion list.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
@@ -481,15 +543,56 @@ export class McpNodeRedServer {
               type: 'string',
               description: 'Restrict search to a specific flow ID',
             },
+            nodeTypePrefix: {
+              type: 'string',
+              description:
+                'Case-insensitive prefix match on node type — useful for namespaced types.',
+            },
+            excludeFlowIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Exclude these flow IDs from the search.',
+            },
+            limit: {
+              type: 'number',
+              description:
+                'Maximum matches to return (1-500). When set, replaces the default 10-cap and wraps response in pagination envelope.',
+              minimum: 1,
+              maximum: 500,
+            },
+            offset: {
+              type: 'number',
+              description:
+                'Matches to skip. When set, response is wrapped in pagination envelope.',
+              minimum: 0,
+            },
           },
           required: [],
         },
       },
       {
         name: 'get_flow_state',
-        description: 'Get the runtime state of Node-RED flows (running or stopped)',
+        description:
+          'Get the runtime state of Node-RED flows (running or stopped). Supports pagination over the per-flow array via limit/offset.',
         annotations: { readOnlyHint: true },
-        inputSchema: { type: 'object', properties: {}, required: [] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'number',
+              description:
+                'Maximum flows to return (1-500). When set, response is wrapped in pagination envelope (state remains at top level).',
+              minimum: 1,
+              maximum: 500,
+            },
+            offset: {
+              type: 'number',
+              description: 'Flows to skip.',
+              minimum: 0,
+            },
+          },
+          required: [],
+        },
       },
       {
         name: 'get_settings',
@@ -517,19 +620,50 @@ export class McpNodeRedServer {
     try {
       switch (name) {
         // Core Flow Management Tools
-        case 'get_flows':
+        case 'get_flows': {
           const includeDetails = args?.includeDetails || false;
           const types = args?.types || ['tab', 'subflow'];
-          const flowData = includeDetails
+          let flowData: any[] = includeDetails
             ? await this.nodeRedClient.getFlows()
             : await this.nodeRedClient.getFlowSummaries(types);
 
-          result = {
-            success: true,
-            data: flowData,
-            timestamp,
-          };
+          const sortBy = args?.sortBy as string | undefined;
+          const order = args?.order as string | undefined;
+          if (sortBy !== undefined && !FLOW_SORT_KEYS.includes(sortBy as FlowSortKey)) {
+            throw new Error(
+              `Invalid sortBy: must be one of ${FLOW_SORT_KEYS.join(', ')}`
+            );
+          }
+          if (order !== undefined && order !== 'asc' && order !== 'desc') {
+            throw new Error('Invalid order: must be "asc" or "desc"');
+          }
+
+          if (args?.disabled !== undefined) {
+            const wantDisabled = Boolean(args.disabled);
+            flowData = flowData.filter((f: any) => Boolean(f?.disabled) === wantDisabled);
+          }
+          if (typeof args?.labelContains === 'string') {
+            const q = args.labelContains.toLowerCase();
+            flowData = flowData.filter((f: any) =>
+              String(f?.label ?? '').toLowerCase().includes(q)
+            );
+          }
+
+          if (sortBy) {
+            flowData = stableSortBy(
+              flowData,
+              flowSortKeyFn(sortBy as FlowSortKey),
+              (order as 'asc' | 'desc') ?? 'asc'
+            );
+          }
+
+          if (isPaginated(args)) {
+            result = { success: true, data: applyPagination(flowData, args), timestamp };
+          } else {
+            result = { success: true, data: flowData, timestamp };
+          }
           break;
+        }
 
         case 'get_flow':
           validateRequired(args, ['flowId']);
@@ -630,16 +764,34 @@ export class McpNodeRedServer {
             ],
           };
 
-        case 'get_installed_modules':
+        case 'get_installed_modules': {
           const installedModules = await this.nodeRedClient.getInstalledModules();
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(installedModules, null, 2),
-              },
-            ],
-          };
+          const queryFilter = args?.query;
+          const hasNewParams =
+            isPaginated(args) || typeof queryFilter === 'string';
+
+          if (!hasNewParams) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(installedModules, null, 2),
+                },
+              ],
+            };
+          }
+
+          let modules: any[] = Array.isArray(installedModules) ? installedModules : [];
+          if (typeof queryFilter === 'string') {
+            const q = queryFilter.toLowerCase();
+            modules = modules.filter((m: any) => {
+              const name = typeof m === 'string' ? m : (m?.name ?? m?.id ?? '');
+              return String(name).toLowerCase().includes(q);
+            });
+          }
+          result = { success: true, data: applyPagination(modules, args), timestamp };
+          break;
+        }
 
         case 'get_context': {
           const scope = args?.scope || 'global';
@@ -703,21 +855,30 @@ export class McpNodeRedServer {
           const typeFilter = args?.type as string | undefined;
           const query = args?.query as string | undefined;
           const filterFlowId = args?.flowId as string | undefined;
+          const nodeTypePrefix = args?.nodeTypePrefix as string | undefined;
+          const excludeFlowIds = Array.isArray(args?.excludeFlowIds)
+            ? new Set(args.excludeFlowIds as string[])
+            : undefined;
 
-          if (!typeFilter && !query && !filterFlowId) {
-            throw new Error('At least one search parameter is required: type, query, or flowId');
+          if (!typeFilter && !query && !filterFlowId && !nodeTypePrefix) {
+            throw new Error(
+              'At least one search parameter is required: type, query, flowId, or nodeTypePrefix'
+            );
           }
 
           const flows = await this.nodeRedClient.getFlows();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
-          const matches: FlowSearchMatch[] = [];
-          let total = 0;
+          const nodeTypePrefixLower = nodeTypePrefix?.toLowerCase();
+          const allMatches: FlowSearchMatch[] = [];
 
           for (const flow of flows) {
             if (filterFlowId && flow.id !== filterFlowId) continue;
+            if (excludeFlowIds?.has(flow.id)) continue;
             for (const node of flow.nodes ?? []) {
-              if (typeFilterLower && !node.type.toLowerCase().includes(typeFilterLower)) continue;
+              const nodeTypeLower = node.type.toLowerCase();
+              if (typeFilterLower && !nodeTypeLower.includes(typeFilterLower)) continue;
+              if (nodeTypePrefixLower && !nodeTypeLower.startsWith(nodeTypePrefixLower)) continue;
               if (queryLower) {
                 const nameMatch = (node.name ?? '').toLowerCase().includes(queryLower);
                 const propMatch = Object.entries(node).some(
@@ -729,29 +890,39 @@ export class McpNodeRedServer {
                 );
                 if (!nameMatch && !propMatch) continue;
               }
-              total++;
-              if (matches.length < SEARCH_RESULTS_LIMIT) {
-                matches.push({
-                  nodeId: node.id,
-                  nodeType: node.type,
-                  nodeName: node.name ?? '',
-                  flowId: flow.id,
-                  flowLabel: flow.label ?? '',
-                });
-              }
+              allMatches.push({
+                nodeId: node.id,
+                nodeType: node.type,
+                nodeName: node.name ?? '',
+                flowId: flow.id,
+                flowLabel: flow.label ?? '',
+              });
             }
           }
 
-          result = {
-            success: true,
-            data: { matches, total },
-            timestamp,
-          };
+          if (isPaginated(args)) {
+            result = { success: true, data: applyPagination(allMatches, args), timestamp };
+          } else {
+            const total = allMatches.length;
+            const matches = allMatches.slice(0, SEARCH_RESULTS_LIMIT);
+            result = { success: true, data: { matches, total }, timestamp };
+          }
           break;
         }
 
         case 'get_flow_state': {
-          result = { success: true, data: await this.nodeRedClient.getFlowStatus(), timestamp };
+          const status: any = await this.nodeRedClient.getFlowStatus();
+          if (isPaginated(args)) {
+            const flows = Array.isArray(status?.flows) ? status.flows : [];
+            const envelope = applyPagination(flows, args);
+            result = {
+              success: true,
+              data: { state: status?.state, ...envelope },
+              timestamp,
+            };
+          } else {
+            result = { success: true, data: status, timestamp };
+          }
           break;
         }
 
