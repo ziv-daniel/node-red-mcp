@@ -1055,7 +1055,7 @@ describe('McpNodeRedServer', () => {
     it('should read nodered://flows and return summary envelope', async () => {
       const result = await mcpServer.readResource('nodered://flows');
       expect(result.contents).toHaveLength(1);
-      const parsed = JSON.parse(result.contents[0].text);
+      const parsed = JSON.parse(result.contents[0]!.text);
       expect(parsed.uri).toBe('nodered://flows');
       expect(Array.isArray(parsed.items)).toBe(true);
       expect(parsed.metadata.count).toBe(parsed.items.length);
@@ -1064,7 +1064,7 @@ describe('McpNodeRedServer', () => {
 
     it('should read nodered://subflows and return summary envelope', async () => {
       const result = await mcpServer.readResource('nodered://subflows');
-      const parsed = JSON.parse(result.contents[0].text);
+      const parsed = JSON.parse(result.contents[0]!.text);
       expect(parsed.uri).toBe('nodered://subflows');
       expect(Array.isArray(parsed.items)).toBe(true);
       expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['subflow']);
@@ -1072,7 +1072,7 @@ describe('McpNodeRedServer', () => {
 
     it('should read nodered://nodes and return modules envelope', async () => {
       const result = await mcpServer.readResource('nodered://nodes');
-      const parsed = JSON.parse(result.contents[0].text);
+      const parsed = JSON.parse(result.contents[0]!.text);
       expect(parsed.uri).toBe('nodered://nodes');
       expect(Array.isArray(parsed.items)).toBe(true);
       expect(parsed.metadata.count).toBe(parsed.items.length);
@@ -1082,7 +1082,7 @@ describe('McpNodeRedServer', () => {
     it('should read nodered://context/global and return context data', async () => {
       mockNodeRedClient.getGlobalContext.mockResolvedValueOnce({ temperature: 23, armed: false });
       const result = await mcpServer.readResource('nodered://context/global');
-      const parsed = JSON.parse(result.contents[0].text);
+      const parsed = JSON.parse(result.contents[0]!.text);
       expect(parsed.uri).toBe('nodered://context/global');
       expect(parsed.data).toEqual({ temperature: 23, armed: false });
       expect(parsed.metadata.timestamp).toBeDefined();
