@@ -650,11 +650,7 @@ export class McpNodeRedServer {
           }
 
           if (sortBy) {
-            flowData = stableSortBy(
-              flowData,
-              flowSortKeyFn(sortBy as FlowSortKey),
-              order as 'asc' | 'desc' | undefined
-            );
+            flowData = stableSortBy(flowData, flowSortKeyFn(sortBy as FlowSortKey), order);
           }
 
           if (isPaginated(args)) {
