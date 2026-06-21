@@ -82,6 +82,23 @@ vi.mock('./sse-handler.js', () => {
   };
 });
 
+const mockSemanticIndex = {
+  search: vi.fn(),
+  refresh: vi.fn(),
+};
+
+vi.mock('../services/semantic-index.js', () => ({
+  SemanticFlowIndex: class {
+    constructor() {
+      return mockSemanticIndex;
+    }
+  },
+}));
+
+vi.mock('../services/embedding-provider.js', () => ({
+  createEmbeddingProvider: vi.fn().mockReturnValue({}),
+}));
+
 // Mock MCP SDK Server
 vi.mock('@modelcontextprotocol/sdk/server/index.js', () => {
   return {
@@ -128,6 +145,9 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.deleteFlow.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowStatus.mockResolvedValue(mockFlowStatus);
     mockNodeRedClient.getSettings.mockResolvedValue(mockSettings);
+
+    mockSemanticIndex.search.mockResolvedValue([]);
+    mockSemanticIndex.refresh.mockResolvedValue(undefined);
 
     mcpServer = new McpNodeRedServer();
   });
@@ -304,9 +324,20 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 18 tools defined', () => {
+    it('should have exactly 19 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(18);
+      expect(tools.length).toBe(19);
+    });
+
+    it('should include semantic_search_flows tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const tool = tools.find(t => t.name === 'semantic_search_flows');
+      expect(tool).toBeDefined();
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+      expect(tool?.inputSchema.properties).toHaveProperty('query');
+      expect(tool?.inputSchema.properties).toHaveProperty('scope');
+      expect(tool?.inputSchema.properties).toHaveProperty('topK');
+      expect(tool?.inputSchema.properties).toHaveProperty('refresh');
     });
   });
 
@@ -1036,7 +1067,9 @@ describe('McpNodeRedServer', () => {
       expect(uris).toContain('nodered://subflows');
       expect(uris).toContain('nodered://nodes');
       expect(uris).toContain('nodered://context/global');
-      expect(resources.find((r: any) => r.uri === 'nodered://flows')?.mimeType).toBe('application/json');
+      expect(resources.find((r: any) => r.uri === 'nodered://flows')?.mimeType).toBe(
+        'application/json'
+      );
     });
 
     it('should read nodered://flows and return summary envelope', async () => {
@@ -1218,7 +1251,10 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should elicit flowId for get_flow when not provided and use it', async () => {
-      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { flowId: 'flow-1' } });
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { flowId: 'flow-1' },
+      });
       const result = await mcpServer.callTool('get_flow', {});
       expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
       const parsed = JSON.parse(result.content[0].text);
@@ -1249,14 +1285,20 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should elicit flowId for enable_flow and enable the flow', async () => {
-      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { flowId: 'flow-1' } });
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { flowId: 'flow-1' },
+      });
       const result = await mcpServer.callTool('enable_flow', {});
       expect(mockNodeRedClient.enableFlow).toHaveBeenCalledWith('flow-1');
       expect(result.content[0].text).toContain('enabled');
     });
 
     it('should elicit confirmation for delete_flow when dryRun:false and confirm is missing', async () => {
-      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { confirmed: true } });
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { confirmed: true },
+      });
       const result = await mcpServer.callTool('delete_flow', { flowId: 'flow-1', dryRun: false });
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
@@ -1265,7 +1307,10 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should block deletion when confirmation elicitation is declined', async () => {
-      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { confirmed: false } });
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { confirmed: false },
+      });
       const result = await mcpServer.callTool('delete_flow', { flowId: 'flow-1', dryRun: false });
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(false);
@@ -1274,9 +1319,68 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should elicit search query for search_modules when not provided', async () => {
-      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'accept', content: { query: 'mqtt' } });
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { query: 'mqtt' },
+      });
       await mcpServer.callTool('search_modules', {});
       expect(mockNodeRedClient.searchModules).toHaveBeenCalledWith('mqtt', 'all', 10);
+    });
+  });
+
+  describe('Tool Execution - semantic_search_flows', () => {
+    const mockResults = [
+      { id: 'node:n1', score: 0.95, metadata: { scope: 'nodes', nodeType: 'mqtt in' } },
+      { id: 'flow:tab-1', score: 0.7, metadata: { scope: 'flows', label: 'Sensors' } },
+    ];
+
+    it('should return semantic search results', async () => {
+      mockSemanticIndex.search.mockResolvedValueOnce(mockResults);
+      const result = await mcpServer.callTool('semantic_search_flows', { query: 'mqtt sensor' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockSemanticIndex.search).toHaveBeenCalledWith('mqtt sensor', 10, 'all');
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toEqual(mockResults);
+    });
+
+    it('should pass topK and scope to index.search', async () => {
+      await mcpServer.callTool('semantic_search_flows', {
+        query: 'temperature',
+        topK: 5,
+        scope: 'nodes',
+      });
+      expect(mockSemanticIndex.search).toHaveBeenCalledWith('temperature', 5, 'nodes');
+    });
+
+    it('should call refresh when refresh:true', async () => {
+      await mcpServer.callTool('semantic_search_flows', { query: 'test', refresh: true });
+      expect(mockSemanticIndex.refresh).toHaveBeenCalled();
+    });
+
+    it('should not call refresh when refresh is not set', async () => {
+      await mcpServer.callTool('semantic_search_flows', { query: 'test' });
+      expect(mockSemanticIndex.refresh).not.toHaveBeenCalled();
+    });
+
+    it('should return error when query is missing and elicitation fails', async () => {
+      const serverInstance: any = mcpServer.getServer();
+      serverInstance.elicitInput.mockResolvedValueOnce({ action: 'decline', content: null });
+      const result = await mcpServer.callTool('semantic_search_flows', {});
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('query');
+    });
+
+    it('should elicit query when not provided and use it', async () => {
+      const serverInstance: any = mcpServer.getServer();
+      serverInstance.elicitInput.mockResolvedValueOnce({
+        action: 'accept',
+        content: { query: 'temperature automation' },
+      });
+      mockSemanticIndex.search.mockResolvedValueOnce([]);
+      await mcpServer.callTool('semantic_search_flows', {});
+      expect(mockSemanticIndex.search).toHaveBeenCalledWith('temperature automation', 10, 'all');
     });
   });
 });

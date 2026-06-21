@@ -13,7 +13,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { promptRegistry } from '../prompts/index.js';
+import { createEmbeddingProvider } from '../services/embedding-provider.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
+import { SemanticFlowIndex } from '../services/semantic-index.js';
 import {
   McpServerConfig,
   McpToolResult,
@@ -54,12 +56,7 @@ const NODERED_RESOURCE_META: Record<string, { name: string; description: string 
   },
 };
 
-function buildCollectionResponse(
-  uri: string,
-  name: string,
-  description: string,
-  payload: object
-) {
+function buildCollectionResponse(uri: string, name: string, description: string, payload: object) {
   return {
     contents: [
       {
@@ -154,6 +151,7 @@ export class McpNodeRedServer {
   private nodeRedClient: NodeRedAPIClient;
   private sseHandler: SSEHandler;
   private config: McpServerConfig;
+  private semanticIndex: SemanticFlowIndex;
 
   constructor(config: Partial<McpServerConfig> = {}) {
     this.config = {
@@ -198,6 +196,11 @@ export class McpNodeRedServer {
 
     this.nodeRedClient = new NodeRedAPIClient(this.config.nodeRed);
     this.sseHandler = new SSEHandler(this.config.sse);
+    this.semanticIndex = new SemanticFlowIndex(
+      this.nodeRedClient,
+      createEmbeddingProvider(this.config.semantic),
+      this.config.semantic?.indexTtlMs
+    );
 
     this.setupHandlers();
   }
@@ -245,7 +248,11 @@ export class McpNodeRedServer {
     pick: (content: any) => T | null
   ): Promise<T | null> {
     try {
-      const res = await (this.server as any).elicitInput({ mode: 'form', message, requestedSchema });
+      const res = await (this.server as any).elicitInput({
+        mode: 'form',
+        message,
+        requestedSchema,
+      });
       return res?.action === 'accept' ? pick(res.content) : null;
     } catch {
       return null;
@@ -271,11 +278,7 @@ export class McpNodeRedServer {
     } catch {
       // getFlowSummaries failed — proceed without list
     }
-    return this.tryElicitString(
-      `Which flow do you want to ${verb}?${list}`,
-      'Flow ID',
-      'flowId'
-    );
+    return this.tryElicitString(`Which flow do you want to ${verb}?${list}`, 'Flow ID', 'flowId');
   }
 
   private async tryElicitConfirm(message: string): Promise<boolean> {
@@ -711,6 +714,41 @@ export class McpNodeRedServer {
         annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {}, required: [] },
       },
+      {
+        name: 'semantic_search_flows',
+        description:
+          'Search Node-RED flows and nodes using semantic similarity (BM25 by default; set EMBEDDING_API_URL for vector search). Returns ranked results with scores.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Natural-language search query',
+            },
+            topK: {
+              type: 'number',
+              description: 'Maximum number of results to return (default: 10)',
+              default: 10,
+              minimum: 1,
+              maximum: 100,
+            },
+            scope: {
+              type: 'string',
+              enum: ['flows', 'nodes', 'all'],
+              description:
+                'Restrict search to flow-level docs, node-level docs, or all (default: all)',
+              default: 'all',
+            },
+            refresh: {
+              type: 'boolean',
+              description: 'Force re-index from Node-RED before searching (default: false)',
+              default: false,
+            },
+          },
+          required: [],
+        },
+      },
     ];
   }
 
@@ -1026,6 +1064,25 @@ export class McpNodeRedServer {
           break;
         }
 
+        case 'semantic_search_flows': {
+          const query =
+            args?.query ??
+            (await this.tryElicitString(
+              'What are you looking for in your Node-RED flows?',
+              'Search query',
+              'query'
+            ));
+          if (!query) throw new Error('Missing required parameter: query');
+          if (args?.refresh) await this.semanticIndex.refresh();
+          const results = await this.semanticIndex.search(
+            query,
+            args?.topK ?? 10,
+            args?.scope ?? 'all'
+          );
+          result = { success: true, data: results, timestamp };
+          break;
+        }
+
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -1051,21 +1108,20 @@ export class McpNodeRedServer {
    * Get list of available resources
    */
   public async getResourceList() {
-    const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> =
-      [
-        ...Object.entries(NODERED_RESOURCE_META).map(([path, { name, description }]) => ({
-          uri: `nodered://${path}`,
-          name,
-          description,
-          mimeType: 'application/json' as const,
-        })),
-        {
-          uri: 'system://runtime',
-          name: 'Node-RED System Info',
-          description: 'Node-RED runtime and connection status',
-          mimeType: 'application/json',
-        },
-      ];
+    const resources: { uri: string; name: string; description: string; mimeType: string }[] = [
+      ...Object.entries(NODERED_RESOURCE_META).map(([path, { name, description }]) => ({
+        uri: `nodered://${path}`,
+        name,
+        description,
+        mimeType: 'application/json' as const,
+      })),
+      {
+        uri: 'system://runtime',
+        name: 'Node-RED System Info',
+        description: 'Node-RED runtime and connection status',
+        mimeType: 'application/json',
+      },
+    ];
 
     try {
       const flows = await this.nodeRedClient.getFlows();
@@ -1231,8 +1287,6 @@ export class McpNodeRedServer {
     // Test Node-RED connection
     const connected = await this.nodeRedClient.testConnection();
     // Connection test completed silently
-
-    // Server started silently
   }
 
   /**
