@@ -137,7 +137,7 @@ describe('pagination helpers', () => {
         { id: 'b' } as any,
         { id: 'c', score: 1 },
       ];
-      const out = stableSortBy(mixed, x => (x as any).score, 'asc');
+      const out = stableSortBy(mixed, x => x.score, 'asc');
       expect(out.map(x => x.id)).toEqual(['c', 'a', 'b']);
     });
 
