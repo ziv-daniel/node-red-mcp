@@ -1201,6 +1201,7 @@ export class McpNodeRedServer {
       }
 
       case 'nodered': {
+        if (!path) throw new Error('Invalid resource URI: missing path');
         const meta = NODERED_RESOURCE_META[path];
         if (!meta) throw new Error(`Unsupported nodered resource path: ${path}`);
         const { name, description } = meta;
