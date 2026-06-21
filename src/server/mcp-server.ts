@@ -882,7 +882,7 @@ export class McpNodeRedServer {
               if (queryLower) {
                 let matched = (node.name ?? '').toLowerCase().includes(queryLower);
                 if (!matched) {
-                  for (const k in node) {
+                  for (const k of Object.keys(node)) {
                     if (SEARCH_SKIP_PROPS.has(k) || k === 'name') continue;
                     const v = (node as Record<string, unknown>)[k];
                     if (typeof v === 'string' && v.toLowerCase().includes(queryLower)) {

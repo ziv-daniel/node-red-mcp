@@ -82,13 +82,15 @@ export function stableSortBy<T extends { id?: string }>(
   const mul = order === 'asc' ? 1 : -1;
   const tagged = items.map(item => ({ item, key: keyFn(item) }));
   tagged.sort((a, b) => {
-    if (a.key === undefined && b.key !== undefined) return 1;
-    if (b.key === undefined && a.key !== undefined) return -1;
-    if (a.key !== b.key) {
-      // Both defined and unequal — primary comparison.
-      return (a.key as any) < (b.key as any) ? -mul : mul;
+    const ak = a.key;
+    const bk = b.key;
+    if (ak !== bk) {
+      // Primary keys differ — undefined sorts last, otherwise compare.
+      if (ak === undefined) return 1;
+      if (bk === undefined) return -1;
+      return (ak as any) < (bk as any) ? -mul : mul;
     }
-    // Primary keys equal (or both undefined) — fall back to id.
+    // Primary keys equal (or both undefined) — fall back to id for stability.
     const aid = a.item.id ?? '';
     const bid = b.item.id ?? '';
     return aid < bid ? -1 : aid > bid ? 1 : 0;
