@@ -114,6 +114,7 @@ export interface McpServerConfig {
     resources?: boolean;
     prompts?: boolean;
     logging?: boolean;
+    elicitation?: boolean;
   };
   nodeRed: {
     url: string;
