@@ -1215,7 +1215,6 @@ describe('McpNodeRedServer', () => {
 
     beforeEach(() => {
       serverInstance = mcpServer.getServer();
-      serverInstance.elicitInput = vi.fn();
     });
 
     it('should elicit flowId for get_flow when not provided and use it', async () => {

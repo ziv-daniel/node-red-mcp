@@ -164,6 +164,7 @@ export class McpNodeRedServer {
         resources: true,
         prompts: true,
         logging: true,
+        elicitation: true,
       },
       nodeRed: {
         url: process.env.NODERED_URL || 'http://localhost:1880',
@@ -190,7 +191,7 @@ export class McpNodeRedServer {
           resources: this.config.capabilities.resources ? {} : undefined,
           prompts: this.config.capabilities.prompts ? {} : undefined,
           logging: this.config.capabilities.logging ? {} : undefined,
-          elicitation: {},
+          elicitation: this.config.capabilities.elicitation !== false ? {} : undefined,
         } as any,
       }
     );
@@ -237,30 +238,26 @@ export class McpNodeRedServer {
     });
   }
 
-  private async tryElicitString(
+  // Raw elicitInput wrapper — single point for the (server as any) cast and try/catch
+  private async tryElicitField<T>(
     message: string,
-    title: string,
-    field: string
-  ): Promise<string | null> {
+    requestedSchema: object,
+    pick: (content: any) => T | null
+  ): Promise<T | null> {
     try {
-      const res = await (this.server as any).elicitInput({
-        mode: 'form',
-        message,
-        requestedSchema: {
-          type: 'object',
-          properties: {
-            [field]: { type: 'string', title },
-          },
-          required: [field],
-        },
-      });
-      if (res?.action === 'accept' && res.content?.[field]) {
-        return String(res.content[field]);
-      }
-      return null;
+      const res = await (this.server as any).elicitInput({ mode: 'form', message, requestedSchema });
+      return res?.action === 'accept' ? pick(res.content) : null;
     } catch {
       return null;
     }
+  }
+
+  private tryElicitString(message: string, title: string, field: string): Promise<string | null> {
+    return this.tryElicitField(
+      message,
+      { type: 'object', properties: { [field]: { type: 'string', title } }, required: [field] },
+      c => (c?.[field] ? String(c[field]) : null)
+    );
   }
 
   private async tryElicitFlowId(verb: string): Promise<string | null> {
@@ -282,11 +279,10 @@ export class McpNodeRedServer {
   }
 
   private async tryElicitConfirm(message: string): Promise<boolean> {
-    try {
-      const res = await (this.server as any).elicitInput({
-        mode: 'form',
+    return (
+      (await this.tryElicitField(
         message,
-        requestedSchema: {
+        {
           type: 'object',
           properties: {
             confirmed: {
@@ -297,11 +293,15 @@ export class McpNodeRedServer {
           },
           required: ['confirmed'],
         },
-      });
-      return res?.action === 'accept' && res.content?.confirmed === true;
-    } catch {
-      return false;
-    }
+        c => (c?.confirmed === true ? true : null)
+      )) ?? false
+    );
+  }
+
+  private async resolveFlowId(args: any, verb: string): Promise<string> {
+    const flowId = args?.flowId ?? (await this.tryElicitFlowId(verb));
+    if (!flowId) throw new Error('Missing required parameter: flowId');
+    return flowId;
   }
 
   /**
@@ -755,15 +755,13 @@ export class McpNodeRedServer {
         }
 
         case 'get_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('get'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'get');
           result = { success: true, data: await this.nodeRedClient.getFlow(flowId), timestamp };
           break;
         }
 
         case 'validate_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('validate'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'validate');
           const flow = await this.nodeRedClient.getFlow(flowId);
           result = { success: true, data: validateFlowData(flow), timestamp };
           break;
@@ -783,8 +781,7 @@ export class McpNodeRedServer {
           };
 
         case 'update_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('update'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'update');
           if (!args?.flowData) throw new Error('Missing required parameter: flowData');
           if (args?.validate) validateFlowOrThrow(args.flowData);
           await this.nodeRedClient.updateFlow(flowId, args.flowData);
@@ -792,15 +789,13 @@ export class McpNodeRedServer {
         }
 
         case 'enable_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('enable'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'enable');
           await this.nodeRedClient.enableFlow(flowId);
           return { content: [{ type: 'text', text: `Flow ${flowId} enabled` }] };
         }
 
         case 'disable_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('disable'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'disable');
           await this.nodeRedClient.disableFlow(flowId);
           return { content: [{ type: 'text', text: `Flow ${flowId} disabled` }] };
         }
@@ -814,12 +809,10 @@ export class McpNodeRedServer {
               'query'
             ));
           if (!query) throw new Error('Missing required parameter: query');
-          const searchCategory = args?.category || 'all';
-          const searchLimit = args?.limit || 10;
           const searchResults = await this.nodeRedClient.searchModules(
             query,
-            searchCategory,
-            searchLimit
+            args?.category || 'all',
+            args?.limit || 10
           );
           return { content: [{ type: 'text', text: JSON.stringify(searchResults, null, 2) }] };
         }
@@ -900,8 +893,7 @@ export class McpNodeRedServer {
         }
 
         case 'delete_flow': {
-          const flowId = args?.flowId ?? (await this.tryElicitFlowId('delete'));
-          if (!flowId) throw new Error('Missing required parameter: flowId');
+          const flowId = await this.resolveFlowId(args, 'delete');
           const dryRun = args?.dryRun !== false;
           const flow = await this.nodeRedClient.getFlow(flowId);
           const flowInfo = {
