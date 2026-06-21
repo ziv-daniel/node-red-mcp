@@ -967,10 +967,41 @@ export class McpNodeRedServer {
    * Get list of available resources
    */
   public async getResourceList() {
-    const resources = [];
+    const resources: Array<{ uri: string; name: string; description: string; mimeType: string }> =
+      [
+        {
+          uri: 'nodered://flows',
+          name: 'Node-RED Flows',
+          description: 'All flow tabs in the Node-RED instance',
+          mimeType: 'application/json',
+        },
+        {
+          uri: 'nodered://subflows',
+          name: 'Node-RED Subflows',
+          description: 'All reusable subflow definitions',
+          mimeType: 'application/json',
+        },
+        {
+          uri: 'nodered://nodes',
+          name: 'Installed Node Modules',
+          description: 'Node-RED palette modules currently installed',
+          mimeType: 'application/json',
+        },
+        {
+          uri: 'nodered://context/global',
+          name: 'Global Context',
+          description: 'Node-RED global context store (all key/value pairs)',
+          mimeType: 'application/json',
+        },
+        {
+          uri: 'system://runtime',
+          name: 'Node-RED System Info',
+          description: 'Node-RED runtime and connection status',
+          mimeType: 'application/json',
+        },
+      ];
 
     try {
-      // Add flow resources
       const flows = await this.nodeRedClient.getFlows();
       for (const flow of flows) {
         resources.push({
@@ -980,16 +1011,8 @@ export class McpNodeRedServer {
           mimeType: 'application/json',
         });
       }
-
-      // Add system resource
-      resources.push({
-        uri: 'system://runtime',
-        name: 'Node-RED System Info',
-        description: 'Node-RED runtime and connection status',
-        mimeType: 'application/json',
-      });
-    } catch (error) {
-      // Error silently handled
+    } catch {
+      // Dynamic per-flow resources unavailable; static collection resources still listed
     }
 
     return resources;
@@ -1053,6 +1076,106 @@ export class McpNodeRedServer {
             },
           ],
         };
+      }
+
+      case 'nodered': {
+        switch (path) {
+          case 'flows': {
+            const flows = await this.nodeRedClient.getFlowSummaries(['tab']);
+            return {
+              contents: [
+                {
+                  uri,
+                  mimeType: 'application/json',
+                  text: JSON.stringify(
+                    {
+                      uri,
+                      name: 'Node-RED Flows',
+                      description: 'All flow tabs in the Node-RED instance',
+                      mimeType: 'application/json',
+                      items: flows,
+                      metadata: { count: flows.length, timestamp: new Date().toISOString() },
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+          case 'subflows': {
+            const subflows = await this.nodeRedClient.getFlowSummaries(['subflow']);
+            return {
+              contents: [
+                {
+                  uri,
+                  mimeType: 'application/json',
+                  text: JSON.stringify(
+                    {
+                      uri,
+                      name: 'Node-RED Subflows',
+                      description: 'All reusable subflow definitions',
+                      mimeType: 'application/json',
+                      items: subflows,
+                      metadata: { count: subflows.length, timestamp: new Date().toISOString() },
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+          case 'nodes': {
+            const modules = await this.nodeRedClient.getInstalledModules();
+            const moduleList = Array.isArray(modules) ? modules : [];
+            return {
+              contents: [
+                {
+                  uri,
+                  mimeType: 'application/json',
+                  text: JSON.stringify(
+                    {
+                      uri,
+                      name: 'Installed Node Modules',
+                      description: 'Node-RED palette modules currently installed',
+                      mimeType: 'application/json',
+                      items: moduleList,
+                      metadata: { count: moduleList.length, timestamp: new Date().toISOString() },
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+          case 'context/global': {
+            const context = await this.nodeRedClient.getGlobalContext();
+            return {
+              contents: [
+                {
+                  uri,
+                  mimeType: 'application/json',
+                  text: JSON.stringify(
+                    {
+                      uri,
+                      name: 'Global Context',
+                      description: 'Node-RED global context store (all key/value pairs)',
+                      mimeType: 'application/json',
+                      data: context,
+                      metadata: { timestamp: new Date().toISOString() },
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
+            };
+          }
+          default:
+            throw new Error(`Unsupported nodered resource path: ${path}`);
+        }
       }
 
       default:
