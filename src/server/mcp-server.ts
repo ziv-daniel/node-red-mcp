@@ -653,7 +653,7 @@ export class McpNodeRedServer {
             flowData = stableSortBy(
               flowData,
               flowSortKeyFn(sortBy as FlowSortKey),
-              (order as 'asc' | 'desc') ?? 'asc'
+              order as 'asc' | 'desc' | undefined
             );
           }
 
@@ -880,15 +880,18 @@ export class McpNodeRedServer {
               if (typeFilterLower && !nodeTypeLower.includes(typeFilterLower)) continue;
               if (nodeTypePrefixLower && !nodeTypeLower.startsWith(nodeTypePrefixLower)) continue;
               if (queryLower) {
-                const nameMatch = (node.name ?? '').toLowerCase().includes(queryLower);
-                const propMatch = Object.entries(node).some(
-                  ([k, v]) =>
-                    !SEARCH_SKIP_PROPS.has(k) &&
-                    k !== 'name' &&
-                    typeof v === 'string' &&
-                    v.toLowerCase().includes(queryLower)
-                );
-                if (!nameMatch && !propMatch) continue;
+                let matched = (node.name ?? '').toLowerCase().includes(queryLower);
+                if (!matched) {
+                  for (const k in node) {
+                    if (SEARCH_SKIP_PROPS.has(k) || k === 'name') continue;
+                    const v = (node as Record<string, unknown>)[k];
+                    if (typeof v === 'string' && v.toLowerCase().includes(queryLower)) {
+                      matched = true;
+                      break;
+                    }
+                  }
+                }
+                if (!matched) continue;
               }
               allMatches.push({
                 nodeId: node.id,

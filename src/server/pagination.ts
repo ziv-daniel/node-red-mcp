@@ -71,8 +71,8 @@ export function applyPagination<T>(
 }
 
 /**
- * Stable sort: when the primary key compares equal, falls back to comparing
- * `id` so slice boundaries don't shuffle between requests.
+ * Stable sort with id as secondary key. Uses a Schwartzian transform so
+ * keyFn is invoked once per item rather than ~2·n·log n times during sort.
  */
 export function stableSortBy<T extends { id?: string }>(
   items: T[],
@@ -80,16 +80,18 @@ export function stableSortBy<T extends { id?: string }>(
   order: SortOrder = 'asc'
 ): T[] {
   const mul = order === 'asc' ? 1 : -1;
-  return [...items].sort((a, b) => {
-    const av = keyFn(a);
-    const bv = keyFn(b);
-    if (av === bv) {
-      const aid = a.id ?? '';
-      const bid = b.id ?? '';
-      return aid < bid ? -1 : aid > bid ? 1 : 0;
+  const tagged = items.map(item => ({ item, key: keyFn(item) }));
+  tagged.sort((a, b) => {
+    if (a.key === undefined && b.key !== undefined) return 1;
+    if (b.key === undefined && a.key !== undefined) return -1;
+    if (a.key !== b.key) {
+      // Both defined and unequal — primary comparison.
+      return (a.key as any) < (b.key as any) ? -mul : mul;
     }
-    if (av === undefined) return 1;
-    if (bv === undefined) return -1;
-    return av < bv ? -1 * mul : av > bv ? 1 * mul : 0;
+    // Primary keys equal (or both undefined) — fall back to id.
+    const aid = a.item.id ?? '';
+    const bid = b.item.id ?? '';
+    return aid < bid ? -1 : aid > bid ? 1 : 0;
   });
+  return tagged.map(t => t.item);
 }
