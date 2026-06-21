@@ -135,6 +135,11 @@ export interface McpServerConfig {
     heartbeatInterval: number;
     maxConnections: number;
   };
+  semantic?: {
+    embeddingApiUrl?: string;
+    embeddingModel?: string;
+    indexTtlMs?: number;
+  };
 }
 
 // Authentication and authorization
