@@ -29,6 +29,29 @@ export interface PaginationEnvelope<T> {
 
 export type SortOrder = 'asc' | 'desc';
 
+export function caseInsensitiveIncludes(value: unknown, needle: string): boolean {
+  if (typeof value !== 'string') return false;
+  return value.toLowerCase().includes(needle.toLowerCase());
+}
+
+export function parseSort<K extends string>(
+  args: { sortBy?: unknown; order?: unknown } | undefined | null,
+  allowedKeys: readonly K[]
+): { sortBy: K | undefined; order: SortOrder } {
+  const sortBy = args?.sortBy;
+  const order = args?.order;
+  if (sortBy !== undefined && !allowedKeys.includes(sortBy as K)) {
+    throw new Error(`Invalid sortBy: must be one of ${allowedKeys.join(', ')}`);
+  }
+  if (order !== undefined && order !== 'asc' && order !== 'desc') {
+    throw new Error('Invalid order: must be "asc" or "desc"');
+  }
+  return {
+    sortBy: sortBy === undefined ? undefined : (sortBy as K),
+    order: order === undefined ? 'asc' : order,
+  };
+}
+
 export function isPaginated(args: Record<string, unknown> | undefined | null): boolean {
   if (!args) return false;
   return args.limit !== undefined || args.offset !== undefined;
