@@ -3,52 +3,44 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7%2B-blue.svg)](https://www.typescriptlang.org/)
-[![CI/CD](https://github.com/your-org/nodered-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/nodered-mcp/actions)
-[![CodeQL](https://github.com/your-org/nodered-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/your-org/nodered-mcp/actions/workflows/codeql.yml)
-[![codecov](https://codecov.io/gh/your-org/nodered-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/your-org/nodered-mcp)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=your-org_nodered-mcp&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=your-org_nodered-mcp)
+[![CI/CD](https://github.com/ziv-daniel/node-red-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ziv-daniel/node-red-mcp/actions)
 
-> A modern, production-ready Model Context Protocol (MCP) server for Node-RED
-> integration, built with best practices.
+> A modern, production-ready Model Context Protocol (MCP) server for Node-RED integration.
 
 ## 🌟 Features
 
-### 🚀 **Architecture**
+### 🔧 20 MCP Tools
 
-- **Node.js 22 LTS** with latest JavaScript features
-- **TypeScript 5.7+** with strict type checking
-- **ESM-first** with dual ESM/CJS output using `tsup`
-- **Yarn 4** with zero-installs and modern package management
+Full CRUD for flows, context variables, modules, and diagnostics — plus semantic search and real-time error detection.
 
-### 🔄 **Node-RED Integration**
+### 📚 Prompts Library
 
-- **Node-RED v4** support with latest features
-- **Real-time** flow monitoring via SSE
-- **Template flows** for common MCP patterns
-- **Admin API** integration for flow management
-- **WebSocket** support for live updates
+Built-in prompt templates: `debug_flow`, `explain_automation`, `audit_security`, `document_flow`.
 
-### 🛡️ **Reliability & Resilience (2025 Updates)**
+### 📦 MCP Resources
 
-- **Circuit Breaker Pattern** for fault tolerance
-- **Exponential Backoff Retry** with smart failure handling
-- **Request Timeout Management** with proper cleanup
-- **Server Discovery** via `.well-known/mcp.json` (November 2025 spec)
-- **MCP SDK 1.22.0** with latest protocol enhancements
-- **Comprehensive Error Handling** with 19 test cases
+Browse Node-RED state as structured resources: `nodered://flows`, `nodered://subflows`, `nodered://nodes`, `nodered://context/global`, `flow://<id>`, `system://runtime`.
 
-### 📊 **Observability**
+### 🔍 Semantic Search
 
-- **Structured Logging** with Pino
-- **Circuit Breaker Metrics** and health monitoring
-- **Request Correlation IDs** for debugging
-- **Performance Metrics** collection
+Embeddings-based search across flows and nodes via `semantic_search_flows`. Finds by meaning, not just keywords.
+
+### 🧠 Elicitation
+
+The server asks clarifying questions mid-call when required parameters are missing (MCP SDK 1.24+ elicitation).
+
+### 🚨 Real-time Error Detection
+
+`get_node_errors` connects to Node-RED's WebSocket `/comms` endpoint to detect nodes in error/warning state in real time.
 
 ## 📋 Table of Contents
 
 - [Quick Start](#-quick-start)
-- [Installation](#-installation)
-- [Usage](#-usage)
+- [Available Tools](#-available-mcp-tools)
+- [Resources](#-mcp-resources)
+- [Prompts](#-mcp-prompts)
+- [Connecting](#-connecting-to-the-server)
+- [Environment Variables](#-environment-variables)
 
 ## ⚡ Quick Start
 
@@ -56,191 +48,146 @@
 
 - **Node.js** 22+ (LTS recommended)
 - **Yarn** 4.x (automatically managed via Corepack)
-- **Claude Desktop** or other MCP client (for stdio mode)
-- **Docker** & **Docker Compose** (optional, for containerized setup)
+- **Docker** (optional, for containerized setup)
 
-### 🚀 Option 1: Native Installation (For Claude Desktop)
+### Native Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/nodered-mcp.git
-cd nodered-mcp
-
-# Install dependencies (Yarn 4 will be automatically used)
+git clone https://github.com/ziv-daniel/node-red-mcp.git
+cd node-red-mcp
 yarn install
-
-# Build the project (no .env file needed for stdio mode)
 yarn build
-
-# Test the server (optional)
-echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}},"id":1}' | node dist/index.mjs
-
-# Configure in Claude Desktop (see Usage section)
 ```
 
-### 🐳 Option 2: Docker Compose (For HTTP Mode Development)
+### Docker
 
 ```bash
-# Clone and start the full stack
-git clone https://github.com/your-org/nodered-mcp.git
-cd nodered-mcp
-
-# Start all services (includes Node-RED, PostgreSQL, Redis, monitoring)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f mcp-server
+docker run -e NODERED_URL=http://your-nodered:1880 \
+           -e NODERED_USERNAME=admin \
+           -e NODERED_PASSWORD=password \
+           -p 3000:3000 \
+           ghcr.io/ziv-daniel/node-red-mcp:latest
 ```
 
-Access the services:
+## 🔧 Available MCP Tools
 
-- **MCP Server**: http://localhost:3000
-- **Node-RED**: http://localhost:1880
-- **Grafana**: http://localhost:3001 (admin/admin)
-- **Jaeger**: http://localhost:16686
+### Flow Management
 
-## 🔧 Installation
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `get_flows` | List flows (summary or full) | `includeDetails?`, `types?`, `limit?`, `offset?` |
+| `get_flow` | Get a specific flow | `flowId` |
+| `create_flow` | Create a new flow | `flowData`, `validate?` |
+| `update_flow` | Update an existing flow | `flowId`, `flowData`, `validate?` |
+| `enable_flow` | Enable a flow | `flowId` |
+| `disable_flow` | Disable a flow | `flowId` |
+| `delete_flow` | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?` |
+| `validate_flow` | Validate flow structure | `flowId` |
+| `search_flows` | Search nodes by type/name/property | `type?`, `query?`, `flowId?` |
+| `semantic_search_flows` | Embeddings-based semantic search | `query`, `scope?`, `topK?`, `refresh?` |
 
-### System Requirements
+### Context Variables
 
-- **Node.js**: 22.0.0 or higher
-- **Memory**: 512MB minimum, 2GB recommended
-- **Storage**: 1GB available space
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `get_context` | Read global or flow context | `key?`, `scope?`, `flowId?` |
+| `set_context` | Write a context variable | `key`, `value`, `scope?`, `flowId?` |
+| `delete_context` | Delete a context variable | `key`, `scope?`, `flowId?` |
 
-### Local Development Setup
+### Modules
 
-```bash
-# Enable Corepack (if not already enabled)
-corepack enable
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `search_modules` | Search Node-RED palette | `query`, `category?`, `limit?` |
+| `install_module` | Install a module | `moduleName`, `version?` |
+| `get_installed_modules` | List installed modules | — |
 
-# Verify versions
-node --version  # Should be 22.x.x
-yarn --version  # Should be 4.x.x
+### Diagnostics
 
-# Install dependencies
-yarn install
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `get_node_errors` | Detect nodes in error/warning state (WebSocket) | `includeWarnings?`, `timeoutMs?` |
+| `get_flow_state` | Get flow runtime state (started/stopped) | — |
+| `get_settings` | Get Node-RED runtime settings | — |
+| `get_runtime_info` | Get Node-RED version and system info | — |
 
-# Set up environment
-cp env.example .env
-# Edit .env file with your configuration
+## 📦 MCP Resources
 
-# Run in development mode with hot reload
-yarn dev
-```
+Access Node-RED state as browseable MCP resources:
 
-## 🎯 Usage
+| URI | Description |
+|-----|-------------|
+| `nodered://flows` | All tab flows (summary) |
+| `nodered://subflows` | All subflows |
+| `nodered://nodes` | Installed node modules |
+| `nodered://context/global` | Global context variables |
+| `flow://<id>` | Full detail for a specific flow |
+| `system://runtime` | Node-RED runtime info |
 
-### Claude Desktop Integration (Recommended)
+## 📚 MCP Prompts
 
-Add to your Claude Desktop configuration
-(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+Built-in prompt templates for common tasks:
+
+| Prompt | Description |
+|--------|-------------|
+| `debug_flow` | Diagnose errors in a specific flow |
+| `explain_automation` | Explain what a flow does in plain language |
+| `audit_security` | Security audit of flow configurations |
+| `document_flow` | Generate documentation for a flow |
+
+## 🔌 Connecting to the Server
+
+### Transport Modes
+
+| Mode | Env Var | Endpoint | Use Case |
+|------|---------|----------|---------|
+| **Streamable HTTP** | `MCP_TRANSPORT=http` | `POST /mcp` | Production, remote agents |
+| **Stdio** | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop |
+
+### Authentication
+
+Set `MCP_USERNAME` and `MCP_PASSWORD` for HTTP Basic Auth on the `/mcp` endpoint.
+
+### Claude Desktop (stdio)
 
 ```json
 {
   "mcpServers": {
     "nodered": {
       "command": "node",
-      "args": ["path/to/nodered_mcp/dist/index.mjs"],
+      "args": ["path/to/node-red-mcp/dist/index.mjs"],
       "env": {
+        "MCP_TRANSPORT": "stdio",
         "NODERED_URL": "https://your-nodered-instance.com",
-        "NODERED_USERNAME": "your-username",
-        "NODERED_PASSWORD": "your-secure-password"
+        "NODERED_USERNAME": "admin",
+        "NODERED_PASSWORD": "password"
       }
     }
   }
 }
 ```
 
-### Available MCP Tools
-
-| Tool                    | Description                       | Arguments                              |
-| ----------------------- | --------------------------------- | -------------------------------------- |
-| `get_flows`             | Get Node-RED flows (summary/full) | `includeDetails?: boolean`             |
-| `get_flow`              | Get specific flow details         | `flowId: string`                       |
-| `create_flow`           | Create a new Node-RED flow        | `flowData: object`                     |
-| `update_flow`           | Update an existing flow           | `flowId: string, flowData: object`     |
-| `enable_flow`           | Enable a specific flow            | `flowId: string`                       |
-| `disable_flow`          | Disable a specific flow           | `flowId: string`                       |
-| `search_modules`        | Search Node-RED palette modules   | `query: string, category?: string`     |
-| `install_module`        | Install a Node-RED module         | `moduleName: string, version?: string` |
-| `get_installed_modules` | Get installed modules             | None                                   |
-
-## 🔌 Connecting to the Server
-
-The MCP server supports multiple transport modes and authentication methods.
-Choose the one that fits your setup.
-
-### Transport Modes
-
-| Mode                | Env Var               | Endpoint     | Use Case                              |
-| ------------------- | --------------------- | ------------ | ------------------------------------- |
-| **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`  | Production deployments, remote agents |
-| **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop local integration      |
-
-### Authentication
-
-The server supports two authentication methods (configured via environment
-variables):
-
-1. **HTTP Basic Auth** — Set `MCP_USERNAME` and `MCP_PASSWORD`. Clients send an
-   `Authorization: Basic <base64>` header.
-2. **Bearer Token (JWT)** — After authenticating, clients receive a JWT for
-   subsequent requests. Requires `JWT_SECRET` to be set.
-
-### Connecting via Streamable HTTP (Remote)
-
-For remote MCP clients (Claude Code, custom agents, etc.), point them to the
-`/mcp` endpoint:
-
-```bash
-# Generic connection parameters
-URL: https://<your-server-host>/mcp
-Transport: streamable-http
-Auth header: Authorization: Basic <base64(username:password)>
-```
-
-**Claude Code CLI example:**
+### Claude Code / Remote Agent (HTTP)
 
 ```bash
 claude mcp add node-red \
   --transport streamable-http \
-  --url https://<your-server-host>/mcp \
+  --url https://<your-server>/mcp \
   --header "Authorization: Basic <base64-credentials>"
 ```
 
-### Connecting via Stdio (Local)
+## ⚙️ Environment Variables
 
-For Claude Desktop or other local MCP hosts, use stdio mode:
-
-```json
-{
-  "mcpServers": {
-    "nodered": {
-      "command": "node",
-      "args": ["path/to/nodered_mcp/dist/index.mjs"],
-      "env": {
-        "MCP_TRANSPORT": "stdio",
-        "NODERED_URL": "https://your-nodered-instance.com",
-        "NODERED_USERNAME": "your-username",
-        "NODERED_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Environment Variables
-
-| Variable           | Required | Description                       |
-| ------------------ | -------- | --------------------------------- |
-| `NODERED_URL`      | Yes      | URL of your Node-RED instance     |
-| `NODERED_USERNAME` | Yes      | Node-RED admin credentials        |
-| `NODERED_PASSWORD` | Yes      | Node-RED admin credentials        |
-| `MCP_TRANSPORT`    | No       | `http` (default) or `stdio`       |
-| `MCP_USERNAME`     | No       | MCP server auth username          |
-| `MCP_PASSWORD`     | No       | MCP server auth password          |
-| `JWT_SECRET`       | No       | Secret for JWT token signing      |
-| `HOST`             | No       | Bind address (default: `0.0.0.0`) |
-| `PORT`             | No       | Listen port (default: `3000`)     |
-| `CORS_ORIGIN`      | No       | Allowed CORS origins              |
-| `LOG_LEVEL`        | No       | `debug`, `info`, `warn`, `error`  |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODERED_URL` | Yes | — | URL of your Node-RED instance |
+| `NODERED_USERNAME` | No | — | Node-RED admin username |
+| `NODERED_PASSWORD` | No | — | Node-RED admin password |
+| `MCP_TRANSPORT` | No | `http` | `http` or `stdio` |
+| `MCP_USERNAME` | No | — | MCP server auth username |
+| `MCP_PASSWORD` | No | — | MCP server auth password |
+| `HOST` | No | `0.0.0.0` | Bind address |
+| `PORT` | No | `3000` | Listen port |
+| `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
+| `NODERED_REJECT_UNAUTHORIZED` | No | `true` | Set `false` to allow self-signed TLS |
+| `EMBEDDING_MODEL` | No | `Xenova/all-MiniLM-L6-v2` | Model for semantic search |
