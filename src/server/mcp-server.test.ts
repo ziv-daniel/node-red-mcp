@@ -1435,7 +1435,11 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should pass includeWarnings and timeoutMs to checker', async () => {
-      mockNodeErrorChecker.check.mockResolvedValueOnce({ errors: [], warnings: [], statusesMayBeIncomplete: false });
+      mockNodeErrorChecker.check.mockResolvedValueOnce({
+        errors: [],
+        warnings: [],
+        statusesMayBeIncomplete: false,
+      });
       await mcpServer.callTool('get_node_errors', { includeWarnings: true, timeoutMs: 5000 });
       expect(mockNodeErrorChecker.check).toHaveBeenCalledWith({
         includeWarnings: true,
