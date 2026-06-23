@@ -249,8 +249,11 @@ export class NodeRedAPIClient {
     return updatedFlow;
   }
 
-  getBaseURL(): string {
-    return this.config.baseURL;
+  getCommsWsUrl(): string {
+    return `${this.config.baseURL
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://')
+      .replace(/\/$/, '')}/comms`;
   }
 
   /**

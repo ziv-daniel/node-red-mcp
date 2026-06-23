@@ -15,19 +15,19 @@ vi.mock('../utils/auth.js', () => ({
 
 vi.mock('./nodered-api.js', () => ({
   NodeRedAPIClient: vi.fn().mockImplementation(() => ({
-    getBaseURL: vi.fn().mockReturnValue('http://localhost:0'),
+    getCommsWsUrl: vi.fn().mockReturnValue('ws://localhost:0/comms'),
     getFlows: vi.fn().mockResolvedValue([]),
   })),
 }));
 
 interface FakeClient {
-  getBaseURL: ReturnType<typeof vi.fn>;
+  getCommsWsUrl: ReturnType<typeof vi.fn>;
   getFlows: ReturnType<typeof vi.fn>;
 }
 
 function makeClient(overrides: Partial<FakeClient> = {}): NodeRedAPIClient {
   const defaults: FakeClient = {
-    getBaseURL: vi.fn().mockReturnValue('http://localhost:0'),
+    getCommsWsUrl: vi.fn().mockReturnValue('ws://localhost:0/comms'),
     getFlows: vi.fn().mockResolvedValue([]),
   };
   return { ...defaults, ...overrides } as unknown as NodeRedAPIClient;
@@ -63,14 +63,14 @@ describe('NodeErrorChecker', () => {
 
   it('returns empty errors when no status messages arrive within timeout', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     const result = await checker.check({ timeoutMs: 100 });
 
     expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual([]);
-    expect(result.statusesMayBeIncomplete).toBe(true);
+    expect(result.statusesMayBeIncomplete).toBe(false);
 
     wss.close();
     await close();
@@ -78,7 +78,7 @@ describe('NodeErrorChecker', () => {
 
   it('returns a red node in errors', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -98,7 +98,7 @@ describe('NodeErrorChecker', () => {
 
   it('deduplicates: red then green → not in errors', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -117,7 +117,7 @@ describe('NodeErrorChecker', () => {
 
   it('does not include yellow nodes when includeWarnings is false', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -134,7 +134,7 @@ describe('NodeErrorChecker', () => {
 
   it('includes yellow nodes when includeWarnings is true', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -152,7 +152,7 @@ describe('NodeErrorChecker', () => {
   it('enriches nodes with flow metadata', async () => {
     const { wss, port, close } = await startWss();
     const client = makeClient({
-      getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`),
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
       getFlows: vi.fn().mockResolvedValue([
         {
           id: 'flow-1',
@@ -183,7 +183,7 @@ describe('NodeErrorChecker', () => {
   it('returns unknown metadata for nodes not in any flow', async () => {
     const { wss, port, close } = await startWss();
     const client = makeClient({
-      getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`),
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
       getFlows: vi.fn().mockResolvedValue([]),
     });
     const checker = new NodeErrorChecker(client);
@@ -207,7 +207,7 @@ describe('NodeErrorChecker', () => {
 
   it('rejects with auth error when WS returns auth:fail', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -221,7 +221,7 @@ describe('NodeErrorChecker', () => {
 
   it('caps timeoutMs at 30000', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getBaseURL: vi.fn().mockReturnValue(`http://localhost:${port}`) });
+    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
     const checker = new NodeErrorChecker(client);
 
     // Should not hang — pass 99999 but it gets capped and we just check it starts

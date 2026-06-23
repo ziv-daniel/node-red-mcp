@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 
 import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
+import { AuthenticationError } from '../utils/error-handling.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
 
@@ -21,25 +22,23 @@ export interface NodeErrorCheckResult {
 
 interface RawStatus { fill?: string; shape?: string; text?: string }
 
-function toWsUrl(baseURL: string): string {
-  return `${baseURL
-    .replace(/^https:\/\//, 'wss://')
-    .replace(/^http:\/\//, 'ws://')
-    .replace(/\/$/, '')}/comms`;
-}
-
-function collectStatuses(wsUrl: string, timeoutMs: number): Promise<Map<string, RawStatus>> {
+function collectStatuses(
+  wsUrl: string,
+  timeoutMs: number,
+): Promise<{ statuses: Map<string, RawStatus>; connected: boolean }> {
   return new Promise((resolve, reject) => {
     const statuses = new Map<string, RawStatus>();
     let ws: WebSocket | null = null;
     let settled = false;
+    let connected = false;
 
-    const finish = () => {
+    const finish = (err?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       ws?.terminate();
-      resolve(statuses);
+      if (err) reject(err);
+      else resolve({ statuses, connected });
     };
 
     const timer = setTimeout(finish, timeoutMs);
@@ -55,6 +54,8 @@ function collectStatuses(wsUrl: string, timeoutMs: number): Promise<Map<string, 
       return;
     }
 
+    ws.on('open', () => { connected = true; });
+
     ws.on('message', (raw: WebSocket.RawData) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-base-to-string
@@ -62,10 +63,7 @@ function collectStatuses(wsUrl: string, timeoutMs: number): Promise<Map<string, 
 
         if (msg.topic === 'auth') {
           if (msg.data === 'fail') {
-            settled = true;
-            clearTimeout(timer);
-            ws?.terminate();
-            reject(new Error('Node-RED WebSocket auth failed'));
+            finish(new AuthenticationError('Node-RED WebSocket auth failed'));
           }
           return;
         }
@@ -91,8 +89,8 @@ function collectStatuses(wsUrl: string, timeoutMs: number): Promise<Map<string, 
       }
     });
 
-    ws.on('close', finish);
-    ws.on('error', finish);
+    ws.on('close', () => finish());
+    ws.on('error', () => finish());
   });
 }
 
@@ -106,15 +104,10 @@ export class NodeErrorChecker {
     const includeWarnings = opts.includeWarnings ?? false;
     const timeoutMs = Math.min(opts.timeoutMs ?? 2000, 30000);
 
-    const wsUrl = toWsUrl(this.apiClient.getBaseURL());
-    const statuses = await collectStatuses(wsUrl, timeoutMs);
-
-    let flows: Awaited<ReturnType<NodeRedAPIClient['getFlows']>> = [];
-    try {
-      flows = await this.apiClient.getFlows();
-    } catch {
-      // proceed without enrichment
-    }
+    const [{ statuses, connected }, flows] = await Promise.all([
+      collectStatuses(this.apiClient.getCommsWsUrl(), timeoutMs),
+      this.apiClient.getFlows().catch((): Awaited<ReturnType<NodeRedAPIClient['getFlows']>> => []),
+    ]);
 
     const nodeIndex = new Map<string, { nodeType: string; label: string; flowId: string; flowName: string }>();
     for (const flow of flows) {
@@ -157,7 +150,7 @@ export class NodeErrorChecker {
     return {
       errors,
       warnings,
-      statusesMayBeIncomplete: statuses.size === 0,
+      statusesMayBeIncomplete: !connected,
     };
   }
 }
