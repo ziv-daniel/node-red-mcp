@@ -249,6 +249,10 @@ export class NodeRedAPIClient {
     return updatedFlow;
   }
 
+  getBaseURL(): string {
+    return this.config.baseURL;
+  }
+
   /**
    * Test connection to Node-RED
    */
