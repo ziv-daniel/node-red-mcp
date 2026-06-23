@@ -20,11 +20,15 @@ export interface NodeErrorCheckResult {
   statusesMayBeIncomplete: boolean;
 }
 
-interface RawStatus { fill?: string; shape?: string; text?: string }
+interface RawStatus {
+  fill?: string;
+  shape?: string;
+  text?: string;
+}
 
 function collectStatuses(
   wsUrl: string,
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<{ statuses: Map<string, RawStatus>; connected: boolean }> {
   return new Promise((resolve, reject) => {
     const statuses = new Map<string, RawStatus>();
@@ -54,7 +58,9 @@ function collectStatuses(
       return;
     }
 
-    ws.on('open', () => { connected = true; });
+    ws.on('open', () => {
+      connected = true;
+    });
 
     ws.on('message', (raw: WebSocket.RawData) => {
       try {
@@ -97,10 +103,12 @@ function collectStatuses(
 export class NodeErrorChecker {
   constructor(private readonly apiClient: NodeRedAPIClient) {}
 
-  async check(opts: {
-    includeWarnings?: boolean;
-    timeoutMs?: number;
-  } = {}): Promise<NodeErrorCheckResult> {
+  async check(
+    opts: {
+      includeWarnings?: boolean;
+      timeoutMs?: number;
+    } = {}
+  ): Promise<NodeErrorCheckResult> {
     const includeWarnings = opts.includeWarnings ?? false;
     const timeoutMs = Math.min(opts.timeoutMs ?? 2000, 30000);
 
@@ -109,7 +117,10 @@ export class NodeErrorChecker {
       this.apiClient.getFlows().catch((): Awaited<ReturnType<NodeRedAPIClient['getFlows']>> => []),
     ]);
 
-    const nodeIndex = new Map<string, { nodeType: string; label: string; flowId: string; flowName: string }>();
+    const nodeIndex = new Map<
+      string,
+      { nodeType: string; label: string; flowId: string; flowName: string }
+    >();
     for (const flow of flows) {
       const flowName = flow.label ?? flow.id;
       for (const node of flow.nodes ?? []) {

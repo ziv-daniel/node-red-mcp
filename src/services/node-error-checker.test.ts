@@ -43,8 +43,7 @@ function startWss(): Promise<{
     const wss = new WebSocketServer({ server });
     server.listen(0, () => {
       const { port } = server.address() as { port: number };
-      const close = () =>
-        new Promise<void>(res => wss.close(() => server.close(() => res())));
+      const close = () => new Promise<void>(res => wss.close(() => server.close(() => res())));
       resolve({ wss, port, close });
     });
   });
@@ -63,7 +62,9 @@ describe('NodeErrorChecker', () => {
 
   it('returns empty errors when no status messages arrive within timeout', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     const result = await checker.check({ timeoutMs: 100 });
@@ -78,11 +79,15 @@ describe('NodeErrorChecker', () => {
 
   it('returns a red node in errors', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
-      ws.send(JSON.stringify({ topic: 'status/node-1', data: { fill: 'red', text: 'not connected' } }));
+      ws.send(
+        JSON.stringify({ topic: 'status/node-1', data: { fill: 'red', text: 'not connected' } })
+      );
     });
 
     const result = await checker.check({ timeoutMs: 300 });
@@ -98,13 +103,17 @@ describe('NodeErrorChecker', () => {
 
   it('deduplicates: red then green → not in errors', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
       ws.send(JSON.stringify({ topic: 'status/node-1', data: { fill: 'red', text: 'error' } }));
       setTimeout(() => {
-        ws.send(JSON.stringify({ topic: 'status/node-1', data: { fill: 'green', text: 'connected' } }));
+        ws.send(
+          JSON.stringify({ topic: 'status/node-1', data: { fill: 'green', text: 'connected' } })
+        );
       }, 20);
     });
 
@@ -117,7 +126,9 @@ describe('NodeErrorChecker', () => {
 
   it('does not include yellow nodes when includeWarnings is false', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -134,7 +145,9 @@ describe('NodeErrorChecker', () => {
 
   it('includes yellow nodes when includeWarnings is true', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -189,7 +202,9 @@ describe('NodeErrorChecker', () => {
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
-      ws.send(JSON.stringify({ topic: 'status/node-orphan', data: { fill: 'red', text: 'error' } }));
+      ws.send(
+        JSON.stringify({ topic: 'status/node-orphan', data: { fill: 'red', text: 'error' } })
+      );
     });
 
     const result = await checker.check({ timeoutMs: 200 });
@@ -207,7 +222,9 @@ describe('NodeErrorChecker', () => {
 
   it('rejects with auth error when WS returns auth:fail', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
@@ -221,7 +238,9 @@ describe('NodeErrorChecker', () => {
 
   it('caps timeoutMs at 30000', async () => {
     const { wss, port, close } = await startWss();
-    const client = makeClient({ getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`) });
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
     const checker = new NodeErrorChecker(client);
 
     // Should not hang — pass 99999 but it gets capped and we just check it starts
