@@ -14,6 +14,7 @@ import {
 
 import { promptRegistry } from '../prompts/index.js';
 import { createEmbeddingProvider } from '../services/embedding-provider.js';
+import { NodeErrorChecker } from '../services/node-error-checker.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
 import { SemanticFlowIndex } from '../services/semantic-index.js';
 import {
@@ -715,6 +716,31 @@ export class McpNodeRedServer {
         inputSchema: { type: 'object', properties: {}, required: [] },
       },
       {
+        name: 'get_node_errors',
+        description:
+          'Check Node-RED for nodes that are in an error state (red status) after deployment. Connects to the Node-RED event bus, collects retained node statuses, and returns any nodes with active errors or warnings. Use after create_flow or update_flow to catch nodes with missing required configuration.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            includeWarnings: {
+              type: 'boolean',
+              description: 'Also return nodes with yellow (warning) status (default: false)',
+              default: false,
+            },
+            timeoutMs: {
+              type: 'number',
+              description:
+                'How long to collect statuses from the event bus in milliseconds (default: 2000, max: 30000)',
+              default: 2000,
+              minimum: 100,
+              maximum: 30000,
+            },
+          },
+          required: [],
+        },
+      },
+      {
         name: 'semantic_search_flows',
         description:
           'Search Node-RED flows and nodes using semantic similarity (BM25 by default; set EMBEDDING_API_URL for vector search). Returns ranked results with scores.',
@@ -1061,6 +1087,16 @@ export class McpNodeRedServer {
 
         case 'get_runtime_info': {
           result = { success: true, data: await this.nodeRedClient.getRuntimeInfo(), timestamp };
+          break;
+        }
+
+        case 'get_node_errors': {
+          const checker = new NodeErrorChecker(this.nodeRedClient);
+          const data = await checker.check({
+            includeWarnings: args?.includeWarnings ?? false,
+            timeoutMs: args?.timeoutMs,
+          });
+          result = { success: true, data, timestamp };
           break;
         }
 
