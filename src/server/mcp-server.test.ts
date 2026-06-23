@@ -99,6 +99,18 @@ vi.mock('../services/embedding-provider.js', () => ({
   createEmbeddingProvider: vi.fn().mockReturnValue({}),
 }));
 
+const mockNodeErrorChecker = {
+  check: vi.fn(),
+};
+
+vi.mock('../services/node-error-checker.js', () => ({
+  NodeErrorChecker: class {
+    constructor() {
+      return mockNodeErrorChecker;
+    }
+  },
+}));
+
 // Mock MCP SDK Server
 vi.mock('@modelcontextprotocol/sdk/server/index.js', () => {
   return {
@@ -324,9 +336,9 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 19 tools defined', () => {
+    it('should have exactly 20 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(19);
+      expect(tools.length).toBe(20);
     });
 
     it('should include semantic_search_flows tool', () => {
@@ -338,6 +350,15 @@ describe('McpNodeRedServer', () => {
       expect(tool?.inputSchema.properties).toHaveProperty('scope');
       expect(tool?.inputSchema.properties).toHaveProperty('topK');
       expect(tool?.inputSchema.properties).toHaveProperty('refresh');
+    });
+
+    it('should include get_node_errors tool', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const tool = tools.find(t => t.name === 'get_node_errors');
+      expect(tool).toBeDefined();
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+      expect(tool?.inputSchema.properties).toHaveProperty('includeWarnings');
+      expect(tool?.inputSchema.properties).toHaveProperty('timeoutMs');
     });
   });
 
@@ -1381,6 +1402,53 @@ describe('McpNodeRedServer', () => {
       mockSemanticIndex.search.mockResolvedValueOnce([]);
       await mcpServer.callTool('semantic_search_flows', {});
       expect(mockSemanticIndex.search).toHaveBeenCalledWith('temperature automation', 10, 'all');
+    });
+  });
+
+  describe('Tool Execution - get_node_errors', () => {
+    const mockResult = {
+      errors: [
+        {
+          nodeId: 'n1',
+          nodeType: 'mqtt in',
+          label: 'Listen',
+          status: { fill: 'red', text: 'not connected' },
+          flowId: 'flow-1',
+          flowName: 'My Flow',
+        },
+      ],
+      warnings: [],
+      statusesMayBeIncomplete: false,
+    };
+
+    it('should return error check results', async () => {
+      mockNodeErrorChecker.check.mockResolvedValueOnce(mockResult);
+      const result = await mcpServer.callTool('get_node_errors', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(mockNodeErrorChecker.check).toHaveBeenCalledWith({
+        includeWarnings: false,
+        timeoutMs: undefined,
+      });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toEqual(mockResult);
+    });
+
+    it('should pass includeWarnings and timeoutMs to checker', async () => {
+      mockNodeErrorChecker.check.mockResolvedValueOnce({ errors: [], warnings: [], statusesMayBeIncomplete: false });
+      await mcpServer.callTool('get_node_errors', { includeWarnings: true, timeoutMs: 5000 });
+      expect(mockNodeErrorChecker.check).toHaveBeenCalledWith({
+        includeWarnings: true,
+        timeoutMs: 5000,
+      });
+    });
+
+    it('should return error result when checker throws', async () => {
+      mockNodeErrorChecker.check.mockRejectedValueOnce(new Error('auth failed'));
+      const result = await mcpServer.callTool('get_node_errors', {});
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('auth failed');
     });
   });
 });

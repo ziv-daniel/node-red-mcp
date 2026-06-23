@@ -249,6 +249,13 @@ export class NodeRedAPIClient {
     return updatedFlow;
   }
 
+  getCommsWsUrl(): string {
+    return `${this.config.baseURL
+      .replace(/^https:\/\//, 'wss://')
+      .replace(/^http:\/\//, 'ws://')
+      .replace(/\/$/, '')}/comms`;
+  }
+
   /**
    * Test connection to Node-RED
    */
