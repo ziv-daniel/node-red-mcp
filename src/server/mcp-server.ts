@@ -309,9 +309,29 @@ export class McpNodeRedServer {
   }
 
   /**
-   * Get tool definitions
+   * True when MCP_READ_ONLY=true — write tools are hidden from tool listings
+   * and rejected if called directly, leaving all read/search/diagnostic
+   * capabilities intact. Useful when exposing this server to remote agents
+   * where accidental mutation of a live Node-RED instance is a real risk.
+   */
+  private isReadOnlyMode(): boolean {
+    return process.env.MCP_READ_ONLY === 'true';
+  }
+
+  /**
+   * Get tool definitions, filtered to read-only tools when MCP_READ_ONLY is set
    */
   public getToolDefinitions() {
+    const tools = this.getAllToolDefinitions();
+    return this.isReadOnlyMode() ? tools.filter(tool => tool.annotations?.readOnlyHint) : tools;
+  }
+
+  /**
+   * Full, unfiltered tool definitions (used internally so callTool can give a
+   * clear error when a write tool is called while read-only mode is active,
+   * rather than an ambiguous "unknown tool" error)
+   */
+  private getAllToolDefinitions() {
     return [
       // Core Flow Management Tools (Optimized)
       {
@@ -786,6 +806,15 @@ export class McpNodeRedServer {
     let result: McpToolResult;
 
     try {
+      if (this.isReadOnlyMode()) {
+        const tool = this.getAllToolDefinitions().find(t => t.name === name);
+        if (tool && !tool.annotations?.readOnlyHint) {
+          throw new Error(
+            `Tool '${name}' is unavailable: the server is running in read-only mode (MCP_READ_ONLY=true)`
+          );
+        }
+      }
+
       switch (name) {
         // Core Flow Management Tools
         case 'get_flows': {

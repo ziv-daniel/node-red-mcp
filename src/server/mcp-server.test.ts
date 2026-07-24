@@ -8,7 +8,7 @@
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import {
   mockFlows,
@@ -359,6 +359,49 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
       expect(tool?.inputSchema.properties).toHaveProperty('includeWarnings');
       expect(tool?.inputSchema.properties).toHaveProperty('timeoutMs');
+    });
+  });
+
+  describe('Read-only mode (MCP_READ_ONLY)', () => {
+    afterEach(() => {
+      delete process.env.MCP_READ_ONLY;
+    });
+
+    it('does not filter tools when MCP_READ_ONLY is unset', () => {
+      const tools = mcpServer.getToolDefinitions();
+      expect(tools.find(t => t.name === 'create_flow')).toBeDefined();
+      expect(tools.length).toBe(20);
+    });
+
+    it('hides write tools from the tool list when MCP_READ_ONLY=true', () => {
+      process.env.MCP_READ_ONLY = 'true';
+
+      const tools = mcpServer.getToolDefinitions();
+
+      expect(tools.every(t => t.annotations?.readOnlyHint)).toBe(true);
+      expect(tools.find(t => t.name === 'create_flow')).toBeUndefined();
+      expect(tools.find(t => t.name === 'get_flows')).toBeDefined();
+    });
+
+    it('rejects a write tool call when MCP_READ_ONLY=true', async () => {
+      process.env.MCP_READ_ONLY = 'true';
+
+      const result = await mcpServer.callTool('create_flow', { flowData: {} });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('read-only mode');
+      expect(mockNodeRedClient.createFlow).not.toHaveBeenCalled();
+    });
+
+    it('still allows a read tool call when MCP_READ_ONLY=true', async () => {
+      process.env.MCP_READ_ONLY = 'true';
+
+      const result = await mcpServer.callTool('get_flows', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalled();
     });
   });
 
