@@ -696,6 +696,7 @@ describe('resolveNodeRedAuthHeader', () => {
   // Each test re-imports the module fresh (via resetModules) so the
   // in-memory token cache doesn't leak between tests.
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.resetModules();
     delete process.env.NODERED_USERNAME;
     delete process.env.NODERED_PASSWORD;
@@ -734,6 +735,43 @@ describe('resolveNodeRedAuthHeader', () => {
       expect.objectContaining({ grant_type: 'password', username: 'admin', password: 'secret' }),
       expect.anything()
     );
+  });
+
+  it('strips a trailing slash from NODERED_URL before building the token endpoint', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_URL = 'http://localhost:1880/';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:1880/auth/token',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('clamps the cache TTL to a floor instead of going negative for a short-lived token', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    const axios = (await import('axios')).default;
+    // expires_in shorter than the 60s safety buffer would otherwise make
+    // the computed expiry land in the past, forcing a re-exchange on every
+    // single call instead of caching at all.
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 10 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+    await resolveNodeRedAuthHeader();
+
+    expect(axios.post).toHaveBeenCalledTimes(1);
   });
 
   it('forceRefresh bypasses the cache and re-exchanges credentials', async () => {

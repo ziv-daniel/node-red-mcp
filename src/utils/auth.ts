@@ -350,7 +350,7 @@ let cachedNodeRedToken: CachedNodeRedToken | null = null;
 let nodeRedTokenFetch: Promise<CachedNodeRedToken> | null = null;
 
 async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
-  const baseURL = process.env.NODERED_URL || 'http://localhost:1880';
+  const baseURL = (process.env.NODERED_URL || 'http://localhost:1880').replace(/\/+$/, '');
   const response = await axios.post(
     `${baseURL}/auth/token`,
     { client_id: 'node-red-admin', grant_type: 'password', scope: '*', username, password },
@@ -360,8 +360,11 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
     }
   );
   const { access_token, expires_in } = response.data;
-  // 60s safety buffer so we refresh slightly before Node-RED actually expires it
-  const ttlMs = (Number(expires_in) || 604800) * 1000 - 60_000;
+  const rawTtlMs = (Number(expires_in) || 604800) * 1000;
+  // 60s safety buffer so we refresh slightly before Node-RED actually expires
+  // it, but never below a 5s floor — a very short-lived expires_in would
+  // otherwise make ttlMs negative and force a re-exchange on every request.
+  const ttlMs = Math.max(rawTtlMs - 60_000, 5_000);
   return { accessToken: access_token, expiresAt: Date.now() + ttlMs };
 }
 
