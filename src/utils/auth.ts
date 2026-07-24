@@ -3,7 +3,9 @@
  */
 
 import { timingSafeEqual } from 'crypto';
+import https from 'https';
 
+import axios from 'axios';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
@@ -337,6 +339,73 @@ export function getNodeRedAuthHeader(): Record<string, string> {
     default:
       return {};
   }
+}
+
+interface CachedNodeRedToken {
+  accessToken: string;
+  expiresAt: number; // ms epoch
+}
+
+let cachedNodeRedToken: CachedNodeRedToken | null = null;
+let nodeRedTokenFetch: Promise<CachedNodeRedToken> | null = null;
+
+async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
+  const baseURL = process.env.NODERED_URL || 'http://localhost:1880';
+  const response = await axios.post(
+    `${baseURL}/auth/token`,
+    { client_id: 'node-red-admin', grant_type: 'password', scope: '*', username, password },
+    {
+      timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
+      httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
+    }
+  );
+  const { access_token, expires_in } = response.data;
+  // 60s safety buffer so we refresh slightly before Node-RED actually expires it
+  const ttlMs = (Number(expires_in) || 604800) * 1000 - 60_000;
+  return { accessToken: access_token, expiresAt: Date.now() + ttlMs };
+}
+
+/**
+ * Resolve a usable Authorization header for Node-RED.
+ *
+ * Node-RED's admin API only ever accepts a Bearer token (obtained via the
+ * /auth/token password-grant exchange) — it does NOT accept raw HTTP Basic
+ * auth. When NODERED_USERNAME/NODERED_PASSWORD are configured, this exchanges
+ * them for a token on demand and caches it in memory, transparently
+ * re-fetching a new one once it's close to expiry (or when `forceRefresh` is
+ * passed after a 401). Bearer (NODERED_API_TOKEN) and none modes pass through
+ * unchanged.
+ */
+export async function resolveNodeRedAuthHeader(
+  forceRefresh = false
+): Promise<Record<string, string>> {
+  const authConfig = validateNodeRedAuth();
+
+  if (authConfig.type === 'bearer') {
+    return { Authorization: `Bearer ${authConfig.credentials!.token}` };
+  }
+
+  if (authConfig.type !== 'basic') {
+    return {};
+  }
+
+  if (forceRefresh) {
+    cachedNodeRedToken = null;
+  }
+
+  if (cachedNodeRedToken && Date.now() < cachedNodeRedToken.expiresAt) {
+    return { Authorization: `Bearer ${cachedNodeRedToken.accessToken}` };
+  }
+
+  if (!nodeRedTokenFetch) {
+    const { username, password } = authConfig.credentials!;
+    nodeRedTokenFetch = fetchNodeRedToken(username!, password!).finally(() => {
+      nodeRedTokenFetch = null;
+    });
+  }
+
+  cachedNodeRedToken = await nodeRedTokenFetch;
+  return { Authorization: `Bearer ${cachedNodeRedToken.accessToken}` };
 }
 
 /**

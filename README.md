@@ -49,6 +49,7 @@ nodes in error/warning state in real time.
 - [Resources](#-mcp-resources)
 - [Prompts](#-mcp-prompts)
 - [Connecting](#-connecting-to-the-server)
+- [Node-RED Authentication](#node-red-authentication)
 - [Environment Variables](#-environment-variables)
 
 ## ⚡ Quick Start
@@ -201,13 +202,31 @@ claude mcp add node-red \
   --header "Authorization: Basic <base64-credentials>"
 ```
 
+### Node-RED Authentication
+
+Node-RED's admin API only accepts a **Bearer token** — it does not support
+HTTP Basic auth. There are two ways to authenticate against it:
+
+- **`NODERED_USERNAME` + `NODERED_PASSWORD`** (recommended) — the server
+  exchanges these for a token via Node-RED's `/auth/token` password grant on
+  first use, caches it in memory, and transparently re-exchanges it shortly
+  before it expires (or immediately after a `401`). You never see the token.
+- **`NODERED_API_TOKEN`** — supply an already-issued bearer token directly
+  (e.g. one you obtained yourself via `/auth/token`). Useful if you don't want
+  this server to hold your Node-RED password, at the cost of having to
+  refresh the token yourself once it expires.
+
+If neither is set, requests are sent unauthenticated — only appropriate when
+Node-RED's `adminAuth` is disabled.
+
 ## ⚙️ Environment Variables
 
 | Variable                      | Required | Default                   | Description                                                                                    |
 | ----------------------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
 | `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                  |
-| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                        |
-| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                        |
+| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username (exchanged for a bearer token automatically)                            |
+| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password (exchanged for a bearer token automatically)                            |
+| `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                       |
 | `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                              |
 | `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                       |
 | `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                       |

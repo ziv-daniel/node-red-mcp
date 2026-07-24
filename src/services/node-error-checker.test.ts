@@ -3,13 +3,13 @@ import { createServer } from 'http';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer } from 'ws';
 
-import { getNodeRedAuthHeader } from '../utils/auth.js';
+import { resolveNodeRedAuthHeader } from '../utils/auth.js';
 
 import { NodeErrorChecker } from './node-error-checker.js';
 import { NodeRedAPIClient } from './nodered-api.js';
 
 vi.mock('../utils/auth.js', () => ({
-  getNodeRedAuthHeader: vi.fn().mockReturnValue({}),
+  resolveNodeRedAuthHeader: vi.fn().mockResolvedValue({}),
   getTlsRejectUnauthorized: vi.fn().mockReturnValue(true),
 }));
 
@@ -53,7 +53,7 @@ describe('NodeErrorChecker', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(getNodeRedAuthHeader).mockReturnValue({});
+    vi.mocked(resolveNodeRedAuthHeader).mockResolvedValue({});
   });
 
   afterEach(() => {

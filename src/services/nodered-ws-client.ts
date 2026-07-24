@@ -12,7 +12,7 @@ import {
   NodeRedRuntimeEvent,
   NodeRedStatusEvent,
 } from '../types/nodered.js';
-import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
+import { resolveNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
 
 export interface NodeRedWsConfig {
   baseURL: string;
@@ -46,10 +46,10 @@ export class NodeRedWsClient {
   connect(): void {
     this.stopped = false;
     this.reconnectDelay = 1000;
-    this._connect();
+    void this._connect();
   }
 
-  private _connect(): void {
+  private async _connect(): Promise<void> {
     if (this.stopped) return;
 
     if (this.ws) {
@@ -63,9 +63,10 @@ export class NodeRedWsClient {
       .replace(/\/$/, '')}/comms`;
 
     try {
+      const headers = await resolveNodeRedAuthHeader();
       this.ws = new WebSocket(wsUrl, {
         rejectUnauthorized: getTlsRejectUnauthorized(),
-        headers: getNodeRedAuthHeader(),
+        headers,
       });
     } catch (err) {
       console.error('NodeRedWsClient: failed to create WebSocket', err);
@@ -107,7 +108,7 @@ export class NodeRedWsClient {
     if (this.stopped) return;
     const delay = this.reconnectDelay;
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
-    this.reconnectTimer = setTimeout(() => this._connect(), delay);
+    this.reconnectTimer = setTimeout(() => void this._connect(), delay);
   }
 
   private _handleMessage(msg: CommsMessage): void {

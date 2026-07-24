@@ -32,12 +32,16 @@ import {
   mockAuthToken,
   mockAuthStatus,
 } from '../../test/fixtures/responses.js';
+import { resolveNodeRedAuthHeader } from '../utils/auth.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
 
 // Mock axios
 vi.mock('axios', () => {
-  const mockAxiosInstance = {
+  // Callable so tests can exercise `this.client(config)` retry calls made
+  // from inside the response interceptor's error handler.
+  const mockAxiosInstance: any = vi.fn();
+  Object.assign(mockAxiosInstance, {
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
@@ -46,7 +50,7 @@ vi.mock('axios', () => {
       request: { use: vi.fn() },
       response: { use: vi.fn() },
     },
-  };
+  });
 
   return {
     default: {
@@ -59,7 +63,7 @@ vi.mock('axios', () => {
 
 // Mock auth utility
 vi.mock('../utils/auth.js', () => ({
-  getNodeRedAuthHeader: vi.fn(() => ({})),
+  resolveNodeRedAuthHeader: vi.fn(async () => ({})),
   getTlsRejectUnauthorized: vi.fn(() => true),
 }));
 
@@ -1135,6 +1139,83 @@ describe('NodeRedAPIClient', () => {
     it('getFlowSummaries propagates error from getFlows', async () => {
       mockAxiosInstance.get.mockRejectedValueOnce(err);
       await expect(client.getFlowSummaries()).rejects.toThrow();
+    });
+  });
+
+  describe('Auth header injection', () => {
+    it('applies resolveNodeRedAuthHeader on each request when there is no explicit auth override', async () => {
+      const requestInterceptor = mockAxiosInstance.interceptors.request.use.mock.calls[0][0];
+      const config: any = { headers: {} };
+
+      await requestInterceptor(config);
+
+      expect(resolveNodeRedAuthHeader).toHaveBeenCalledWith();
+    });
+
+    it('does not call resolveNodeRedAuthHeader when constructed with an explicit Authorization header (per-tenant client)', async () => {
+      vi.mocked(resolveNodeRedAuthHeader).mockClear();
+
+      new NodeRedAPIClient({
+        baseURL: 'http://tenant-nodered:1880',
+        headers: { Authorization: 'Bearer tenant-token' },
+      });
+      // The axios mock always returns the same shared instance object, so
+      // `.mock.calls` accumulates every client's registration — grab the
+      // most recent one (this test's tenant client), not index 0.
+      const requestCalls = mockAxiosInstance.interceptors.request.use.mock.calls;
+      const requestInterceptor = requestCalls[requestCalls.length - 1][0];
+
+      const config: any = { headers: { Authorization: 'Bearer tenant-token' } };
+      await requestInterceptor(config);
+
+      expect(resolveNodeRedAuthHeader).not.toHaveBeenCalled();
+      expect(config.headers.Authorization).toBe('Bearer tenant-token');
+    });
+  });
+
+  describe('401 handling', () => {
+    it('forces a token refresh and retries exactly once, guarded by _authRetry', async () => {
+      const responseErrorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+      mockAxiosInstance.mockResolvedValueOnce({ data: 'retried-ok' });
+
+      const config: any = { headers: {}, _retryCount: 0 };
+      const error: any = { response: { status: 401 }, config };
+
+      const result = await responseErrorHandler(error);
+
+      expect(resolveNodeRedAuthHeader).toHaveBeenCalledWith(true);
+      expect(config._authRetry).toBe(true);
+      expect(mockAxiosInstance).toHaveBeenCalledTimes(1);
+      expect(mockAxiosInstance).toHaveBeenCalledWith(config);
+      expect(result).toEqual({ data: 'retried-ok' });
+    });
+
+    it('does not retry a second time once _authRetry is already set (no infinite loop)', async () => {
+      const responseErrorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+      const config: any = { headers: {}, _authRetry: true, _retryCount: 3 };
+      const error: any = { response: { status: 401 }, config };
+
+      await expect(responseErrorHandler(error)).rejects.toBe(error);
+      expect(resolveNodeRedAuthHeader).not.toHaveBeenCalledWith(true);
+    });
+
+    it('skips forced refresh on 401 for a client with an explicit auth override (per-tenant client)', async () => {
+      const tenantClient = new NodeRedAPIClient({
+        baseURL: 'http://tenant-nodered:1880',
+        headers: { Authorization: 'Bearer tenant-token' },
+      });
+      // Same shared-mock caveat as above: grab the most recently registered
+      // response interceptor, which belongs to this test's tenant client.
+      const responseCalls = mockAxiosInstance.interceptors.response.use.mock.calls;
+      const responseErrorHandler = responseCalls[responseCalls.length - 1][1];
+      vi.mocked(resolveNodeRedAuthHeader).mockClear();
+
+      const config: any = { headers: {}, _retryCount: 3 };
+      const error: any = { response: { status: 401 }, config };
+
+      await expect(responseErrorHandler(error)).rejects.toBe(error);
+      expect(resolveNodeRedAuthHeader).not.toHaveBeenCalled();
+      expect(tenantClient).toBeDefined();
     });
   });
 });

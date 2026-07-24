@@ -8,13 +8,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { SSEHandler } from '../server/sse-handler.js';
-import { getNodeRedAuthHeader } from '../utils/auth.js';
+import { resolveNodeRedAuthHeader } from '../utils/auth.js';
 
 import { NodeRedWsClient } from './nodered-ws-client.js';
 
 // Silence auth util so we control what headers are returned
 vi.mock('../utils/auth.js', () => ({
-  getNodeRedAuthHeader: vi.fn().mockReturnValue({}),
+  resolveNodeRedAuthHeader: vi.fn().mockResolvedValue({}),
   getTlsRejectUnauthorized: vi.fn().mockReturnValue(true),
 }));
 
@@ -48,7 +48,7 @@ describe('NodeRedWsClient', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // mockReset (vitest.config) clears return values between tests; restore default.
-    vi.mocked(getNodeRedAuthHeader).mockReturnValue({});
+    vi.mocked(resolveNodeRedAuthHeader).mockResolvedValue({});
     mockSSE = makeSSEHandler();
   });
 
@@ -192,9 +192,9 @@ describe('NodeRedWsClient', () => {
     await close();
   });
 
-  it('passes auth headers in WS handshake when Basic auth is configured', async () => {
-    vi.mocked(getNodeRedAuthHeader).mockReturnValue({
-      Authorization: 'Basic dXNlcjpwYXNz',
+  it('passes resolved auth headers through to the WS handshake', async () => {
+    vi.mocked(resolveNodeRedAuthHeader).mockResolvedValue({
+      Authorization: 'Bearer some-token',
     });
 
     const { wss, port, close } = await startWsServer();
@@ -211,8 +211,8 @@ describe('NodeRedWsClient', () => {
       client.connect();
     });
 
-    expect(receivedAuthHeader).toBe('Basic dXNlcjpwYXNz');
-    expect(getNodeRedAuthHeader).toHaveBeenCalled();
+    expect(receivedAuthHeader).toBe('Bearer some-token');
+    expect(resolveNodeRedAuthHeader).toHaveBeenCalled();
 
     client.disconnect();
     await close();

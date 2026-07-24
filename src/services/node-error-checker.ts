@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 
-import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
+import { resolveNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
 import { AuthenticationError } from '../utils/error-handling.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
@@ -26,10 +26,12 @@ interface RawStatus {
   text?: string;
 }
 
-function collectStatuses(
+async function collectStatuses(
   wsUrl: string,
   timeoutMs: number
 ): Promise<{ statuses: Map<string, RawStatus>; connected: boolean }> {
+  const headers = await resolveNodeRedAuthHeader();
+
   return new Promise((resolve, reject) => {
     const statuses = new Map<string, RawStatus>();
     let ws: WebSocket | null = null;
@@ -50,7 +52,7 @@ function collectStatuses(
     try {
       ws = new WebSocket(wsUrl, {
         rejectUnauthorized: getTlsRejectUnauthorized(),
-        headers: getNodeRedAuthHeader(),
+        headers,
       });
     } catch (err) {
       clearTimeout(timer);

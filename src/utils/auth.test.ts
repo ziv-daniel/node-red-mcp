@@ -4,7 +4,7 @@
 
 import type { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import type { McpAuthContext } from '../types/mcp-extensions.js';
 
@@ -25,6 +25,13 @@ import {
   type AuthPayload,
   type AuthRequest,
 } from './auth.js';
+
+vi.mock('axios', () => ({
+  default: {
+    post: vi.fn(),
+    isAxiosError: vi.fn(() => false),
+  },
+}));
 
 describe('Auth Utils', () => {
   const mockSecret = 'test-secret-key-minimum-32-chars-xxxx';
@@ -682,5 +689,89 @@ describe('Rate Limiting Utilities', () => {
 
       expect(key).toBe('ip:unknown');
     });
+  });
+});
+
+describe('resolveNodeRedAuthHeader', () => {
+  // Each test re-imports the module fresh (via resetModules) so the
+  // in-memory token cache doesn't leak between tests.
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.NODERED_USERNAME;
+    delete process.env.NODERED_PASSWORD;
+    delete process.env.NODERED_API_TOKEN;
+    process.env.NODERED_URL = 'http://localhost:1880';
+  });
+
+  it('passes NODERED_API_TOKEN through unchanged without hitting the network', async () => {
+    process.env.NODERED_API_TOKEN = 'static-token';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer static-token' });
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('exchanges username/password for a bearer token and caches it', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const first = await resolveNodeRedAuthHeader();
+    const second = await resolveNodeRedAuthHeader();
+
+    expect(first).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(second).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:1880/auth/token',
+      expect.objectContaining({ grant_type: 'password', username: 'admin', password: 'secret' }),
+      expect.anything()
+    );
+  });
+
+  it('forceRefresh bypasses the cache and re-exchanges credentials', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({ data: { access_token: 'tok-1', expires_in: 3600 } })
+      .mockResolvedValueOnce({ data: { access_token: 'tok-2', expires_in: 3600 } });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+    const refreshed = await resolveNodeRedAuthHeader(true);
+
+    expect(refreshed).toEqual({ Authorization: 'Bearer tok-2' });
+    expect(axios.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('dedupes concurrent calls into a single token exchange', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    const axios = (await import('axios')).default;
+    let resolvePost!: (value: { data: { access_token: string; expires_in: number } }) => void;
+    vi.mocked(axios.post).mockReturnValue(
+      new Promise(resolve => {
+        resolvePost = resolve;
+      })
+    );
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const call1 = resolveNodeRedAuthHeader();
+    const call2 = resolveNodeRedAuthHeader();
+    resolvePost({ data: { access_token: 'tok-1', expires_in: 3600 } });
+
+    const [r1, r2] = await Promise.all([call1, call2]);
+
+    expect(r1).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(r2).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
   });
 });

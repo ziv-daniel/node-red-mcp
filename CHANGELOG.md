@@ -61,6 +61,21 @@ and this project adheres to
 
 ### Fixed
 
+- **Node-RED Username/Password Authentication**: `NODERED_USERNAME` +
+  `NODERED_PASSWORD` previously sent a static HTTP Basic auth header on every
+  request, which Node-RED's admin API does not accept (it only accepts Bearer
+  tokens issued via the `/auth/token` password grant) — every request in this
+  mode failed with `401`
+  - The credentials are now exchanged for a bearer token on demand, cached in
+    memory, and transparently re-exchanged shortly before expiry or immediately
+    after a `401`
+  - A client constructed with an explicit `Authorization` header (used by the
+    per-tenant OAuth path in `callToolPublic`) is left untouched — the new token
+    resolution never overwrites tenant-supplied credentials
+  - The token exchange now respects `NODERED_TIMEOUT` like the rest of the
+    client, instead of being able to hang indefinitely
+  - Added unit tests covering token caching/reuse, forced refresh, concurrent
+    request de-duplication, the 401-retry-once path, and the per-tenant override
 - **TypeScript Strict Mode Compliance**: Resolved all
   `exactOptionalPropertyTypes` errors
   - Fixed SSEConnection, SSEClientInfo, SSEError type definitions
