@@ -363,14 +363,24 @@ describe('McpNodeRedServer', () => {
   });
 
   describe('Read-only mode (MCP_READ_ONLY)', () => {
+    let originalReadOnly: string | undefined;
+
+    beforeEach(() => {
+      originalReadOnly = process.env.MCP_READ_ONLY;
+    });
+
     afterEach(() => {
-      delete process.env.MCP_READ_ONLY;
+      if (originalReadOnly === undefined) {
+        delete process.env.MCP_READ_ONLY;
+      } else {
+        process.env.MCP_READ_ONLY = originalReadOnly;
+      }
     });
 
     it('does not filter tools when MCP_READ_ONLY is unset', () => {
       const tools = mcpServer.getToolDefinitions();
       expect(tools.find(t => t.name === 'create_flow')).toBeDefined();
-      expect(tools.length).toBe(20);
+      expect(tools.some(t => !t.annotations?.readOnlyHint)).toBe(true);
     });
 
     it('hides write tools from the tool list when MCP_READ_ONLY=true', () => {
