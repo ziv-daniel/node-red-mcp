@@ -5,33 +5,41 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7%2B-blue.svg)](https://www.typescriptlang.org/)
 [![CI/CD](https://github.com/ziv-daniel/node-red-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ziv-daniel/node-red-mcp/actions)
 
-> A modern, production-ready Model Context Protocol (MCP) server for Node-RED integration.
+> A modern, production-ready Model Context Protocol (MCP) server for Node-RED
+> integration.
 
 ## 🌟 Features
 
 ### 🔧 20 MCP Tools
 
-Full CRUD for flows, context variables, modules, and diagnostics — plus semantic search and real-time error detection.
+Full CRUD for flows, context variables, modules, and diagnostics — plus semantic
+search and real-time error detection.
 
 ### 📚 Prompts Library
 
-Built-in prompt templates: `debug_flow`, `explain_automation`, `audit_security`, `document_flow`.
+Built-in prompt templates: `debug_flow`, `explain_automation`, `audit_security`,
+`document_flow`.
 
 ### 📦 MCP Resources
 
-Browse Node-RED state as structured resources: `nodered://flows`, `nodered://subflows`, `nodered://nodes`, `nodered://context/global`, `flow://<id>`, `system://runtime`.
+Browse Node-RED state as structured resources: `nodered://flows`,
+`nodered://subflows`, `nodered://nodes`, `nodered://context/global`,
+`flow://<id>`, `system://runtime`.
 
 ### 🔍 Semantic Search
 
-Embeddings-based search across flows and nodes via `semantic_search_flows`. Finds by meaning, not just keywords.
+Embeddings-based search across flows and nodes via `semantic_search_flows`.
+Finds by meaning, not just keywords.
 
 ### 🧠 Elicitation
 
-The server asks clarifying questions mid-call when required parameters are missing (MCP SDK 1.24+ elicitation).
+The server asks clarifying questions mid-call when required parameters are
+missing (MCP SDK 1.24+ elicitation).
 
 ### 🚨 Real-time Error Detection
 
-`get_node_errors` connects to Node-RED's WebSocket `/comms` endpoint to detect nodes in error/warning state in real time.
+`get_node_errors` connects to Node-RED's WebSocket `/comms` endpoint to detect
+nodes in error/warning state in real time.
 
 ## 📋 Table of Contents
 
@@ -74,43 +82,43 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 
 ### Flow Management
 
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `get_flows` | List flows (summary or full) | `includeDetails?`, `types?`, `limit?`, `offset?` |
-| `get_flow` | Get a specific flow | `flowId` |
-| `create_flow` | Create a new flow | `flowData`, `validate?` |
-| `update_flow` | Update an existing flow | `flowId`, `flowData`, `validate?` |
-| `enable_flow` | Enable a flow | `flowId` |
-| `disable_flow` | Disable a flow | `flowId` |
-| `delete_flow` | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?` |
-| `validate_flow` | Validate flow structure | `flowId` |
-| `search_flows` | Search nodes by type/name/property | `type?`, `query?`, `flowId?` |
-| `semantic_search_flows` | Embeddings-based semantic search | `query`, `scope?`, `topK?`, `refresh?` |
+| Tool                    | Description                        | Key Parameters                                   |
+| ----------------------- | ----------------------------------- | ------------------------------------------------ |
+| `get_flows`             | List flows (summary or full)       | `includeDetails?`, `types?`, `limit?`, `offset?` |
+| `get_flow`              | Get a specific flow                | `flowId`                                         |
+| `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
+| `update_flow`           | Update an existing flow            | `flowId`, `flowData`, `validate?`                |
+| `enable_flow`           | Enable a flow                      | `flowId`                                         |
+| `disable_flow`          | Disable a flow                     | `flowId`                                         |
+| `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                  |
+| `validate_flow`         | Validate flow structure            | `flowId`                                         |
+| `search_flows`          | Search nodes by type/name/property | `type?`, `query?`, `flowId?`                     |
+| `semantic_search_flows` | Embeddings-based semantic search   | `query`, `scope?`, `topK?`, `refresh?`           |
 
 ### Context Variables
 
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `get_context` | Read global or flow context | `key?`, `scope?`, `flowId?` |
-| `set_context` | Write a context variable | `key`, `value`, `scope?`, `flowId?` |
-| `delete_context` | Delete a context variable | `key`, `scope?`, `flowId?` |
+| Tool             | Description                 | Key Parameters                      |
+| ---------------- | ---------------------------- | ------------------------------------ |
+| `get_context`    | Read global or flow context | `key?`, `scope?`, `flowId?`         |
+| `set_context`    | Write a context variable    | `key`, `value`, `scope?`, `flowId?` |
+| `delete_context` | Delete a context variable   | `key`, `scope?`, `flowId?`          |
 
 ### Modules
 
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `search_modules` | Search Node-RED palette | `query`, `category?`, `limit?` |
-| `install_module` | Install a module | `moduleName`, `version?` |
-| `get_installed_modules` | List installed modules | — |
+| Tool                    | Description             | Key Parameters                 |
+| ----------------------- | ------------------------ | -------------------------------- |
+| `search_modules`        | Search Node-RED palette | `query`, `category?`, `limit?` |
+| `install_module`        | Install a module        | `moduleName`, `version?`       |
+| `get_installed_modules` | List installed modules  | —                              |
 
 ### Diagnostics
 
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `get_node_errors` | Detect nodes in error/warning state (WebSocket) | `includeWarnings?`, `timeoutMs?` |
-| `get_flow_state` | Get flow runtime state (started/stopped) | — |
-| `get_settings` | Get Node-RED runtime settings | — |
-| `get_runtime_info` | Get Node-RED version and system info | — |
+| Tool               | Description                                     | Key Parameters                   |
+| ------------------ | ------------------------------------------------ | ----------------------------------- |
+| `get_node_errors`  | Detect nodes in error/warning state (WebSocket) | `includeWarnings?`, `timeoutMs?` |
+| `get_flow_state`   | Get flow runtime state (started/stopped)        | —                                 |
+| `get_settings`     | Get Node-RED runtime settings                   | —                                 |
+| `get_runtime_info` | Get Node-RED version and system info            | —                                 |
 
 ## 🔒 Read-Only Mode
 
@@ -120,50 +128,50 @@ or unintended write to a live/production instance is a real risk.
 
 When enabled, write tools (`create_flow`, `update_flow`, `delete_flow`,
 `enable_flow`, `disable_flow`, `set_context`, `delete_context`,
-`install_module`) are removed from the tool list entirely — clients never
-see them as available capabilities — and are also rejected if called
-directly by name. All read, search, diagnostic, resource, and prompt
-capabilities remain fully available. This pairs naturally with `delete_flow`'s
-existing `dryRun` default for deployments that need read/write in the same
-session but still want an extra layer of protection against accidental
-writes.
+`install_module`) are removed from the tool list entirely — clients never see
+them as available capabilities — and are also rejected if called directly by
+name. All read, search, diagnostic, resource, and prompt capabilities remain
+fully available. This pairs naturally with `delete_flow`'s existing `dryRun`
+default for deployments that need read/write in the same session but still want
+an extra layer of protection against accidental writes.
 
 ## 📦 MCP Resources
 
 Access Node-RED state as browseable MCP resources:
 
-| URI | Description |
-|-----|-------------|
-| `nodered://flows` | All tab flows (summary) |
-| `nodered://subflows` | All subflows |
-| `nodered://nodes` | Installed node modules |
-| `nodered://context/global` | Global context variables |
-| `flow://<id>` | Full detail for a specific flow |
-| `system://runtime` | Node-RED runtime info |
+| URI                        | Description                     |
+| --------------------------- | --------------------------------- |
+| `nodered://flows`          | All tab flows (summary)         |
+| `nodered://subflows`       | All subflows                    |
+| `nodered://nodes`          | Installed node modules          |
+| `nodered://context/global` | Global context variables        |
+| `flow://<id>`              | Full detail for a specific flow |
+| `system://runtime`         | Node-RED runtime info           |
 
 ## 📚 MCP Prompts
 
 Built-in prompt templates for common tasks:
 
-| Prompt | Description |
-|--------|-------------|
-| `debug_flow` | Diagnose errors in a specific flow |
+| Prompt               | Description                                |
+| --------------------- | -------------------------------------------- |
+| `debug_flow`         | Diagnose errors in a specific flow         |
 | `explain_automation` | Explain what a flow does in plain language |
-| `audit_security` | Security audit of flow configurations |
-| `document_flow` | Generate documentation for a flow |
+| `audit_security`     | Security audit of flow configurations      |
+| `document_flow`      | Generate documentation for a flow          |
 
 ## 🔌 Connecting to the Server
 
 ### Transport Modes
 
-| Mode | Env Var | Endpoint | Use Case |
-|------|---------|----------|---------|
-| **Streamable HTTP** | `MCP_TRANSPORT=http` | `POST /mcp` | Production, remote agents |
-| **Stdio** | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop |
+| Mode                | Env Var               | Endpoint     | Use Case                  |
+| --------------------- | ------------------------ | -------------- | ---------------------------- |
+| **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`  | Production, remote agents |
+| **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop            |
 
 ### Authentication
 
-Set `MCP_USERNAME` and `MCP_PASSWORD` for HTTP Basic Auth on the `/mcp` endpoint.
+Set `MCP_USERNAME` and `MCP_PASSWORD` for HTTP Basic Auth on the `/mcp`
+endpoint.
 
 ### Claude Desktop (stdio)
 
@@ -195,17 +203,17 @@ claude mcp add node-red \
 
 ## ⚙️ Environment Variables
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `NODERED_URL` | Yes | — | URL of your Node-RED instance |
-| `NODERED_USERNAME` | No | — | Node-RED admin username |
-| `NODERED_PASSWORD` | No | — | Node-RED admin password |
-| `MCP_TRANSPORT` | No | `http` | `http` or `stdio` |
-| `MCP_USERNAME` | No | — | MCP server auth username |
-| `MCP_PASSWORD` | No | — | MCP server auth password |
-| `MCP_READ_ONLY` | No | `false` | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode) |
-| `HOST` | No | `0.0.0.0` | Bind address |
-| `PORT` | No | `3000` | Listen port |
-| `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
-| `NODERED_REJECT_UNAUTHORIZED` | No | `true` | Set `false` to allow self-signed TLS |
-| `EMBEDDING_MODEL` | No | `Xenova/all-MiniLM-L6-v2` | Model for semantic search |
+| Variable                      | Required | Default                   | Description                                                                                    |
+| -------------------------------- | ---------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                  |
+| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                        |
+| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                        |
+| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                              |
+| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                       |
+| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                       |
+| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode) |
+| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                   |
+| `PORT`                        | No       | `3000`                    | Listen port                                                                                    |
+| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                               |
+| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                           |
+| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                      |
