@@ -114,11 +114,11 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 ### Diagnostics
 
 | Tool               | Description                                     | Key Parameters                   |
-| ------------------ | ----------------------------------------------- | -------------------------------- |
+| ------------------ | ----------------------------------------------- | --------------------------------- |
 | `get_node_errors`  | Detect nodes in error/warning state (WebSocket) | `includeWarnings?`, `timeoutMs?` |
-| `get_flow_state`   | Get flow runtime state (started/stopped)        | —                                |
-| `get_settings`     | Get Node-RED runtime settings                   | —                                |
-| `get_runtime_info` | Get Node-RED version and system info            | —                                |
+| `get_flow_state`   | Get flow runtime state (started/stopped)        | —                                 |
+| `get_settings`     | Get Node-RED runtime settings                   | —                                 |
+| `get_runtime_info` | Get Node-RED version and system info            | —                                 |
 
 ## 🔒 Read-Only Mode
 
@@ -140,7 +140,7 @@ an extra layer of protection against accidental writes.
 Access Node-RED state as browseable MCP resources:
 
 | URI                        | Description                     |
-| -------------------------- | ------------------------------- |
+| -------------------------- | -------------------------------- |
 | `nodered://flows`          | All tab flows (summary)         |
 | `nodered://subflows`       | All subflows                    |
 | `nodered://nodes`          | Installed node modules          |
@@ -153,7 +153,7 @@ Access Node-RED state as browseable MCP resources:
 Built-in prompt templates for common tasks:
 
 | Prompt               | Description                                |
-| -------------------- | ------------------------------------------ |
+| --------------------- | -------------------------------------------- |
 | `debug_flow`         | Diagnose errors in a specific flow         |
 | `explain_automation` | Explain what a flow does in plain language |
 | `audit_security`     | Security audit of flow configurations      |
@@ -164,7 +164,7 @@ Built-in prompt templates for common tasks:
 ### Transport Modes
 
 | Mode                | Env Var               | Endpoint     | Use Case                  |
-| ------------------- | --------------------- | ------------ | ------------------------- |
+| --------------------- | ------------------------ | -------------- | ---------------------------- |
 | **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`  | Production, remote agents |
 | **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop            |
 
@@ -204,7 +204,7 @@ claude mcp add node-red \
 ## ⚙️ Environment Variables
 
 | Variable                      | Required | Default                   | Description                                                                                    |
-| ----------------------------- | -------- | ------------------------- | ------------------------------------------------------------------------------------------------ |
+| ----------------------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
 | `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                  |
 | `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                        |
 | `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                        |
