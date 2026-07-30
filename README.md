@@ -83,7 +83,7 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 ### Flow Management
 
 | Tool                    | Description                        | Key Parameters                                   |
-| ----------------------- | ----------------------------------- | ------------------------------------------------ |
+| ----------------------- | ---------------------------------- | ------------------------------------------------ |
 | `get_flows`             | List flows (summary or full)       | `includeDetails?`, `types?`, `limit?`, `offset?` |
 | `get_flow`              | Get a specific flow                | `flowId`                                         |
 | `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
@@ -204,7 +204,7 @@ claude mcp add node-red \
 ## ⚙️ Environment Variables
 
 | Variable                      | Required | Default                   | Description                                                                                    |
-| ----------------------------- | -------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| ----------------------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
 | `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                  |
 | `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                        |
 | `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                        |
