@@ -37,6 +37,7 @@ The server asks clarifying questions mid-call when required parameters are missi
 
 - [Quick Start](#-quick-start)
 - [Available Tools](#-available-mcp-tools)
+- [Read-Only Mode](#-read-only-mode)
 - [Resources](#-mcp-resources)
 - [Prompts](#-mcp-prompts)
 - [Connecting](#-connecting-to-the-server)
@@ -110,6 +111,22 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 | `get_flow_state` | Get flow runtime state (started/stopped) | — |
 | `get_settings` | Get Node-RED runtime settings | — |
 | `get_runtime_info` | Get Node-RED version and system info | — |
+
+## 🔒 Read-Only Mode
+
+Set `MCP_READ_ONLY=true` to structurally prevent any mutation of your Node-RED
+flows — useful when exposing this server to remote AI agents where an accidental
+or unintended write to a live/production instance is a real risk.
+
+When enabled, write tools (`create_flow`, `update_flow`, `delete_flow`,
+`enable_flow`, `disable_flow`, `set_context`, `delete_context`,
+`install_module`) are removed from the tool list entirely — clients never
+see them as available capabilities — and are also rejected if called
+directly by name. All read, search, diagnostic, resource, and prompt
+capabilities remain fully available. This pairs naturally with `delete_flow`'s
+existing `dryRun` default for deployments that need read/write in the same
+session but still want an extra layer of protection against accidental
+writes.
 
 ## 📦 MCP Resources
 
@@ -186,6 +203,7 @@ claude mcp add node-red \
 | `MCP_TRANSPORT` | No | `http` | `http` or `stdio` |
 | `MCP_USERNAME` | No | — | MCP server auth username |
 | `MCP_PASSWORD` | No | — | MCP server auth password |
+| `MCP_READ_ONLY` | No | `false` | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode) |
 | `HOST` | No | `0.0.0.0` | Bind address |
 | `PORT` | No | `3000` | Listen port |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |

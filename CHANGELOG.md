@@ -11,6 +11,18 @@ and this project adheres to
 
 ### Added
 
+- **Read-Only Mode (`MCP_READ_ONLY`)**: Structurally prevents mutation of
+  Node-RED flows when exposing this server to remote agents
+  - Write tools (`create_flow`, `update_flow`, `delete_flow`, `enable_flow`,
+    `disable_flow`, `set_context`, `delete_context`, `install_module`) are
+    removed from `getToolDefinitions()`/tool listings entirely, so clients never
+    see them as available capabilities
+  - `callTool` also rejects these tools if called directly by name, as
+    defense-in-depth against a client that caches an older tool list
+  - Derived from each tool's existing `readOnlyHint` annotation rather than a
+    separately maintained tool-name list
+  - Pairs with `delete_flow`'s existing `dryRun` default; all read, search,
+    diagnostic, resource, and prompt capabilities remain available
 - **MCP SDK 1.22.0 Upgrade**: Updated from 1.17.5 to latest SDK version with
   protocol improvements
 - **Circuit Breaker Pattern**: Implemented comprehensive circuit breaker for
