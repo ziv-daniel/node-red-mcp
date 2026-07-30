@@ -73,7 +73,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.35.0",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.60.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
