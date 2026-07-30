@@ -120,7 +120,7 @@ export function authenticateAPIKey(req: AuthRequest, res: Response, next: NextFu
   }
 
   const expected = getApiKey();
-  let valid = false;
+  let valid: boolean;
   try {
     const a = Buffer.from(apiKey);
     const b = Buffer.from(expected);
@@ -171,7 +171,7 @@ export function authenticateBasic(req: AuthRequest, res: Response, next: NextFun
     return;
   }
 
-  let valid = false;
+  let valid: boolean;
   try {
     const u = Buffer.from(username);
     const eu = Buffer.from(expectedUsername);

@@ -212,9 +212,7 @@ describe('NodeRedApiService', () => {
   describe('getFlows', () => {
     it('should return flows with summary when includeDetails is false', async () => {
       // Arrange
-      const mockResponse = {
-        /* mock data */
-      };
+      const mockResponse = {/* mock data */};
       vi.spyOn(axios, 'get').mockResolvedValue({ data: mockResponse });
 
       // Act
