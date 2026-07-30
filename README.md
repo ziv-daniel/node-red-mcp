@@ -140,7 +140,7 @@ an extra layer of protection against accidental writes.
 Access Node-RED state as browseable MCP resources:
 
 | URI                        | Description                     |
-| -------------------------- | -------------------------------- |
+| -------------------------- | ------------------------------- |
 | `nodered://flows`          | All tab flows (summary)         |
 | `nodered://subflows`       | All subflows                    |
 | `nodered://nodes`          | Installed node modules          |
