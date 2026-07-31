@@ -29,6 +29,58 @@ import { OAuthServer } from './oauth-server.js';
 import { SessionManager } from './session-manager.js';
 import { SSEHandler } from './sse-handler.js';
 
+/**
+ * Value accepted by Express's `trust proxy` setting.
+ */
+export type TrustProxySetting = boolean | number | string | string[];
+
+/**
+ * Parse the `TRUST_PROXY` environment variable into an Express `trust proxy`
+ * value.
+ *
+ * Left unset, Express does not trust `X-Forwarded-For`, so every request behind
+ * a reverse proxy is attributed to the proxy's own address: one shared
+ * rate-limit bucket for all clients, and `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`
+ * from express-rate-limit on the first proxied request.
+ *
+ * Accepted values:
+ *   - a number    — hop count, e.g. `1` for a single proxy in front (recommended)
+ *   - `false`     — no proxy; use the socket address (the default)
+ *   - `true`      — trust every hop. Accepted, but warned about on startup: it
+ *                   lets a client spoof its address by sending its own
+ *                   `X-Forwarded-For`, and express-rate-limit reports it as
+ *                   ERR_ERL_PERMISSIVE_TRUST_PROXY
+ *   - anything else — passed through to Express as a trust list, e.g.
+ *                   `loopback`, `10.0.0.0/8`, or a comma-separated combination
+ */
+export function parseTrustProxy(raw: string | undefined): TrustProxySetting {
+  const value = raw?.trim();
+  if (!value) return false;
+
+  const normalized = value.toLowerCase();
+  if (normalized === 'false') return false;
+  if (normalized === 'true') {
+    console.warn(
+      'TRUST_PROXY=true is not recommended: it trusts every hop, so any client can spoof its ' +
+        'address — and its rate-limit bucket — by sending its own X-Forwarded-For header. ' +
+        'Set the number of proxies in front of this server instead (e.g. TRUST_PROXY=1), ' +
+        'or list the trusted addresses (e.g. TRUST_PROXY=loopback,10.0.0.0/8).'
+    );
+    return true;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return Number(value);
+  }
+
+  const entries = value
+    .split(',')
+    .map(entry => entry.trim())
+    .filter(Boolean);
+
+  return entries.length > 1 ? entries : entries[0]!;
+}
+
 export interface ExpressAppConfig {
   port: number;
   host: string;
@@ -41,6 +93,11 @@ export interface ExpressAppConfig {
     max: number;
   };
   helmet: boolean;
+  /**
+   * Express `trust proxy` setting. Defaults to `TRUST_PROXY`, or `false` when
+   * that is unset.
+   */
+  trustProxy: TrustProxySetting;
 }
 
 export class ExpressApp {
@@ -75,10 +132,13 @@ export class ExpressApp {
         max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
       },
       helmet: process.env.DISABLE_HELMET !== 'true',
+      trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
       ...config,
     };
 
     this.app = express();
+    // Must be set before the rate limiters read req.ip.
+    this.app.set('trust proxy', this.config.trustProxy);
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();

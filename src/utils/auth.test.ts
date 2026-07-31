@@ -682,5 +682,39 @@ describe('Rate Limiting Utilities', () => {
 
       expect(key).toBe('ip:unknown');
     });
+
+    it('should collapse an IPv6 address to its subnet prefix', () => {
+      const { req } = createMockReqRes();
+      (req as any).ip = '2001:db8:1234:5678:9abc:def0:1234:5678';
+
+      const key = getRateLimitKey(req as any);
+
+      expect(key).not.toBe('ip:2001:db8:1234:5678:9abc:def0:1234:5678');
+      expect(key).toMatch(/^ip:.+\/\d+$/);
+    });
+
+    it('should give two addresses in the same IPv6 subnet the same key', () => {
+      const { req: first } = createMockReqRes();
+      const { req: second } = createMockReqRes();
+      (first as any).ip = '2001:db8:1234:5600::1';
+      (second as any).ip = '2001:db8:1234:5600::dead:beef';
+
+      expect(getRateLimitKey(first as any)).toBe(getRateLimitKey(second as any));
+    });
+
+    it('should leave IPv4 addresses untouched', () => {
+      const { req } = createMockReqRes();
+      (req as any).ip = '203.0.113.7';
+
+      expect(getRateLimitKey(req as any)).toBe('ip:203.0.113.7');
+    });
+
+    it('should still prefer the user key for an authenticated IPv6 client', () => {
+      const { req } = createMockReqRes();
+      (req as any).ip = '2001:db8::1';
+      req.auth = { userId: 'user123', permissions: [], isAuthenticated: true };
+
+      expect(getRateLimitKey(req as any)).toBe('user:user123');
+    });
   });
 });

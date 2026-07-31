@@ -5,6 +5,7 @@
 import { timingSafeEqual } from 'crypto';
 
 import { Request, Response, NextFunction } from 'express';
+import { ipKeyGenerator } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 
 import { McpAuthContext, NodeRedToolPermissions } from '../types/mcp-extensions.js';
@@ -340,7 +341,17 @@ export function getNodeRedAuthHeader(): Record<string, string> {
 }
 
 /**
- * Rate limiting by user ID or IP
+ * Rate limiting by user ID or IP.
+ *
+ * The IP fallback runs through express-rate-limit's `ipKeyGenerator`, which
+ * collapses an IPv6 address to its subnet prefix. Keying on the raw address let
+ * an IPv6 client rotate through its allocation — typically a /64 or larger — for
+ * a fresh bucket per request, and made express-rate-limit emit
+ * `ERR_ERL_KEY_GEN_IPV6` at startup. IPv4 addresses pass through unchanged.
+ *
+ * No subnet is passed so this matches the default the library applies to the
+ * limiters that don't override `keyGenerator`, keeping every limiter's IPv6
+ * grouping identical.
  */
 export function getRateLimitKey(req: Request): string {
   const authReq = req as AuthRequest;
@@ -348,5 +359,6 @@ export function getRateLimitKey(req: Request): string {
     return `user:${authReq.auth.userId}`;
   }
 
-  return `ip:${req.ip || req.connection.remoteAddress || 'unknown'}`;
+  const ip = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress;
+  return `ip:${ip ? ipKeyGenerator(ip) : 'unknown'}`;
 }
