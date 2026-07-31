@@ -29,7 +29,14 @@ import {
   NodeRedPromptTemplate,
 } from '../types/mcp-extensions.js';
 import type { NodeRedCredentials } from '../types/oauth.js';
-import { validateRequired, validateTypes } from '../utils/error-handling.js';
+import {
+  AppError,
+  NodeRedError,
+  logDebug,
+  safeStringify,
+  validateRequired,
+  validateTypes,
+} from '../utils/error-handling.js';
 
 import {
   applyPagination,
@@ -43,6 +50,68 @@ import { SSEHandler } from './sse-handler.js';
 
 const SEARCH_RESULTS_LIMIT = 10;
 const SEARCH_SKIP_PROPS = new Set(['id', 'z', 'x', 'y', 'wires']);
+const UPSTREAM_RESPONSE_LIMIT = 2000;
+
+/**
+ * Truncate an upstream response body so a large flow dump or HTML login page
+ * doesn't get echoed back to the client in full.
+ */
+function truncateUpstreamResponse(response: unknown): unknown {
+  if (response === undefined || response === null) return undefined;
+
+  const serialized = typeof response === 'string' ? response : JSON.stringify(response);
+  if (serialized === undefined) return undefined;
+  if (serialized.length <= UPSTREAM_RESPONSE_LIMIT) return response;
+
+  return `${serialized.slice(0, UPSTREAM_RESPONSE_LIMIT)}… (truncated, ${serialized.length} bytes)`;
+}
+
+/**
+ * Turn a thrown value into an error message plus structured detail.
+ *
+ * Tool failures used to collapse to `error.message` — or the literal string
+ * "Unknown error" for anything that wasn't an `Error` — which left callers with
+ * no way to tell a 403 from a 404 or a network failure.
+ */
+function describeToolFailure(
+  toolName: string,
+  error: unknown
+): Pick<McpToolResult, 'error' | 'errorDetails'> {
+  if (error instanceof NodeRedError) {
+    return {
+      error: error.message,
+      errorDetails: {
+        code: error.code,
+        statusCode: error.statusCode,
+        ...(error.nodeRedStatusCode !== undefined
+          ? { upstreamStatus: error.nodeRedStatusCode }
+          : {}),
+        ...(error.nodeRedResponse !== undefined
+          ? { upstreamResponse: truncateUpstreamResponse(error.nodeRedResponse) }
+          : {}),
+      },
+    };
+  }
+
+  if (error instanceof AppError) {
+    return {
+      error: error.message,
+      errorDetails: { code: error.code, statusCode: error.statusCode },
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      error: error.message || `${error.name} thrown with no message`,
+      errorDetails: { code: error.name || 'INTERNAL_ERROR' },
+    };
+  }
+
+  return {
+    error: `Tool '${toolName}' threw a non-Error value: ${safeStringify(error)}`,
+    errorDetails: { code: 'INTERNAL_ERROR' },
+  };
+}
 
 const NODERED_RESOURCE_META: Record<string, { name: string; description: string }> = {
   flows: { name: 'Node-RED Flows', description: 'All flow tabs in the Node-RED instance' },
@@ -1154,9 +1223,17 @@ export class McpNodeRedServer {
     } catch (error) {
       result = {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        ...describeToolFailure(name, error),
         timestamp,
       };
+
+      logDebug(`Tool '${name}' failed`, {
+        tool: name,
+        args,
+        error: result.error,
+        details: result.errorDetails,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
     }
 
     return {

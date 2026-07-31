@@ -27,6 +27,8 @@ import {
   sanitizeError,
   isOperationalError,
   safeStringify,
+  isDebugLoggingEnabled,
+  logDebug,
 } from './error-handling.js';
 
 describe('Error Classes', () => {
@@ -471,6 +473,116 @@ describe('handleNodeRedError', () => {
       expect(e).toBeInstanceOf(NodeRedError);
       expect((e as NodeRedError).statusCode).toBe(502);
     }
+  });
+
+  it('should report the upstream status instead of "Unknown error" for a bodyless response', () => {
+    const error = {
+      response: {
+        status: 403,
+        statusText: 'Forbidden',
+        data: undefined,
+        headers: {},
+      },
+      config: { method: 'get', url: '/flows' },
+    };
+
+    try {
+      handleNodeRedError(error, 'getFlows');
+      expect.unreachable('handleNodeRedError should throw');
+    } catch (e) {
+      const err = e as NodeRedError;
+      expect(err.message).toContain('HTTP 403 Forbidden');
+      expect(err.message).toContain('GET /flows');
+      expect(err.message).not.toContain('Unknown error');
+      expect(err.nodeRedStatusCode).toBe(403);
+    }
+  });
+
+  it('should keep an unrecognised response body shape in the message', () => {
+    const error = {
+      response: {
+        status: 400,
+        data: { reason: 'invalid_flow', node: 'n1' },
+        headers: {},
+      },
+    };
+
+    try {
+      handleNodeRedError(error, 'updateFlow');
+      expect.unreachable('handleNodeRedError should throw');
+    } catch (e) {
+      expect((e as NodeRedError).message).toContain('invalid_flow');
+    }
+  });
+
+  it('should tolerate a response without headers', () => {
+    const error = { response: { status: 502, data: 'bad gateway' } };
+
+    expect(() => handleNodeRedError(error, 'getFlows')).toThrow(NodeRedError);
+    expect(() => handleNodeRedError(error, 'getFlows')).toThrow(/bad gateway/);
+  });
+
+  it('should include the network error code and request', () => {
+    const error = {
+      request: {},
+      code: 'ECONNREFUSED',
+      message: 'connect ECONNREFUSED 127.0.0.1:1880',
+      config: { method: 'post', url: '/flows' },
+    };
+
+    try {
+      handleNodeRedError(error, 'deployFlows');
+      expect.unreachable('handleNodeRedError should throw');
+    } catch (e) {
+      const err = e as NodeRedError;
+      expect(err.message).toContain('ECONNREFUSED');
+      expect(err.message).toContain('POST /flows');
+      expect(err.statusCode).toBe(503);
+    }
+  });
+});
+
+describe('logDebug', () => {
+  const originalLogLevel = process.env.LOG_LEVEL;
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    writeSpy.mockRestore();
+    if (originalLogLevel === undefined) {
+      delete process.env.LOG_LEVEL;
+    } else {
+      process.env.LOG_LEVEL = originalLogLevel;
+    }
+  });
+
+  it('should write to stderr when LOG_LEVEL=debug', () => {
+    process.env.LOG_LEVEL = 'debug';
+
+    expect(isDebugLoggingEnabled()).toBe(true);
+
+    logDebug('tool failed', { tool: 'get_flows' });
+
+    expect(writeSpy).toHaveBeenCalledTimes(1);
+    const line = writeSpy.mock.calls[0]![0] as string;
+    expect(JSON.parse(line)).toMatchObject({
+      level: 'debug',
+      message: 'tool failed',
+      context: { tool: 'get_flows' },
+    });
+  });
+
+  it('should stay silent at other log levels', () => {
+    process.env.LOG_LEVEL = 'info';
+
+    expect(isDebugLoggingEnabled()).toBe(false);
+
+    logDebug('tool failed');
+
+    expect(writeSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -197,39 +197,93 @@ export function asyncHandler<T extends any[]>(
   };
 }
 
+const RESPONSE_PREVIEW_LIMIT = 500;
+
+/**
+ * Describe the request an Axios error came from, e.g. `GET /flows`.
+ * Returns undefined when the error carries no request config.
+ */
+function describeRequest(error: any): string | undefined {
+  const config = error?.config;
+  if (!config?.url) return undefined;
+  const method = String(config.method || 'get').toUpperCase();
+  return `${method} ${config.url}`;
+}
+
+/**
+ * Summarise an upstream response body for an error message. Node-RED is not
+ * consistent about the shape here: some endpoints return `{message}`, some
+ * `{error}`, some a bare string, some nothing at all. Falling straight through
+ * to "Unknown error" hid all of it, so keep whatever is actually there.
+ */
+function summarizeResponseBody(data: unknown): string | undefined {
+  if (data === undefined || data === null || data === '') return undefined;
+
+  if (typeof data === 'string') {
+    const trimmed = data.trim();
+    return trimmed ? trimmed.slice(0, RESPONSE_PREVIEW_LIMIT) : undefined;
+  }
+
+  if (typeof data === 'object') {
+    const body = data as Record<string, any>;
+    const known = body.message || body.error_description || body.error;
+    if (typeof known === 'string' && known.trim()) return known.trim();
+    return safeStringify(body).slice(0, RESPONSE_PREVIEW_LIMIT);
+  }
+
+  if (typeof data === 'number' || typeof data === 'boolean' || typeof data === 'bigint') {
+    return String(data);
+  }
+
+  return undefined;
+}
+
 /**
  * Handle Node-RED API errors
  */
 export function handleNodeRedError(error: any, context: string): never {
+  const request = describeRequest(error);
+  const requestSuffix = request ? ` [${request}]` : '';
+
   if (error.response) {
     // Axios error with response
-    const { status, data } = error.response;
+    const { status, statusText, data } = error.response;
 
     // Check if this is a JSON parse error due to HTML response
-    const contentType = error.response.headers['content-type'] || '';
+    const contentType = error.response.headers?.['content-type'] || '';
     if (error.message?.includes('Unexpected token') && contentType.includes('text/html')) {
       throw new NodeRedError(
-        `Node-RED returned HTML instead of JSON in ${context}. This usually indicates an authentication redirect or configuration issue. Check your Node-RED admin settings and authentication.`,
+        `Node-RED returned HTML instead of JSON in ${context}${requestSuffix} (HTTP ${status}). This usually indicates an authentication redirect or configuration issue. Check your Node-RED admin settings and authentication.`,
         502,
         status,
         {
           originalError: error.message,
           contentType,
-          responsePreview: typeof data === 'string' ? data.substring(0, 200) : data,
+          request,
+          responsePreview:
+            typeof data === 'string' ? data.substring(0, RESPONSE_PREVIEW_LIMIT) : data,
         }
       );
     }
 
+    // Always surface the upstream status — a bare "Unknown error" makes a 403
+    // (missing permission) indistinguishable from a 404 (endpoint gone).
+    const detail = summarizeResponseBody(data);
+    const statusLabel = statusText ? `HTTP ${status} ${statusText}` : `HTTP ${status}`;
+
     throw new NodeRedError(
-      `Node-RED API error in ${context}: ${data?.message || data?.error || 'Unknown error'}`,
+      `Node-RED API error in ${context}${requestSuffix}: ${statusLabel}${
+        detail ? ` — ${detail}` : ' (no response body)'
+      }`,
       status >= 500 ? 502 : status, // Bad Gateway for server errors
       status,
       data
     );
   } else if (error.request) {
     // Network error
+    const code = error.code ? ` (${error.code})` : '';
     throw new NodeRedError(
-      `Failed to connect to Node-RED in ${context}: ${error.message}`,
+      `Failed to connect to Node-RED in ${context}${requestSuffix}: ${error.message}${code}`,
       503 // Service Unavailable
     );
   } else if (error.message?.includes('Node-RED returned HTML')) {
@@ -240,7 +294,7 @@ export function handleNodeRedError(error: any, context: string): never {
     );
   } else {
     // Other error
-    throw new NodeRedError(`Error in ${context}: ${error.message}`, 500);
+    throw new NodeRedError(`Error in ${context}${requestSuffix}: ${error.message}`, 500);
   }
 }
 
@@ -271,6 +325,32 @@ export function validateTypes(data: Record<string, any>, fieldTypes: Record<stri
       }
     }
   }
+}
+
+/**
+ * Whether `LOG_LEVEL=debug` was requested.
+ */
+export function isDebugLoggingEnabled(): boolean {
+  return process.env.LOG_LEVEL?.trim().toLowerCase() === 'debug';
+}
+
+/**
+ * Emit a debug line when `LOG_LEVEL=debug`.
+ *
+ * Writes to stderr, never stdout: stdout carries the JSON-RPC stream under the
+ * stdio transport and any stray write there corrupts it.
+ */
+export function logDebug(message: string, context?: Record<string, any>): void {
+  if (!isDebugLoggingEnabled()) return;
+
+  process.stderr.write(
+    `${safeStringify({
+      level: 'debug',
+      timestamp: new Date().toISOString(),
+      message,
+      ...(context ? { context } : {}),
+    })}\n`
+  );
 }
 
 /**
