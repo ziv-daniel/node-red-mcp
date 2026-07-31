@@ -105,7 +105,7 @@ vi.mock('../utils/auth.js', () => ({
 }));
 
 // Import after mocks
-import { ExpressApp } from './express-app.js';
+import { ExpressApp, parseTrustProxy } from './express-app.js';
 import type { McpNodeRedServer } from './mcp-server.js';
 
 describe('ExpressApp', () => {
@@ -667,5 +667,116 @@ describe('ExpressApp Configuration', () => {
     const app = expressApp.getApp();
 
     expect(app).toBeDefined();
+  });
+});
+
+describe('parseTrustProxy', () => {
+  it('should not trust proxies when unset or empty', () => {
+    expect(parseTrustProxy(undefined)).toBe(false);
+    expect(parseTrustProxy('')).toBe(false);
+    expect(parseTrustProxy('   ')).toBe(false);
+    expect(parseTrustProxy('false')).toBe(false);
+    expect(parseTrustProxy('FALSE')).toBe(false);
+  });
+
+  it('should read a hop count as a number', () => {
+    expect(parseTrustProxy('1')).toBe(1);
+    expect(parseTrustProxy(' 2 ')).toBe(2);
+    expect(parseTrustProxy('0')).toBe(0);
+  });
+
+  it('should accept true but warn that it allows X-Forwarded-For spoofing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      expect(parseTrustProxy('true')).toBe(true);
+      expect(parseTrustProxy('True')).toBe(true);
+
+      expect(warn).toHaveBeenCalledTimes(2);
+      const message = warn.mock.calls[0]![0] as string;
+      expect(message).toMatch(/not recommended/i);
+      expect(message).toMatch(/spoof/i);
+      expect(message).toContain('TRUST_PROXY=1');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('should pass a single trust-list entry through as a string', () => {
+    expect(parseTrustProxy('loopback')).toBe('loopback');
+    expect(parseTrustProxy('10.0.0.0/8')).toBe('10.0.0.0/8');
+  });
+
+  it('should split a comma-separated trust list', () => {
+    expect(parseTrustProxy('loopback, 10.0.0.0/8 ,172.16.0.0/12')).toEqual([
+      'loopback',
+      '10.0.0.0/8',
+      '172.16.0.0/12',
+    ]);
+  });
+});
+
+describe('ExpressApp trust proxy', () => {
+  const original = process.env.TRUST_PROXY;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (original === undefined) {
+      delete process.env.TRUST_PROXY;
+    } else {
+      process.env.TRUST_PROXY = original;
+    }
+  });
+
+  it('should leave trust proxy disabled by default', () => {
+    delete process.env.TRUST_PROXY;
+
+    const app = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer).getApp();
+
+    expect(app.get('trust proxy')).toBe(false);
+  });
+
+  it('should apply the hop count from TRUST_PROXY', () => {
+    process.env.TRUST_PROXY = '2';
+
+    const app = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer).getApp();
+
+    expect(app.get('trust proxy')).toBe(2);
+  });
+
+  it('should let an explicit config value win over the environment', () => {
+    process.env.TRUST_PROXY = '2';
+
+    const app = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer, {
+      trustProxy: 'loopback',
+    }).getApp();
+
+    expect(app.get('trust proxy')).toBe('loopback');
+  });
+
+  it('should trust exactly the configured number of hops', () => {
+    process.env.TRUST_PROXY = '1';
+
+    const app = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer).getApp();
+    const trusts = app.get('trust proxy fn') as (addr: string, hop: number) => boolean;
+
+    // Hop 0 is the proxy itself; hop 1 would be a value the client supplied.
+    expect(trusts('10.0.0.1', 0)).toBe(true);
+    expect(trusts('10.0.0.1', 1)).toBe(false);
+  });
+
+  it('should trust no hops when TRUST_PROXY is unset', () => {
+    delete process.env.TRUST_PROXY;
+
+    const app = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer).getApp();
+    const trusts = app.get('trust proxy fn') as (addr: string, hop: number) => boolean;
+
+    expect(trusts('10.0.0.1', 0)).toBe(false);
   });
 });

@@ -203,17 +203,43 @@ claude mcp add node-red \
 
 ## ⚙️ Environment Variables
 
-| Variable                      | Required | Default                   | Description                                                                                    |
-| ----------------------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
-| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                  |
-| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                        |
-| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                        |
-| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                              |
-| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                       |
-| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                       |
-| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode) |
-| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                   |
-| `PORT`                        | No       | `3000`                    | Listen port                                                                                    |
-| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                               |
-| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                           |
-| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                      |
+| Variable                      | Required | Default                   | Description                                                                                         |
+| ----------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                       |
+| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                             |
+| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                             |
+| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                                   |
+| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                            |
+| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                            |
+| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)      |
+| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                        |
+| `PORT`                        | No       | `3000`                    | Listen port                                                                                         |
+| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                                    |
+| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                                |
+| `TRUST_PROXY`                 | No       | `false`                   | Reverse proxy hops to trust — see [Running Behind a Reverse Proxy](#running-behind-a-reverse-proxy) |
+| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                           |
+
+### Running Behind a Reverse Proxy
+
+Express ignores `X-Forwarded-For` unless you tell it which proxies to trust.
+Left unset behind a proxy, every client resolves to the proxy's own address and
+shares a single rate-limit bucket. `TRUST_PROXY` sets Express's `trust proxy`:
+
+| Value                       | Meaning                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| unset, empty, or `false`    | Don't trust `X-Forwarded-For`; use the socket address (default)         |
+| `1`, `2`, …                 | **Recommended.** Number of proxy hops in front of this server           |
+| `loopback`                  | Trust `127.0.0.1/8`, `::1/128` — also `linklocal` and `uniquelocal`     |
+| `10.0.0.0/8`, `192.168.1.5` | Trust specific addresses or CIDR ranges                                 |
+| `loopback,10.0.0.0/8`       | Comma-separated — any combination of the above                          |
+| `true`                      | Trust every hop. Works, but **not recommended** — see the warning below |
+
+Use the hop count wherever you can: `TRUST_PROXY=1` for a single Traefik, nginx
+or Caddy in front, `TRUST_PROXY=2` for something like Traefik in front of
+Pomerium. Count the proxies that actually append to `X-Forwarded-For`.
+
+`TRUST_PROXY=true` is accepted, but the server logs a warning on startup and
+express-rate-limit reports it as `ERR_ERL_PERMISSIVE_TRUST_PROXY`. Trusting
+every hop means any client can spoof its address — and so its rate-limit bucket
+— just by sending its own `X-Forwarded-For` header. Prefer a hop count or an
+explicit trust list.
