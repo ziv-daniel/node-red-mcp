@@ -235,13 +235,13 @@ If none of these are set, requests are sent unauthenticated — only appropriate
 when Node-RED's `adminAuth` is disabled and nothing sits in front of the
 instance either.
 
-**Known limitation:** these two topologies are mutually exclusive today. If
-you genuinely run *both* — a reverse-proxy Basic-auth layer in front of an
-instance that also has Node-RED's own `adminAuth` enabled — there's currently
-no way to supply separate credentials for each; `NODERED_USERNAME`/`PASSWORD`
-can only be exchanged for a token *or* sent as a static Basic header, not
-both at once for two different recipients. Supporting that would need a
-second, distinct credential pair sent independently of the Bearer exchange.
+**Known limitation:** these two topologies are mutually exclusive today. If you
+genuinely run _both_ — a reverse-proxy Basic-auth layer in front of an instance
+that also has Node-RED's own `adminAuth` enabled — there's currently no way to
+supply separate credentials for each; `NODERED_USERNAME`/`PASSWORD` can only be
+exchanged for a token _or_ sent as a static Basic header, not both at once for
+two different recipients. Supporting that would need a second, distinct
+credential pair sent independently of the Bearer exchange.
 
 ## ⚙️ Environment Variables
 
