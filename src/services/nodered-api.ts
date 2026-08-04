@@ -18,7 +18,12 @@ import {
   NodeRedDeploymentOptions,
   NodeRedAPIError,
 } from '../types/nodered.js';
-import { resolveNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
+import {
+  resolveNodeRedAuthHeader,
+  isNodeRedAdminAuthEnabled,
+  validateNodeRedAuth,
+  getTlsRejectUnauthorized,
+} from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
@@ -191,7 +196,15 @@ export class NodeRedAPIClient {
       async error => {
         const config = error.config;
 
-        if (error.response?.status === 401 && !config._authRetry && !this.hasExplicitAuthOverride) {
+        const hasRefreshableAuth =
+          isNodeRedAdminAuthEnabled() || validateNodeRedAuth().type === 'bearer';
+
+        if (
+          error.response?.status === 401 &&
+          !config._authRetry &&
+          !this.hasExplicitAuthOverride &&
+          hasRefreshableAuth
+        ) {
           config._authRetry = true;
           // Force a fresh token now; the request interceptor will also call
           // resolveNodeRedAuthHeader() on the retry below, but that's a cache

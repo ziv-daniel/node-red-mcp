@@ -32,7 +32,11 @@ import {
   mockAuthToken,
   mockAuthStatus,
 } from '../../test/fixtures/responses.js';
-import { resolveNodeRedAuthHeader } from '../utils/auth.js';
+import {
+  resolveNodeRedAuthHeader,
+  isNodeRedAdminAuthEnabled,
+  validateNodeRedAuth,
+} from '../utils/auth.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
 
@@ -64,6 +68,8 @@ vi.mock('axios', () => {
 // Mock auth utility
 vi.mock('../utils/auth.js', () => ({
   resolveNodeRedAuthHeader: vi.fn(async () => ({})),
+  isNodeRedAdminAuthEnabled: vi.fn(() => true),
+  validateNodeRedAuth: vi.fn(() => ({ type: 'none' })),
   getTlsRejectUnauthorized: vi.fn(() => true),
 }));
 
@@ -1193,6 +1199,17 @@ describe('NodeRedAPIClient', () => {
     it('does not retry a second time once _authRetry is already set (no infinite loop)', async () => {
       const responseErrorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
       const config: any = { headers: {}, _authRetry: true, _retryCount: 3 };
+      const error: any = { response: { status: 401 }, config };
+
+      await expect(responseErrorHandler(error)).rejects.toBe(error);
+      expect(resolveNodeRedAuthHeader).not.toHaveBeenCalledWith(true);
+    });
+
+    it('skips the forced refresh when there is no refreshable auth (static Basic mode, gate off)', async () => {
+      vi.mocked(isNodeRedAdminAuthEnabled).mockReturnValueOnce(false);
+      vi.mocked(validateNodeRedAuth).mockReturnValueOnce({ type: 'basic' } as any);
+      const responseErrorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1];
+      const config: any = { headers: {}, _retryCount: 3 };
       const error: any = { response: { status: 401 }, config };
 
       await expect(responseErrorHandler(error)).rejects.toBe(error);

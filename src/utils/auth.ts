@@ -369,27 +369,37 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
 }
 
 /**
- * Resolve a usable Authorization header for Node-RED.
+ * When true, NODERED_USERNAME/NODERED_PASSWORD are exchanged for a Bearer
+ * token via Node-RED's own /auth/token endpoint — i.e. Node-RED's adminAuth
+ * is enabled and is the thing actually checking these credentials.
  *
- * Node-RED's admin API only ever accepts a Bearer token (obtained via the
- * /auth/token password-grant exchange) — it does NOT accept raw HTTP Basic
- * auth. When NODERED_USERNAME/NODERED_PASSWORD are configured, this exchanges
- * them for a token on demand and caches it in memory, transparently
- * re-fetching a new one once it's close to expiry (or when `forceRefresh` is
- * passed after a 401). Bearer (NODERED_API_TOKEN) and none modes pass through
- * unchanged.
+ * When false (default), those credentials are sent as a static HTTP Basic
+ * header on every request instead, via getNodeRedAuthHeader(). That's for
+ * deployments where NODERED_USERNAME/PASSWORD aren't Node-RED's own adminAuth
+ * at all, but credentials for a reverse proxy (nginx, Traefik, ...) sitting
+ * in front of the whole instance and Basic-auth-gating every request
+ * including the token endpoint itself — for that setup, doing the exchange
+ * would 401 immediately at the proxy, before ever reaching Node-RED.
  */
-export async function resolveNodeRedAuthHeader(
-  forceRefresh = false
-): Promise<Record<string, string>> {
+export function isNodeRedAdminAuthEnabled(): boolean {
+  return process.env.NODERED_ADMIN_AUTH_ENABLED === 'true';
+}
+
+/**
+ * Resolve a Bearer token for Node-RED, or undefined if none is available
+ * (basic mode with the exchange not opted into, or no credentials at all).
+ * Shared by resolveNodeRedAuthHeader and resolveNodeRedAuthToken so there's
+ * one cache and one exchange in flight at a time.
+ */
+async function resolveBearerToken(forceRefresh: boolean): Promise<string | undefined> {
   const authConfig = validateNodeRedAuth();
 
   if (authConfig.type === 'bearer') {
-    return { Authorization: `Bearer ${authConfig.credentials!.token}` };
+    return authConfig.credentials!.token;
   }
 
-  if (authConfig.type !== 'basic') {
-    return {};
+  if (authConfig.type !== 'basic' || !isNodeRedAdminAuthEnabled()) {
+    return undefined;
   }
 
   if (forceRefresh) {
@@ -397,7 +407,7 @@ export async function resolveNodeRedAuthHeader(
   }
 
   if (cachedNodeRedToken && Date.now() < cachedNodeRedToken.expiresAt) {
-    return { Authorization: `Bearer ${cachedNodeRedToken.accessToken}` };
+    return cachedNodeRedToken.accessToken;
   }
 
   if (!nodeRedTokenFetch) {
@@ -408,7 +418,38 @@ export async function resolveNodeRedAuthHeader(
   }
 
   cachedNodeRedToken = await nodeRedTokenFetch;
-  return { Authorization: `Bearer ${cachedNodeRedToken.accessToken}` };
+  return cachedNodeRedToken.accessToken;
+}
+
+/**
+ * Resolve a usable Authorization header for Node-RED's HTTP admin API.
+ *
+ * Bearer mode (NODERED_API_TOKEN) always uses that token directly. Basic mode
+ * (NODERED_USERNAME/PASSWORD) uses a Bearer token from the /auth/token
+ * exchange only when isNodeRedAdminAuthEnabled() is true; otherwise it falls
+ * back to a static HTTP Basic header via getNodeRedAuthHeader() (see that
+ * function's caveat: Node-RED's own admin API does not accept Basic auth, so
+ * this fallback path is only correct when the credentials are actually meant
+ * for something in front of Node-RED, not Node-RED's own adminAuth).
+ */
+export async function resolveNodeRedAuthHeader(
+  forceRefresh = false
+): Promise<Record<string, string>> {
+  const token = await resolveBearerToken(forceRefresh);
+  return token ? { Authorization: `Bearer ${token}` } : getNodeRedAuthHeader();
+}
+
+/**
+ * Resolve a bare Bearer token string (no "Authorization"/"Bearer " wrapping),
+ * for callers that need to authenticate over a channel other than an HTTP
+ * header — e.g. Node-RED's /comms WebSocket, which authenticates via an
+ * in-band `{ auth: "<token>" }` message, not connection headers. Returns
+ * undefined when there's no token to send (basic mode with the exchange not
+ * opted into, or no credentials at all) — those cases have nothing to
+ * authenticate the WebSocket with, whatever this server does have.
+ */
+export async function resolveNodeRedAuthToken(forceRefresh = false): Promise<string | undefined> {
+  return resolveBearerToken(forceRefresh);
 }
 
 /**
