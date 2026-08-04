@@ -3,13 +3,14 @@ import { createServer } from 'http';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketServer } from 'ws';
 
-import { resolveNodeRedAuthHeader } from '../utils/auth.js';
+import { resolveNodeRedAuthHeader, resolveNodeRedAuthToken } from '../utils/auth.js';
 
 import { NodeErrorChecker } from './node-error-checker.js';
 import { NodeRedAPIClient } from './nodered-api.js';
 
 vi.mock('../utils/auth.js', () => ({
   resolveNodeRedAuthHeader: vi.fn().mockResolvedValue({}),
+  resolveNodeRedAuthToken: vi.fn().mockResolvedValue(undefined),
   getTlsRejectUnauthorized: vi.fn().mockReturnValue(true),
 }));
 
@@ -54,6 +55,7 @@ describe('NodeErrorChecker', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(resolveNodeRedAuthHeader).mockResolvedValue({});
+    vi.mocked(resolveNodeRedAuthToken).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -228,10 +230,53 @@ describe('NodeErrorChecker', () => {
     const checker = new NodeErrorChecker(client);
 
     wss.on('connection', ws => {
-      ws.send(JSON.stringify({ topic: 'auth', data: 'fail' }));
+      ws.send(JSON.stringify({ auth: 'fail' }));
     });
 
     await expect(checker.check({ timeoutMs: 500 })).rejects.toThrow('auth failed');
+
+    await close();
+  });
+
+  it('flags statusesMayBeIncomplete when a token was sent but never confirmed', async () => {
+    vi.mocked(resolveNodeRedAuthToken).mockResolvedValue('some-token');
+
+    const { wss, port, close } = await startWss();
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
+    const checker = new NodeErrorChecker(client);
+
+    // Server accepts the connection but never sends { auth: 'ok' } or any
+    // status frame — this is the previously-silent false-negative case.
+    wss.on('connection', () => {});
+
+    const result = await checker.check({ timeoutMs: 100 });
+
+    expect(result.errors).toEqual([]);
+    expect(result.statusesMayBeIncomplete).toBe(true);
+
+    await close();
+  });
+
+  it('does not flag statusesMayBeIncomplete once auth is confirmed and data arrives', async () => {
+    vi.mocked(resolveNodeRedAuthToken).mockResolvedValue('some-token');
+
+    const { wss, port, close } = await startWss();
+    const client = makeClient({
+      getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
+    });
+    const checker = new NodeErrorChecker(client);
+
+    wss.on('connection', ws => {
+      ws.send(JSON.stringify({ auth: 'ok' }));
+      ws.send(JSON.stringify({ topic: 'status/node-1', data: { fill: 'red', text: 'err' } }));
+    });
+
+    const result = await checker.check({ timeoutMs: 200 });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.statusesMayBeIncomplete).toBe(false);
 
     await close();
   });
