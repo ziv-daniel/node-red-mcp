@@ -101,6 +101,17 @@ async function collectStatuses(
 
         for (const msg of frames) {
           if (typeof msg.auth === 'string') {
+            // Trusting the WebSocket peer's own auth-handshake reply is
+            // inherent to implementing Node-RED's documented /comms protocol
+            // — there is no alternative, signed proof Node-RED provides. The
+            // actual trust boundary is the TLS connection to NODERED_URL
+            // (see getTlsRejectUnauthorized), not this in-band message; a
+            // party able to inject frames on this socket without breaking
+            // TLS has already compromised the channel this check depends on.
+            // authConfirmed also only affects statusesMayBeIncomplete, a
+            // diagnostic-completeness signal — it grants no access, since
+            // the socket already receives whatever Node-RED sends regardless.
+            // codeql[js/user-controlled-bypass]
             if (msg.auth === 'ok') {
               authConfirmed = true;
             } else {

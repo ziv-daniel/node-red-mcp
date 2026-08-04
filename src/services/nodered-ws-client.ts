@@ -149,6 +149,11 @@ export class NodeRedWsClient {
     this.onEvent?.();
 
     if (typeof msg.auth === 'string') {
+      // Trusting the peer's own auth-handshake reply is inherent to
+      // implementing Node-RED's /comms protocol; the real trust boundary is
+      // the TLS connection to NODERED_URL (getTlsRejectUnauthorized), not
+      // this in-band message. This flag only decides whether the *next*
+      // reconnect forces a token refresh — it grants no access itself.
       if (msg.auth === 'ok') {
         this.authFailedLastAttempt = false;
         console.log('NodeRedWsClient: auth ok');
