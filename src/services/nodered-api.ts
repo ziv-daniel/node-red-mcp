@@ -54,6 +54,11 @@ export interface ModuleInstallResult {
   message: string;
 }
 
+// Single path segment: alphanumeric, dash, underscore, dot only (no '/', no '..')
+const SAFE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
+// Library-style path: same charset but slashes allowed as separators, no traversal
+const SAFE_LIBRARY_PATH_RE = /^[A-Za-z0-9_./-]+$/;
+
 export class NodeRedAPIClient {
   private client: AxiosInstance;
   private config: NodeRedAPIConfig;
@@ -115,6 +120,32 @@ export class NodeRedAPIClient {
     });
 
     this.setupInterceptors();
+  }
+
+  /**
+   * Reject path segments that could redirect the request outside the intended
+   * resource (traversal, absolute paths, protocol-relative, or arbitrary chars).
+   */
+  private assertSafeSegment(value: string, paramName: string): string {
+    if (!value || !SAFE_SEGMENT_RE.test(value) || value.includes('..')) {
+      throw new Error(`Invalid ${paramName}: ${value}`);
+    }
+    return value;
+  }
+
+  /**
+   * Same as assertSafeSegment but allows '/' for hierarchical library paths.
+   */
+  private assertSafeLibraryPath(value: string, paramName: string): string {
+    if (
+      !value ||
+      !SAFE_LIBRARY_PATH_RE.test(value) ||
+      value.includes('..') ||
+      value.startsWith('/')
+    ) {
+      throw new Error(`Invalid ${paramName}: ${value}`);
+    }
+    return value;
   }
 
   /**
@@ -354,6 +385,7 @@ export class NodeRedAPIClient {
    */
   async getFlow(flowId: string): Promise<NodeRedFlow> {
     try {
+      this.assertSafeSegment(flowId, 'flowId');
       const response = await this.client.get(`/flow/${flowId}`);
       return response.data;
     } catch (error) {
@@ -388,6 +420,7 @@ export class NodeRedAPIClient {
    */
   async updateFlow(flowId: string, flowData: Partial<NodeRedFlow>): Promise<NodeRedFlow> {
     try {
+      this.assertSafeSegment(flowId, 'flowId');
       const response = await this.client.put(`/flow/${flowId}`, flowData);
       return response.data;
     } catch (error) {
@@ -400,6 +433,7 @@ export class NodeRedAPIClient {
    */
   async deleteFlow(flowId: string): Promise<void> {
     try {
+      this.assertSafeSegment(flowId, 'flowId');
       await this.client.delete(`/flow/${flowId}`);
     } catch (error) {
       handleNodeRedError(error, `deleteFlow(${flowId})`);
@@ -468,6 +502,7 @@ export class NodeRedAPIClient {
    */
   async getNodeType(nodeId: string): Promise<NodeRedNodeType> {
     try {
+      this.assertSafeSegment(nodeId, 'nodeId');
       const response = await this.client.get(`/nodes/${nodeId}`);
       return response.data;
     } catch (error) {
@@ -480,6 +515,7 @@ export class NodeRedAPIClient {
    */
   async enableNodeType(nodeId: string): Promise<void> {
     try {
+      this.assertSafeSegment(nodeId, 'nodeId');
       await this.client.put(`/nodes/${nodeId}`, { enabled: true });
     } catch (error) {
       handleNodeRedError(error, `enableNodeType(${nodeId})`);
@@ -491,6 +527,7 @@ export class NodeRedAPIClient {
    */
   async disableNodeType(nodeId: string): Promise<void> {
     try {
+      this.assertSafeSegment(nodeId, 'nodeId');
       await this.client.put(`/nodes/${nodeId}`, { enabled: false });
     } catch (error) {
       handleNodeRedError(error, `disableNodeType(${nodeId})`);
@@ -522,6 +559,12 @@ export class NodeRedAPIClient {
    */
   async uninstallNodeModule(moduleName: string): Promise<void> {
     try {
+      // npm package names may contain a scoped '@scope/name' segment; validate
+      // against the same charset as installNodeModule rather than assertSafeSegment
+      // (which disallows '@' and '/').
+      if (!/^(@[a-z0-9][a-z0-9-._]*\/)?[a-z0-9][a-z0-9-._]*$/.test(moduleName)) {
+        throw new Error(`Invalid module name: ${moduleName}`);
+      }
       await this.client.delete(`/nodes/${moduleName}`);
     } catch (error) {
       handleNodeRedError(error, `uninstallNodeModule(${moduleName})`);
@@ -595,6 +638,7 @@ export class NodeRedAPIClient {
    */
   async getGlobalContext(key?: string): Promise<any> {
     try {
+      if (key) this.assertSafeSegment(key, 'key');
       const url = key ? `/context/global/${key}` : '/context/global';
       const response = await this.client.get(url);
       return response.data;
@@ -608,6 +652,7 @@ export class NodeRedAPIClient {
    */
   async setGlobalContext(key: string, value: any): Promise<void> {
     try {
+      this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/global/${key}`, { value });
     } catch (error) {
       handleNodeRedError(error, `setGlobalContext(${key})`);
@@ -619,6 +664,7 @@ export class NodeRedAPIClient {
    */
   async deleteGlobalContext(key: string): Promise<void> {
     try {
+      this.assertSafeSegment(key, 'key');
       await this.client.delete(`/context/global/${key}`);
     } catch (error) {
       handleNodeRedError(error, `deleteGlobalContext(${key})`);
@@ -630,6 +676,8 @@ export class NodeRedAPIClient {
    */
   async getFlowContext(flowId: string, key?: string): Promise<any> {
     try {
+      this.assertSafeSegment(flowId, 'flowId');
+      if (key) this.assertSafeSegment(key, 'key');
       const url = key ? `/context/flow/${flowId}/${key}` : `/context/flow/${flowId}`;
       const response = await this.client.get(url);
       return response.data;
@@ -643,6 +691,8 @@ export class NodeRedAPIClient {
    */
   async setFlowContext(flowId: string, key: string, value: any): Promise<void> {
     try {
+      this.assertSafeSegment(flowId, 'flowId');
+      this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/flow/${flowId}/${key}`, { value });
     } catch (error) {
       handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
@@ -656,6 +706,7 @@ export class NodeRedAPIClient {
    */
   async getLibraryEntries(type = 'flows'): Promise<any[]> {
     try {
+      this.assertSafeSegment(type, 'type');
       const response = await this.client.get(`/library/${type}`);
       return response.data;
     } catch (error) {
@@ -668,6 +719,8 @@ export class NodeRedAPIClient {
    */
   async saveToLibrary(type: string, path: string, data: any): Promise<void> {
     try {
+      this.assertSafeSegment(type, 'type');
+      this.assertSafeLibraryPath(path, 'path');
       await this.client.post(`/library/${type}/${path}`, data);
     } catch (error) {
       handleNodeRedError(error, `saveToLibrary(${type}, ${path})`);
@@ -679,6 +732,8 @@ export class NodeRedAPIClient {
    */
   async loadFromLibrary(type: string, path: string): Promise<any> {
     try {
+      this.assertSafeSegment(type, 'type');
+      this.assertSafeLibraryPath(path, 'path');
       const response = await this.client.get(`/library/${type}/${path}`);
       return response.data;
     } catch (error) {
