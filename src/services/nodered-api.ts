@@ -502,7 +502,9 @@ export class NodeRedAPIClient {
    */
   async getNodeType(nodeId: string): Promise<NodeRedNodeType> {
     try {
-      this.assertSafeSegment(nodeId, 'nodeId');
+      // Node type IDs are '<module>/<name>' (e.g. 'node-red/inject') and legitimately
+      // contain a '/', so this needs the library-path validator, not the single-segment one.
+      this.assertSafeLibraryPath(nodeId, 'nodeId');
       const response = await this.client.get(`/nodes/${nodeId}`);
       return response.data;
     } catch (error) {
@@ -515,7 +517,7 @@ export class NodeRedAPIClient {
    */
   async enableNodeType(nodeId: string): Promise<void> {
     try {
-      this.assertSafeSegment(nodeId, 'nodeId');
+      this.assertSafeLibraryPath(nodeId, 'nodeId');
       await this.client.put(`/nodes/${nodeId}`, { enabled: true });
     } catch (error) {
       handleNodeRedError(error, `enableNodeType(${nodeId})`);
@@ -527,7 +529,7 @@ export class NodeRedAPIClient {
    */
   async disableNodeType(nodeId: string): Promise<void> {
     try {
-      this.assertSafeSegment(nodeId, 'nodeId');
+      this.assertSafeLibraryPath(nodeId, 'nodeId');
       await this.client.put(`/nodes/${nodeId}`, { enabled: false });
     } catch (error) {
       handleNodeRedError(error, `disableNodeType(${nodeId})`);
