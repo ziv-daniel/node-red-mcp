@@ -16,19 +16,19 @@ vi.mock('../utils/auth.js', () => ({
 vi.mock('./nodered-api.js', () => ({
   NodeRedAPIClient: vi.fn().mockImplementation(() => ({
     getCommsWsUrl: vi.fn().mockReturnValue('ws://localhost:0/comms'),
-    getFlows: vi.fn().mockResolvedValue([]),
+    getFlowsGrouped: vi.fn().mockResolvedValue([]),
   })),
 }));
 
 interface FakeClient {
   getCommsWsUrl: ReturnType<typeof vi.fn>;
-  getFlows: ReturnType<typeof vi.fn>;
+  getFlowsGrouped: ReturnType<typeof vi.fn>;
 }
 
 function makeClient(overrides: Partial<FakeClient> = {}): NodeRedAPIClient {
   const defaults: FakeClient = {
     getCommsWsUrl: vi.fn().mockReturnValue('ws://localhost:0/comms'),
-    getFlows: vi.fn().mockResolvedValue([]),
+    getFlowsGrouped: vi.fn().mockResolvedValue([]),
   };
   return { ...defaults, ...overrides } as unknown as NodeRedAPIClient;
 }
@@ -166,7 +166,7 @@ describe('NodeErrorChecker', () => {
     const { wss, port, close } = await startWss();
     const client = makeClient({
       getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
-      getFlows: vi.fn().mockResolvedValue([
+      getFlowsGrouped: vi.fn().mockResolvedValue([
         {
           id: 'flow-1',
           label: 'My Flow',
@@ -197,7 +197,7 @@ describe('NodeErrorChecker', () => {
     const { wss, port, close } = await startWss();
     const client = makeClient({
       getCommsWsUrl: vi.fn().mockReturnValue(`ws://localhost:${port}/comms`),
-      getFlows: vi.fn().mockResolvedValue([]),
+      getFlowsGrouped: vi.fn().mockResolvedValue([]),
     });
     const checker = new NodeErrorChecker(client);
 

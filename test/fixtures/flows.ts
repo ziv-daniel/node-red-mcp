@@ -88,6 +88,23 @@ export const mockFlows: NodeRedFlow[] = [
   mockFlowWithoutLabel,
 ];
 
+/**
+ * The shape Node-RED's real GET /flows actually returns: a FLAT array containing every
+ * tab/subflow container AND every one of its child nodes as sibling entries, each child
+ * linked to its container via `z` — never the nested {tab, nodes: [...]} shape used above.
+ * Flattens the same logical flows as mockFlows, so grouping this should reproduce them.
+ */
+export const mockFlatFlows: unknown[] = [
+  { id: mockFlowTab.id, type: 'tab', label: mockFlowTab.label, disabled: mockFlowTab.disabled, info: mockFlowTab.info },
+  ...mockFlowTab.nodes.map(n => ({ ...n, z: mockFlowTab.id })),
+  { id: mockFlowSubflow.id, type: 'subflow', label: mockFlowSubflow.label, disabled: mockFlowSubflow.disabled, info: mockFlowSubflow.info },
+  ...mockFlowSubflow.nodes.map(n => ({ ...n, z: mockFlowSubflow.id })),
+  { id: mockDisabledFlow.id, type: 'tab', label: mockDisabledFlow.label, disabled: mockDisabledFlow.disabled, info: mockDisabledFlow.info },
+  { id: mockFlowWithoutLabel.id, type: 'tab', disabled: mockFlowWithoutLabel.disabled },
+  ...mockFlowWithoutLabel.nodes.map(n => ({ ...n, z: mockFlowWithoutLabel.id })),
+  mockConfigNode,
+];
+
 export const mockFlowSummaries: NodeRedFlowSummary[] = [
   {
     id: 'flow-1',

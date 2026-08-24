@@ -26,7 +26,7 @@ const mockFlows = [
 ];
 
 const mockClient = {
-  getFlows: vi.fn().mockResolvedValue(mockFlows),
+  getFlowsGrouped: vi.fn().mockResolvedValue(mockFlows),
 };
 
 describe('SemanticFlowIndex', () => {
@@ -35,14 +35,14 @@ describe('SemanticFlowIndex', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockProvider.search.mockResolvedValue([]);
-    mockClient.getFlows.mockResolvedValue(mockFlows);
+    mockClient.getFlowsGrouped.mockResolvedValue(mockFlows);
     // TTL=0 so every search triggers a refresh
     index = new SemanticFlowIndex(mockClient as any, mockProvider, 0);
   });
 
-  it('calls getFlows on first search', async () => {
+  it('calls getFlowsGrouped on first search', async () => {
     await index.search('mqtt');
-    expect(mockClient.getFlows).toHaveBeenCalledTimes(1);
+    expect(mockClient.getFlowsGrouped).toHaveBeenCalledTimes(1);
   });
 
   it('passes all documents to provider.search', async () => {
@@ -86,15 +86,15 @@ describe('SemanticFlowIndex', () => {
     // Use TTL=Infinity so refresh is NOT triggered automatically
     const stableIndex = new SemanticFlowIndex(mockClient as any, mockProvider, Infinity);
     await stableIndex.refresh();
-    expect(mockClient.getFlows).toHaveBeenCalledTimes(1);
+    expect(mockClient.getFlowsGrouped).toHaveBeenCalledTimes(1);
     expect(stableIndex.documentCount).toBe(5);
   });
 
-  it('does not call getFlows again within TTL', async () => {
+  it('does not call getFlowsGrouped again within TTL', async () => {
     const ttlIndex = new SemanticFlowIndex(mockClient as any, mockProvider, 60_000);
     await ttlIndex.search('first');
     await ttlIndex.search('second');
-    expect(mockClient.getFlows).toHaveBeenCalledTimes(1);
+    expect(mockClient.getFlowsGrouped).toHaveBeenCalledTimes(1);
   });
 
   it('returns provider search results', async () => {

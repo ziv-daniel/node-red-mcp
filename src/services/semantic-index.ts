@@ -40,7 +40,7 @@ export class SemanticFlowIndex {
   }
 
   async refresh(): Promise<void> {
-    const flows = await this.client.getFlows();
+    const flows = await this.client.getFlowsGrouped();
     this.documents = this.buildDocuments(flows);
     this.lastIndexedAt = Date.now();
   }

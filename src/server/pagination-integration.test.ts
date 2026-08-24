@@ -16,6 +16,7 @@ import { McpNodeRedServer } from './mcp-server.js';
 
 const mockNodeRedClient = {
   getFlows: vi.fn(),
+  getFlowsGrouped: vi.fn(),
   getFlowSummaries: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
@@ -28,10 +29,8 @@ const mockNodeRedClient = {
   testConnection: vi.fn().mockResolvedValue(true),
   getRuntimeInfo: vi.fn(),
   getGlobalContext: vi.fn(),
-  setGlobalContext: vi.fn(),
   deleteGlobalContext: vi.fn(),
   getFlowContext: vi.fn(),
-  setFlowContext: vi.fn(),
   deleteFlow: vi.fn(),
   getFlowStatus: vi.fn(),
   getSettings: vi.fn(),
@@ -184,7 +183,7 @@ describe('Pagination + filters', () => {
     ];
 
     beforeEach(() => {
-      mockNodeRedClient.getFlows.mockResolvedValue([
+      mockNodeRedClient.getFlowsGrouped.mockResolvedValue([
         { id: 'tab-1', type: 'tab', label: 'Big', nodes: manyNodes },
         {
           id: 'tab-2',

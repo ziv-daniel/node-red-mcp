@@ -32,6 +32,7 @@ import { SSEHandler } from './sse-handler.js';
 // Create mock instances that will be returned by the mocked constructors
 const mockNodeRedClient = {
   getFlows: vi.fn(),
+  getFlowsGrouped: vi.fn(),
   getFlowSummaries: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
@@ -44,10 +45,8 @@ const mockNodeRedClient = {
   testConnection: vi.fn().mockResolvedValue(true),
   getRuntimeInfo: vi.fn(),
   getGlobalContext: vi.fn(),
-  setGlobalContext: vi.fn(),
   deleteGlobalContext: vi.fn(),
   getFlowContext: vi.fn(),
-  setFlowContext: vi.fn(),
   deleteFlow: vi.fn(),
   getFlowStatus: vi.fn(),
   getSettings: vi.fn(),
@@ -138,7 +137,7 @@ describe('McpNodeRedServer', () => {
 
     // Reset mock implementation functions
     mockNodeRedClient.testConnection.mockResolvedValue(true);
-    mockNodeRedClient.getFlows.mockResolvedValue(mockFlows);
+    mockNodeRedClient.getFlowsGrouped.mockResolvedValue(mockFlows);
     mockNodeRedClient.getFlowSummaries.mockResolvedValue(mockFlowSummaries);
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
@@ -150,10 +149,8 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.getInstalledModules.mockResolvedValue(mockInstalledModules);
     mockNodeRedClient.getRuntimeInfo.mockResolvedValue(mockRuntimeInfo);
     mockNodeRedClient.getGlobalContext.mockResolvedValue({});
-    mockNodeRedClient.setGlobalContext.mockResolvedValue(undefined);
     mockNodeRedClient.deleteGlobalContext.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowContext.mockResolvedValue({});
-    mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
     mockNodeRedClient.deleteFlow.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowStatus.mockResolvedValue(mockFlowStatus);
     mockNodeRedClient.getSettings.mockResolvedValue(mockSettings);
@@ -336,9 +333,9 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 20 tools defined', () => {
+    it('should have exactly 19 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(20);
+      expect(tools.length).toBe(19);
     });
 
     it('should include semantic_search_flows tool', () => {
@@ -427,7 +424,7 @@ describe('McpNodeRedServer', () => {
     it('should return full flows when includeDetails is true', async () => {
       const result = await mcpServer.callTool('get_flows', { includeDetails: true });
 
-      expect(mockNodeRedClient.getFlows).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowsGrouped).toHaveBeenCalled();
       expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
     });
 
@@ -609,60 +606,6 @@ describe('McpNodeRedServer', () => {
     });
   });
 
-  describe('Tool Execution - set_context', () => {
-    it('should write a global context variable', async () => {
-      mockNodeRedClient.setGlobalContext.mockResolvedValue(undefined);
-      const result = await mcpServer.callTool('set_context', { key: 'counter', value: 99 });
-
-      expect(mockNodeRedClient.setGlobalContext).toHaveBeenCalledWith('counter', 99);
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(true);
-      expect(parsed.data.key).toBe('counter');
-    });
-
-    it('should write a flow context variable', async () => {
-      mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
-      const result = await mcpServer.callTool('set_context', {
-        scope: 'flow',
-        flowId: 'flow-1',
-        key: 'localVar',
-        value: 'hello',
-      });
-
-      expect(mockNodeRedClient.setFlowContext).toHaveBeenCalledWith('flow-1', 'localVar', 'hello');
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(true);
-    });
-
-    it('should return validation error when key is missing', async () => {
-      const result = await mcpServer.callTool('set_context', { value: 1 });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('key');
-    });
-
-    it('should return validation error when value is missing', async () => {
-      const result = await mcpServer.callTool('set_context', { key: 'x' });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('value');
-    });
-
-    it('should return validation error when scope is flow but flowId is missing', async () => {
-      const result = await mcpServer.callTool('set_context', {
-        scope: 'flow',
-        key: 'x',
-        value: 1,
-      });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('flowId');
-    });
-  });
-
   describe('Tool Execution - delete_context', () => {
     it('should delete a global context key', async () => {
       mockNodeRedClient.deleteGlobalContext.mockResolvedValue(undefined);
@@ -707,7 +650,7 @@ describe('McpNodeRedServer', () => {
     ];
 
     beforeEach(() => {
-      mockNodeRedClient.getFlows.mockResolvedValue(searchFlowsFixture);
+      mockNodeRedClient.getFlowsGrouped.mockResolvedValue(searchFlowsFixture);
     });
 
     it('should filter nodes by type (substring, case-insensitive)', async () => {
@@ -785,7 +728,7 @@ describe('McpNodeRedServer', () => {
         name: `Func ${i}`,
         z: 'tab-1',
       }));
-      mockNodeRedClient.getFlows.mockResolvedValue([
+      mockNodeRedClient.getFlowsGrouped.mockResolvedValue([
         { id: 'tab-1', type: 'tab', label: 'Big Flow', nodes: manyNodes },
       ]);
 
@@ -1095,13 +1038,13 @@ describe('McpNodeRedServer', () => {
     });
 
     it('should handle errors in resource listing gracefully', async () => {
-      mockNodeRedClient.getFlows.mockRejectedValueOnce(new Error('Connection failed'));
+      mockNodeRedClient.getFlowsGrouped.mockRejectedValueOnce(new Error('Connection failed'));
 
       const result = await mcpServer.listResources();
 
       // Static collection resources are always present even when the API errors
       expect(result.resources.find((r: any) => r.uri === 'nodered://flows')).toBeDefined();
-      // Individual flow:// entries are absent when getFlows() fails
+      // Individual flow:// entries are absent when getFlowsGrouped() fails
       expect(result.resources.find((r: any) => r.uri.startsWith('flow://'))).toBeUndefined();
     });
   });

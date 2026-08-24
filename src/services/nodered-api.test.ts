@@ -9,6 +9,8 @@ import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 
 import {
   mockFlows,
+  mockFlatFlows,
+  mockFlowSubflow,
   mockFlowTab,
   mockFlowSummaries,
   mockFlowStatus,
@@ -20,6 +22,7 @@ import {
 import {
   mockSettings,
   mockRuntimeInfo,
+  mockDiagnosticsResponse,
   mockNodeTypes,
   mockInstalledModules,
   mockSearchResult,
@@ -156,35 +159,63 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
+    describe('getFlowsGrouped', () => {
+      it('groups the flat GET /flows response into tab/subflow containers with nested nodes', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlatFlows });
+
+        const grouped = await client.getFlowsGrouped();
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows');
+        expect(grouped.map(f => f.id)).toEqual([
+          mockFlowTab.id,
+          mockFlowSubflow.id,
+          mockDisabledFlow.id,
+          mockFlowWithoutLabel.id,
+        ]);
+        expect(grouped.find(f => f.id === mockFlowTab.id)?.nodes).toHaveLength(2);
+        expect(grouped.find(f => f.id === mockFlowSubflow.id)?.nodes).toHaveLength(1);
+        expect(grouped.find(f => f.id === mockDisabledFlow.id)?.nodes).toHaveLength(0);
+        expect(grouped.find(f => f.id === mockFlowWithoutLabel.id)?.nodes).toHaveLength(1);
+      });
+
+      it('excludes global config nodes (no z) from every container', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlatFlows });
+
+        const grouped = await client.getFlowsGrouped();
+
+        for (const flow of grouped) {
+          expect(flow.nodes?.some(n => n.id === mockConfigNode.id)).toBe(false);
+        }
+      });
+    });
+
     describe('getFlowSummaries', () => {
-      it('should return flow summaries', async () => {
+      it('should return flow summaries with accurate nodeCount from the flat API shape', async () => {
         mockAxiosInstance.get
-          .mockResolvedValueOnce({ data: mockFlows }) // getFlows call
+          .mockResolvedValueOnce({ data: mockFlatFlows }) // getFlows call (flat, real shape)
           .mockResolvedValueOnce({ data: mockFlowStatus }); // getFlowStatus call
 
         const summaries = await client.getFlowSummaries();
 
-        expect(summaries).toBeDefined();
-        expect(Array.isArray(summaries)).toBe(true);
+        expect(summaries.find(s => s.id === mockFlowTab.id)?.nodeCount).toBe(2);
+        expect(summaries.find(s => s.id === mockFlowSubflow.id)?.nodeCount).toBe(1);
+        expect(summaries.find(s => s.id === mockFlowWithoutLabel.id)?.nodeCount).toBe(1);
       });
 
       it('should filter by requested types', async () => {
         mockAxiosInstance.get
-          .mockResolvedValueOnce({ data: mockFlows })
+          .mockResolvedValueOnce({ data: mockFlatFlows })
           .mockResolvedValueOnce({ data: mockFlowStatus });
 
         const summaries = await client.getFlowSummaries(['tab']);
 
-        expect(summaries).toBeDefined();
-        // Should only include 'tab' type flows
-        summaries.forEach(summary => {
-          expect(summary).toBeDefined();
-        });
+        expect(summaries.some(s => s.id === mockFlowSubflow.id)).toBe(false);
+        expect(summaries.some(s => s.id === mockFlowTab.id)).toBe(true);
       });
 
       it('should gracefully handle flow status errors', async () => {
         mockAxiosInstance.get
-          .mockResolvedValueOnce({ data: mockFlows })
+          .mockResolvedValueOnce({ data: mockFlatFlows })
           .mockRejectedValueOnce(new Error('Status unavailable'));
 
         const summaries = await client.getFlowSummaries();
@@ -300,33 +331,35 @@ describe('NodeRedAPIClient', () => {
 
     describe('deployFlows', () => {
       it('should deploy with default full type', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlows });
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.deployFlows();
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows');
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', mockFlows, {
           headers: { 'Node-RED-Deployment-Type': 'full' },
         });
       });
 
       it('should deploy with specified type', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlows });
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.deployFlows({ type: 'nodes' });
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', mockFlows, {
           headers: { 'Node-RED-Deployment-Type': 'nodes' },
         });
       });
     });
 
     describe('enableFlow', () => {
-      it('should enable a flow and deploy', async () => {
+      it('should enable a flow without a separate deploy call', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDisabledFlow });
         mockAxiosInstance.put.mockResolvedValueOnce({
           data: { ...mockDisabledFlow, disabled: false },
         });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.enableFlow('flow-disabled');
 
@@ -335,17 +368,14 @@ describe('NodeRedAPIClient', () => {
           '/flow/flow-disabled',
           expect.objectContaining({ disabled: false })
         );
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'flows' },
-        });
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
     });
 
     describe('disableFlow', () => {
-      it('should disable a flow and deploy', async () => {
+      it('should disable a flow without a separate deploy call', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlowTab });
         mockAxiosInstance.put.mockResolvedValueOnce({ data: { ...mockFlowTab, disabled: true } });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.disableFlow('flow-1');
 
@@ -567,13 +597,13 @@ describe('NodeRedAPIClient', () => {
     });
 
     describe('getRuntimeInfo', () => {
-      it('should return runtime info', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockRuntimeInfo });
+      it('should return runtime info mapped from /diagnostics', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDiagnosticsResponse });
 
         const info = await client.getRuntimeInfo();
 
         expect(info).toEqual(mockRuntimeInfo);
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/admin/info');
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/diagnostics');
       });
     });
 
@@ -610,7 +640,7 @@ describe('NodeRedAPIClient', () => {
 
     describe('getVersion', () => {
       it('should return Node-RED version', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockRuntimeInfo });
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDiagnosticsResponse });
 
         const version = await client.getVersion();
 
@@ -637,18 +667,6 @@ describe('NodeRedAPIClient', () => {
 
         expect(context).toEqual({ counter: 42 });
         expect(mockAxiosInstance.get).toHaveBeenCalledWith('/context/global/counter');
-      });
-    });
-
-    describe('setGlobalContext', () => {
-      it('should set global context value', async () => {
-        mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
-
-        await client.setGlobalContext('newKey', 'newValue');
-
-        expect(mockAxiosInstance.put).toHaveBeenCalledWith('/context/global/newKey', {
-          value: 'newValue',
-        });
       });
     });
 
@@ -681,17 +699,6 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
-    describe('setFlowContext', () => {
-      it('should set flow context value', async () => {
-        mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
-
-        await client.setFlowContext('flow-1', 'flowVar', 'newValue');
-
-        expect(mockAxiosInstance.put).toHaveBeenCalledWith('/context/flow/flow-1/flowVar', {
-          value: 'newValue',
-        });
-      });
-    });
   });
 
   describe('Library Management', () => {
@@ -787,12 +794,13 @@ describe('NodeRedAPIClient', () => {
     it('should return healthy status when all checks pass', async () => {
       mockAxiosInstance.get
         .mockResolvedValueOnce({ data: mockSettings })
-        .mockResolvedValueOnce({ data: mockFlows })
-        .mockResolvedValueOnce({ data: mockRuntimeInfo });
+        .mockResolvedValueOnce({ data: mockFlatFlows })
+        .mockResolvedValueOnce({ data: mockDiagnosticsResponse });
 
       const health = await client.healthCheck();
 
       expect(health.healthy).toBe(true);
+      expect(health.details.flowCount).toBe(4);
       expect(health.details).toHaveProperty('version');
       expect(health.details).toHaveProperty('flowCount');
     });
@@ -1067,11 +1075,6 @@ describe('NodeRedAPIClient', () => {
       await expect(client.getGlobalContext()).rejects.toThrow();
     });
 
-    it('setGlobalContext propagates error', async () => {
-      mockAxiosInstance.put.mockRejectedValueOnce(err);
-      await expect(client.setGlobalContext('key', 'value')).rejects.toThrow();
-    });
-
     it('deleteGlobalContext propagates error', async () => {
       mockAxiosInstance.delete.mockRejectedValueOnce(err);
       await expect(client.deleteGlobalContext('key')).rejects.toThrow();
@@ -1080,11 +1083,6 @@ describe('NodeRedAPIClient', () => {
     it('getFlowContext propagates error', async () => {
       mockAxiosInstance.get.mockRejectedValueOnce(err);
       await expect(client.getFlowContext('flow-1')).rejects.toThrow();
-    });
-
-    it('setFlowContext propagates error', async () => {
-      mockAxiosInstance.put.mockRejectedValueOnce(err);
-      await expect(client.setFlowContext('flow-1', 'key', 'val')).rejects.toThrow();
     });
 
     it('getLibraryEntries propagates error', async () => {

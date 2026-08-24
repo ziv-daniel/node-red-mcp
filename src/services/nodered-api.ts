@@ -109,6 +109,9 @@ export class NodeRedAPIClient {
       httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
       headers: {
         'Content-Type': 'application/json',
+        // Node-RED's Admin API content-negotiates on Accept — some endpoints (e.g. /nodes)
+        // return the HTML node-help templates instead of JSON without this.
+        Accept: 'application/json',
         ...getNodeRedAuthHeader(),
         ...this.config.headers,
       },
@@ -289,7 +292,41 @@ export class NodeRedAPIClient {
     } catch (error) {
       handleNodeRedError(error, 'getFlows');
     }
-  } /**
+  }
+
+  /**
+   * Node-RED's GET /flows returns a FLAT array of every node system-wide (tab/subflow
+   * containers plus all their children, each child linked to its container via `z`) — never
+   * a nested {tab, nodes: [...]} shape. This groups that flat list back into containers with
+   * their owned children attached, matching the shape GET /flow/:id returns for one flow.
+   */
+  private groupFlatFlows(flat: NodeRedFlow[]): NodeRedFlow[] {
+    const childrenByParent = new Map<string, NodeRedFlow['nodes']>();
+    for (const entry of flat as unknown as Array<{ type?: string; z?: string }>) {
+      if (entry.type === 'tab' || entry.type === 'subflow' || !entry.z) continue;
+      if (!childrenByParent.has(entry.z)) childrenByParent.set(entry.z, []);
+      childrenByParent.get(entry.z)!.push(entry as never);
+    }
+
+    return flat
+      .filter(entry => entry.type === 'tab' || entry.type === 'subflow')
+      .map(container => ({
+        ...container,
+        nodes: childrenByParent.get(container.id) ?? [],
+      }));
+  }
+
+  /**
+   * Like getFlows(), but grouped into tab/subflow containers with their child nodes nested
+   * under `.nodes` — the shape most consumers actually want (getFlows() itself must stay flat
+   * and unmodified, since that's the exact body Node-RED's POST /flows deploy expects back).
+   */
+  async getFlowsGrouped(): Promise<NodeRedFlow[]> {
+    const flat = await this.getFlows();
+    return this.groupFlatFlows(flat);
+  }
+
+  /**
    * Get lightweight flow summaries (without node details for token efficiency)
    * Only returns specified flow types, filtering out system flows and config nodes
    * @param types - Array of flow types to include (default: ['tab', 'subflow'])
@@ -297,7 +334,7 @@ export class NodeRedAPIClient {
   async getFlowSummaries(types: string[] = ['tab', 'subflow']): Promise<NodeRedFlowSummary[]> {
     try {
       const [fullFlows, flowStatus] = await Promise.all([
-        this.getFlows(),
+        this.getFlowsGrouped(),
         this.getFlowStatus().catch(() => null), // Graceful fallback if flow status not available
       ]); // Filter flows based on requested types
       const userFlows = fullFlows.filter(flow => {
@@ -407,11 +444,14 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Deploy flows
+   * Redeploy the current active flow configuration.
+   * Node-RED's PUT /flow/:id and POST /flow already apply changes immediately, so this is
+   * only needed to force a redeploy of the existing config (e.g. after an external change).
    */
   async deployFlows(options: NodeRedDeploymentOptions = { type: 'full' }): Promise<void> {
     try {
-      await this.client.post('/flows', null, {
+      const flows = await this.getFlows();
+      await this.client.post('/flows', flows, {
         headers: {
           'Node-RED-Deployment-Type': options.type,
         },
@@ -428,8 +468,9 @@ export class NodeRedAPIClient {
     try {
       const flow = await this.getFlow(flowId);
       flow.disabled = false;
+      // PUT /flow/:id already stops/starts the affected nodes immediately — no separate
+      // deploy call needed (and POST /flows here previously failed by sending an empty body).
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `enableFlow(${flowId})`);
     }
@@ -443,7 +484,6 @@ export class NodeRedAPIClient {
       const flow = await this.getFlow(flowId);
       flow.disabled = true;
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `disableFlow(${flowId})`);
     }
@@ -544,11 +584,23 @@ export class NodeRedAPIClient {
 
   /**
    * Get runtime information
+   * Node-RED has no `/admin/info` endpoint — runtime version/memory/module info comes from
+   * `/diagnostics`, mapped here into the NodeRedRuntimeInfo shape.
    */
   async getRuntimeInfo(): Promise<NodeRedRuntimeInfo> {
     try {
-      const response = await this.client.get('/admin/info');
-      return response.data;
+      const response = await this.client.get('/diagnostics');
+      const diag = response.data;
+      const modules: Record<string, { version: string }> = {};
+      for (const [name, version] of Object.entries<string>(diag.runtime?.modules ?? {})) {
+        modules[name] = { version };
+      }
+      return {
+        version: diag.runtime?.version,
+        modules,
+        memory: diag.nodejs?.memoryUsage ?? { rss: 0, heapTotal: 0, heapUsed: 0, external: 0 },
+        flowFile: diag.runtime?.settings?.flowFile,
+      };
     } catch (error) {
       handleNodeRedError(error, 'getRuntimeInfo');
     }
@@ -604,17 +656,6 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Set global context value
-   */
-  async setGlobalContext(key: string, value: any): Promise<void> {
-    try {
-      await this.client.put(`/context/global/${key}`, { value });
-    } catch (error) {
-      handleNodeRedError(error, `setGlobalContext(${key})`);
-    }
-  }
-
-  /**
    * Delete global context key
    */
   async deleteGlobalContext(key: string): Promise<void> {
@@ -638,16 +679,6 @@ export class NodeRedAPIClient {
     }
   }
 
-  /**
-   * Set flow context value
-   */
-  async setFlowContext(flowId: string, key: string, value: any): Promise<void> {
-    try {
-      await this.client.put(`/context/flow/${flowId}/${key}`, { value });
-    } catch (error) {
-      handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
-    }
-  }
 
   // === Library Management ===
 
@@ -867,7 +898,7 @@ export class NodeRedAPIClient {
     try {
       const [settings, flows, runtime] = await Promise.all([
         this.getSettings(),
-        this.getFlows(),
+        this.getFlowsGrouped(),
         this.getRuntimeInfo(),
       ]);
 
@@ -876,7 +907,7 @@ export class NodeRedAPIClient {
         details: {
           version: runtime.version,
           flowCount: flows.length,
-          nodeCount: Object.keys(runtime.nodes).length,
+          nodeCount: Object.keys(runtime.nodes ?? {}).length,
           memory: runtime.memory,
         },
       };

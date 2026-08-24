@@ -133,7 +133,7 @@ export interface NodeRedRuntimeInfo {
     total: number;
     count: number;
   };
-  nodes: Record<
+  nodes?: Record<
     string,
     {
       count: number;

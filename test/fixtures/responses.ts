@@ -26,15 +26,31 @@ export const mockSettings: NodeRedSettings = {
   },
 };
 
+// Raw response from Node-RED's GET /diagnostics endpoint (the real source getRuntimeInfo maps).
+export const mockDiagnosticsResponse = {
+  runtime: {
+    version: '3.1.0',
+    modules: {
+      'node-red-contrib-mqtt': '1.2.0',
+      'node-red-dashboard': '3.6.0',
+    },
+    settings: {
+      flowFile: 'flows.json',
+    },
+  },
+  nodejs: {
+    memoryUsage: {
+      rss: 100000000,
+      heapTotal: 50000000,
+      heapUsed: 30000000,
+      external: 5000000,
+    },
+  },
+};
+
+// Expected NodeRedRuntimeInfo shape produced by getRuntimeInfo() from mockDiagnosticsResponse.
 export const mockRuntimeInfo: NodeRedRuntimeInfo = {
   version: '3.1.0',
-  nodes: {
-    inject: { count: 5 },
-    debug: { count: 10 },
-    function: { count: 3 },
-    'http in': { count: 2 },
-    'http response': { count: 2 },
-  },
   modules: {
     'node-red-contrib-mqtt': { version: '1.2.0' },
     'node-red-dashboard': { version: '3.6.0' },
@@ -45,6 +61,7 @@ export const mockRuntimeInfo: NodeRedRuntimeInfo = {
     heapUsed: 30000000,
     external: 5000000,
   },
+  flowFile: 'flows.json',
 };
 
 // Node Types

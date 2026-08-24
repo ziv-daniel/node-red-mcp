@@ -582,34 +582,6 @@ export class McpNodeRedServer {
         },
       },
       {
-        name: 'set_context',
-        description: 'Write a Node-RED context variable.',
-        annotations: { readOnlyHint: false },
-        inputSchema: {
-          type: 'object',
-          properties: {
-            scope: {
-              type: 'string',
-              enum: ['global', 'flow'],
-              description: 'Context scope (default: "global")',
-              default: 'global',
-            },
-            key: {
-              type: 'string',
-              description: 'Variable name to write',
-            },
-            value: {
-              description: 'Value to store (any JSON-serialisable type)',
-            },
-            flowId: {
-              type: 'string',
-              description: 'Flow tab ID (required when scope is "flow")',
-            },
-          },
-          required: ['key', 'value'],
-        },
-      },
-      {
         name: 'delete_context',
         description: 'Delete a Node-RED global context variable.',
         annotations: { readOnlyHint: false },
@@ -821,7 +793,7 @@ export class McpNodeRedServer {
           const includeDetails = args?.includeDetails || false;
           const types = args?.types || ['tab', 'subflow'];
           let flowData: any[] = includeDetails
-            ? await this.nodeRedClient.getFlows()
+            ? await this.nodeRedClient.getFlowsGrouped()
             : await this.nodeRedClient.getFlowSummaries(types);
 
           const { sortBy, order } = parseSort(args, FLOW_SORT_KEYS);
@@ -965,19 +937,6 @@ export class McpNodeRedServer {
           break;
         }
 
-        case 'set_context': {
-          validateRequired(args, ['key', 'value']);
-          const scope = args?.scope || 'global';
-          if (scope === 'flow') {
-            validateRequired(args, ['flowId']);
-            await this.nodeRedClient.setFlowContext(args.flowId, args.key, args.value);
-          } else {
-            await this.nodeRedClient.setGlobalContext(args.key, args.value);
-          }
-          result = { success: true, data: { scope, key: args.key }, timestamp };
-          break;
-        }
-
         case 'delete_context': {
           validateRequired(args, ['key']);
           await this.nodeRedClient.deleteGlobalContext(args.key);
@@ -1028,7 +987,7 @@ export class McpNodeRedServer {
             );
           }
 
-          const flows = await this.nodeRedClient.getFlows();
+          const flows = await this.nodeRedClient.getFlowsGrouped();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
           const nodeTypePrefixLower = nodeTypePrefix?.toLowerCase();
@@ -1189,7 +1148,7 @@ export class McpNodeRedServer {
     ];
 
     try {
-      const flows = await this.nodeRedClient.getFlows();
+      const flows = await this.nodeRedClient.getFlowsGrouped();
       for (const flow of flows) {
         resources.push({
           uri: `flow://${flow.id}`,
