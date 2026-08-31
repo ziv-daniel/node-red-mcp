@@ -31,6 +31,9 @@ export const envSchema = z.object({
   CORS_ORIGIN: z.string().default('*'),
   RATE_LIMIT_WINDOW: z.coerce.number().int().positive().default(900000), // 15 minutes
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  // Express `trust proxy`: hop count (e.g. "1"), "false", or a trust list such
+  // as "loopback" or "10.0.0.0/8". Parsed by parseTrustProxy() in express-app.
+  TRUST_PROXY: z.string().optional(),
 
   // Logging Configuration
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),

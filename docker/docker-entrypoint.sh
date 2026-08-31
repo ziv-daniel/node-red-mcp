@@ -259,6 +259,7 @@ Environment Variables:
   NODERED_PASSWORD    Node-RED password
   JWT_SECRET          JWT secret key
   LOG_LEVEL           Logging level (error/warn/info/debug)
+  TRUST_PROXY         Reverse proxy hops to trust (e.g. 1) or a trust list
 
 Examples:
   docker run -e NODE_ENV=development mcp-nodered-server
