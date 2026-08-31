@@ -236,7 +236,10 @@ export class ExpressApp {
     this.app.use('/mcp', mcpLimiter);
     this.app.use('/sse', mcpLimiter);
     this.app.use('/messages', mcpLimiter);
-    this.app.use('/oauth/', oauthLimiter);
+    // oauth-server.ts registers both '/oauth/*' and unprefixed ('/register',
+    // '/authorize', '/token') routes for backward compatibility — both must
+    // be rate-limited, or the unprefixed variants bypass it entirely.
+    this.app.use(['/oauth/', '/register', '/authorize', '/token'], oauthLimiter);
 
     // Body parsing middleware
     this.app.use(express.json({ limit: '1mb' }));

@@ -636,6 +636,32 @@ describe('ExpressApp', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe('OAuth Rate Limiting (unprefixed routes)', () => {
+    // oauth-server.ts registers both '/oauth/*' and unprefixed
+    // ('/register', '/authorize', '/token') routes for backward
+    // compatibility. The oauthLimiter must cover both, or the unprefixed
+    // variants bypass rate limiting entirely.
+    it('applies the OAuth rate limiter to unprefixed /authorize', async () => {
+      const res = await request(app).get('/authorize');
+      expect(res.headers['ratelimit-limit']).toBeDefined();
+    });
+
+    it('applies the OAuth rate limiter to unprefixed /register', async () => {
+      const res = await request(app).post('/register').send({});
+      expect(res.headers['ratelimit-limit']).toBeDefined();
+    });
+
+    it('applies the OAuth rate limiter to unprefixed /token', async () => {
+      const res = await request(app).post('/token').send({});
+      expect(res.headers['ratelimit-limit']).toBeDefined();
+    });
+
+    it('still applies the OAuth rate limiter to the prefixed /oauth/authorize', async () => {
+      const res = await request(app).get('/oauth/authorize');
+      expect(res.headers['ratelimit-limit']).toBeDefined();
+    });
+  });
 });
 
 describe('ExpressApp Configuration', () => {
