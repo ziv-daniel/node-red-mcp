@@ -25,6 +25,7 @@ import {
   mockSettings,
 } from '../../test/fixtures/responses.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
+import { NodeRedError } from '../utils/error-handling.js';
 
 import { McpNodeRedServer } from './mcp-server.js';
 import { SSEHandler } from './sse-handler.js';
@@ -1024,6 +1025,36 @@ describe('McpNodeRedServer', () => {
 
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('Unauthorized');
+    });
+
+    it('should surface the upstream status of a Node-RED failure', async () => {
+      mockNodeRedClient.getSettings.mockRejectedValueOnce(
+        new NodeRedError('Node-RED API error in getSettings: HTTP 403 Forbidden', 403, 403, {
+          error: 'permission denied',
+        })
+      );
+      const result = await mcpServer.callTool('get_settings', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.errorDetails).toMatchObject({
+        code: 'NODERED_ERROR',
+        statusCode: 403,
+        upstreamStatus: 403,
+        upstreamResponse: { error: 'permission denied' },
+      });
+    });
+
+    it('should describe a thrown non-Error value instead of "Unknown error"', async () => {
+      mockNodeRedClient.getSettings.mockRejectedValueOnce({ status: 500 });
+      const result = await mcpServer.callTool('get_settings', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).not.toBe('Unknown error');
+      expect(parsed.error).toContain('get_settings');
+      expect(parsed.error).toContain('500');
+      expect(parsed.errorDetails.code).toBe('INTERNAL_ERROR');
     });
   });
 

@@ -81,6 +81,22 @@ export function parseTrustProxy(raw: string | undefined): TrustProxySetting {
   return entries.length > 1 ? entries : entries[0]!;
 }
 
+/**
+ * Single source of truth for `CLAUDE_AUTH_REQUIRED`.
+ *
+ * This used to be read inline with two different fallbacks (`=== 'true'` in the
+ * enforcement path, `!== 'false'` in the discovery/debug reporting paths), so an
+ * unset variable made the server report one thing and do another. Auth is
+ * required unless the variable is explicitly set to `false`, which matches the
+ * unconditional `requireAuth` gate on the MCP/SSE endpoints.
+ *
+ * Read lazily (not captured at module load) so tests and runtime code that
+ * mutate `process.env` still see the current value.
+ */
+export function isClaudeAuthRequired(): boolean {
+  return process.env.CLAUDE_AUTH_REQUIRED?.trim().toLowerCase() !== 'false';
+}
+
 export interface ExpressAppConfig {
   port: number;
   host: string;
@@ -367,9 +383,10 @@ export class ExpressApp {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
         const authReq = req as AuthRequest;
 
-        // Enforce auth when CLAUDE_AUTH_REQUIRED=true
-        const authRequired = process.env.CLAUDE_AUTH_REQUIRED === 'true';
-        if (authRequired) {
+        // Enforce the OAuth token requirement, but only for requests that
+        // `requireAuth` let through on a non-Bearer scheme's behalf — API key and
+        // Basic clients are already authenticated and must not be rejected here.
+        if (isClaudeAuthRequired() && !authReq.auth?.isAuthenticated) {
           const auth = req.headers.authorization;
           if (!auth?.startsWith('Bearer ')) {
             const resourceUrl =
@@ -1270,7 +1287,7 @@ export class ExpressApp {
       '/.well-known/mcp-server',
       asyncHandler(async (req: Request, res: Response) => {
         const isClaudeMode = process.env.CLAUDE_COMPATIBLE_MODE === 'true';
-        const authRequired = process.env.CLAUDE_AUTH_REQUIRED !== 'false';
+        const authRequired = isClaudeAuthRequired();
 
         const serverInfo = {
           name: 'nodered-mcp-server',
@@ -1341,7 +1358,7 @@ export class ExpressApp {
         const debugInfo = {
           server: {
             claudeMode: process.env.CLAUDE_COMPATIBLE_MODE === 'true',
-            authRequired: process.env.CLAUDE_AUTH_REQUIRED !== 'false',
+            authRequired: isClaudeAuthRequired(),
             acceptAnyToken: process.env.ACCEPT_ANY_BEARER_TOKEN === 'true',
             fallbackEnabled: process.env.AUTH_FALLBACK_ENABLED === 'true',
             debugConnections: process.env.DEBUG_CLAUDE_CONNECTIONS === 'true',
