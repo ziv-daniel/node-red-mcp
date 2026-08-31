@@ -105,7 +105,7 @@ vi.mock('../utils/auth.js', () => ({
 }));
 
 // Import after mocks
-import { ExpressApp, parseTrustProxy } from './express-app.js';
+import { ExpressApp, parseTrustProxy, isClaudeAuthRequired } from './express-app.js';
 import type { McpNodeRedServer } from './mcp-server.js';
 
 describe('ExpressApp', () => {
@@ -804,5 +804,40 @@ describe('ExpressApp trust proxy', () => {
     const trusts = app.get('trust proxy fn') as (addr: string, hop: number) => boolean;
 
     expect(trusts('10.0.0.1', 0)).toBe(false);
+  });
+});
+
+describe('isClaudeAuthRequired', () => {
+  const original = process.env.CLAUDE_AUTH_REQUIRED;
+
+  afterEach(() => {
+    if (original === undefined) {
+      delete process.env.CLAUDE_AUTH_REQUIRED;
+    } else {
+      process.env.CLAUDE_AUTH_REQUIRED = original;
+    }
+  });
+
+  it('should require auth when unset', () => {
+    delete process.env.CLAUDE_AUTH_REQUIRED;
+
+    expect(isClaudeAuthRequired()).toBe(true);
+  });
+
+  it('should require auth when set to true', () => {
+    process.env.CLAUDE_AUTH_REQUIRED = 'true';
+
+    expect(isClaudeAuthRequired()).toBe(true);
+  });
+
+  it('should only opt out on an explicit false', () => {
+    process.env.CLAUDE_AUTH_REQUIRED = 'false';
+    expect(isClaudeAuthRequired()).toBe(false);
+
+    process.env.CLAUDE_AUTH_REQUIRED = ' FALSE ';
+    expect(isClaudeAuthRequired()).toBe(false);
+
+    process.env.CLAUDE_AUTH_REQUIRED = 'no';
+    expect(isClaudeAuthRequired()).toBe(true);
   });
 });
