@@ -106,7 +106,7 @@ export default defineConfig({
   globalTeardown: './e2e/global-teardown.ts',
 
   // Test file patterns
-  testMatch: ['e2e/**/*.spec.ts', 'e2e/**/*.e2e.ts'],
+  testMatch: ['**/*.spec.ts', '**/*.e2e.ts'],
 
   // Ignore files
   testIgnore: ['e2e/node-red-data/**', 'e2e-results/**'],
