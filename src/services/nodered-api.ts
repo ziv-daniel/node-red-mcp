@@ -18,7 +18,12 @@ import {
   NodeRedDeploymentOptions,
   NodeRedAPIError,
 } from '../types/nodered.js';
-import { getNodeRedAuthHeader, getTlsRejectUnauthorized } from '../utils/auth.js';
+import {
+  resolveNodeRedAuthHeader,
+  isNodeRedAdminAuthEnabled,
+  validateNodeRedAuth,
+  getTlsRejectUnauthorized,
+} from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
@@ -64,6 +69,10 @@ export class NodeRedAPIClient {
   private config: NodeRedAPIConfig;
   private circuitBreaker: CircuitBreaker;
   private retryOptions: RetryOptions;
+  // True when this instance was constructed with an explicit Authorization
+  // header (e.g. per-tenant credentials from callToolPublic's OAuth path) —
+  // in that case the global-env auth resolver must never overwrite it.
+  private hasExplicitAuthOverride: boolean;
 
   constructor(config: Partial<NodeRedAPIConfig> = {}) {
     this.config = {
@@ -72,6 +81,7 @@ export class NodeRedAPIClient {
       retries: parseInt(process.env.NODERED_RETRIES || '3'),
       ...config,
     };
+    this.hasExplicitAuthOverride = Boolean(this.config.headers?.Authorization);
 
     // Initialize circuit breaker
     this.circuitBreaker = new CircuitBreaker({
@@ -114,7 +124,6 @@ export class NodeRedAPIClient {
       httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
       headers: {
         'Content-Type': 'application/json',
-        ...getNodeRedAuthHeader(),
         ...this.config.headers,
       },
     });
@@ -182,7 +191,12 @@ export class NodeRedAPIClient {
    */
   private setupInterceptors(): void {
     this.client.interceptors.request.use(
-      config => config,
+      async config => {
+        if (!this.hasExplicitAuthOverride) {
+          Object.assign(config.headers, await resolveNodeRedAuthHeader());
+        }
+        return config;
+      },
       error => Promise.reject(error)
     );
 
@@ -212,6 +226,23 @@ export class NodeRedAPIClient {
       },
       async error => {
         const config = error.config;
+
+        const hasRefreshableAuth =
+          isNodeRedAdminAuthEnabled() || validateNodeRedAuth().type === 'bearer';
+
+        if (
+          error.response?.status === 401 &&
+          !config._authRetry &&
+          !this.hasExplicitAuthOverride &&
+          hasRefreshableAuth
+        ) {
+          config._authRetry = true;
+          // Force a fresh token now; the request interceptor will also call
+          // resolveNodeRedAuthHeader() on the retry below, but that's a cache
+          // hit against what we just fetched, not a second network call.
+          await resolveNodeRedAuthHeader(true);
+          return this.client(config);
+        }
 
         if (!config._retry && config._retryCount < this.config.retries) {
           config._retry = true;
