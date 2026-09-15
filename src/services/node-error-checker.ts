@@ -216,10 +216,14 @@ export class NodeErrorChecker {
       }
     }
 
+    // Two independent reasons the status snapshot might be incomplete: the
+    // WS transport never connected, or it connected but never confirmed auth.
+    const authIncomplete = authExpected && !authConfirmed;
+
     return {
       errors,
       warnings,
-      statusesMayBeIncomplete: !connected || (authExpected && !authConfirmed),
+      statusesMayBeIncomplete: !connected || authIncomplete,
     };
   }
 }
