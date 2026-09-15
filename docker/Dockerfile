@@ -67,7 +67,39 @@ RUN node .yarn/releases/yarn-stable-temp.cjs workspaces focus --production && \
     node .yarn/releases/yarn-stable-temp.cjs cache clean
 
 # ============================================================================
-# Stage 4: Production image
+# Stage 4: Development image
+#
+# Declared before `production` on purpose: an untargeted `docker build` uses
+# the *last* stage in the file, so `production` must stay at the bottom to
+# keep it the default. Build this one explicitly with `--target development`.
+# ============================================================================
+FROM dependencies AS development
+
+# Install development tools (must run as root)
+USER root
+RUN apk add --no-cache \
+        git \
+        openssh-client && \
+    rm -rf /var/cache/apk/*
+USER mcpserver
+
+# Copy source code
+COPY --chown=mcpserver:mcpserver . .
+
+# Set development environment
+ENV NODE_ENV=development
+ENV LOG_LEVEL=debug
+ENV MCP_TRANSPORT=both
+ENV HTTP_ENABLED=true
+
+# Expose additional ports for development
+EXPOSE 3000 9229
+
+# Development command with hot reload
+CMD ["node", ".yarn/releases/yarn-stable-temp.cjs", "dev"]
+
+# ============================================================================
+# Stage 5: Production image (default target)
 # ============================================================================
 FROM base AS production
 
@@ -137,31 +169,3 @@ LABEL maintainer="your-email@example.com"
 LABEL security.contact="security@example.com"
 LABEL org.opencontainers.image.created="2024-12-17"
 LABEL org.opencontainers.image.revision="main"
-
-# ============================================================================
-# Alternative: Development image
-# ============================================================================
-FROM dependencies AS development
-
-# Install development tools (must run as root)
-USER root
-RUN apk add --no-cache \
-        git \
-        openssh-client && \
-    rm -rf /var/cache/apk/*
-USER mcpserver
-
-# Copy source code
-COPY --chown=mcpserver:mcpserver . .
-
-# Set development environment
-ENV NODE_ENV=development
-ENV LOG_LEVEL=debug
-ENV MCP_TRANSPORT=both
-ENV HTTP_ENABLED=true
-
-# Expose additional ports for development
-EXPOSE 3000 9229
-
-# Development command with hot reload
-CMD ["node", ".yarn/releases/yarn-stable-temp.cjs", "dev"] 

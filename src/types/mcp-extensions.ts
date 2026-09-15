@@ -20,6 +20,18 @@ export interface McpToolResult {
   success: boolean;
   data?: any;
   error?: string;
+  /**
+   * Machine-readable detail for a failed call: the error code, the HTTP status
+   * the server would map it to, and — for Node-RED failures — the upstream
+   * status and response body. `error` alone could not distinguish a permission
+   * error from a missing endpoint.
+   */
+  errorDetails?: {
+    code: string;
+    statusCode?: number;
+    upstreamStatus?: number;
+    upstreamResponse?: unknown;
+  };
   timestamp: string;
 }
 
