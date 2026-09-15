@@ -350,6 +350,18 @@ interface CachedNodeRedToken {
 let cachedNodeRedToken: CachedNodeRedToken | null = null;
 let nodeRedTokenFetch: Promise<CachedNodeRedToken> | null = null;
 
+// Shared across all token exchanges so they benefit from HTTP keep-alive
+// instead of each fetch paying a fresh TLS handshake — token fetches happen
+// at most once per cache TTL (default ~7 days), but there's no reason to
+// throw away a poolable connection each time.
+let nodeRedTokenHttpsAgent: https.Agent | null = null;
+function getNodeRedTokenHttpsAgent(): https.Agent {
+  if (!nodeRedTokenHttpsAgent) {
+    nodeRedTokenHttpsAgent = new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() });
+  }
+  return nodeRedTokenHttpsAgent;
+}
+
 async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
   const baseURL = (process.env.NODERED_URL || 'http://localhost:1880').replace(/\/+$/, '');
   const response = await axios.post(
@@ -357,7 +369,7 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
     { client_id: 'node-red-admin', grant_type: 'password', scope: '*', username, password },
     {
       timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
-      httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
+      httpsAgent: getNodeRedTokenHttpsAgent(),
     }
   );
   const { access_token, expires_in } = response.data;
