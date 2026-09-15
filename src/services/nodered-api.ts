@@ -227,14 +227,11 @@ export class NodeRedAPIClient {
       async error => {
         const config = error.config;
 
-        const hasRefreshableAuth =
-          isNodeRedAdminAuthEnabled() || validateNodeRedAuth().type === 'bearer';
-
         if (
           error.response?.status === 401 &&
           !config._authRetry &&
           !this.hasExplicitAuthOverride &&
-          hasRefreshableAuth
+          (isNodeRedAdminAuthEnabled() || validateNodeRedAuth().type === 'bearer')
         ) {
           config._authRetry = true;
           // Force a fresh token now; the request interceptor will also call
