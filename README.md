@@ -49,6 +49,7 @@ nodes in error/warning state in real time.
 - [Resources](#-mcp-resources)
 - [Prompts](#-mcp-prompts)
 - [Connecting](#-connecting-to-the-server)
+- [Node-RED Authentication](#node-red-authentication)
 - [Environment Variables](#-environment-variables)
 
 ## ⚡ Quick Start
@@ -201,23 +202,66 @@ claude mcp add node-red \
   --header "Authorization: Basic <base64-credentials>"
 ```
 
+### Node-RED Authentication
+
+`NODERED_USERNAME`/`NODERED_PASSWORD` mean one of two different things depending
+on your deployment, and this server needs to know which:
+
+- **Node-RED's own `adminAuth` is enabled** — these are Node-RED's own admin
+  credentials. Set **`NODERED_ADMIN_AUTH_ENABLED=true`** and the server
+  exchanges them for a Bearer token via Node-RED's `/auth/token` password grant
+  on first use (Node-RED's admin API only accepts Bearer tokens, not HTTP Basic
+  auth — this is required, not optional, in this mode). The token is cached in
+  memory and transparently re-exchanged shortly before it expires (or
+  immediately after a `401`). You never see the token. The same in-band exchange
+  also authenticates the `/comms` WebSocket used by `get_node_errors`, since
+  Node-RED's WebSocket auth is its own separate in-band handshake, not
+  header-based.
+- **The credentials belong to something in front of Node-RED** — e.g. an nginx
+  or Traefik Basic-auth layer gating every request to the whole instance,
+  unrelated to Node-RED's own auth. Leave `NODERED_ADMIN_AUTH_ENABLED` unset
+  (the default). The server sends a static HTTP Basic header built from
+  `NODERED_USERNAME`/`NODERED_PASSWORD` on every request, including the
+  WebSocket upgrade — exactly what a proxy in this position expects, and exactly
+  what Node-RED's own admin API would reject if its `adminAuth` were enabled.
+
+Alternatively, **`NODERED_API_TOKEN`** supplies an already-issued Node-RED
+bearer token directly (e.g. one you obtained yourself via `/auth/token`). Useful
+if you don't want this server to hold your Node-RED password, at the cost of
+having to refresh the token yourself once it expires. This mode is unaffected by
+`NODERED_ADMIN_AUTH_ENABLED`.
+
+If none of these are set, requests are sent unauthenticated — only appropriate
+when Node-RED's `adminAuth` is disabled and nothing sits in front of the
+instance either.
+
+**Known limitation:** these two topologies are mutually exclusive today. If you
+genuinely run _both_ — a reverse-proxy Basic-auth layer in front of an instance
+that also has Node-RED's own `adminAuth` enabled — there's currently no way to
+supply separate credentials for each; `NODERED_USERNAME`/`PASSWORD` can only be
+exchanged for a token _or_ sent as a static Basic header, not both at once for
+two different recipients. Supporting that would need a second, distinct
+credential pair sent independently of the Bearer exchange.
+
 ## ⚙️ Environment Variables
 
-| Variable                      | Required | Default                   | Description                                                                                         |
-| ----------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                       |
-| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username                                                                             |
-| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password                                                                             |
-| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                                   |
-| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                            |
-| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                            |
-| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)      |
-| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                        |
-| `PORT`                        | No       | `3000`                    | Listen port                                                                                         |
-| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                                    |
-| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                                |
-| `TRUST_PROXY`                 | No       | `false`                   | Reverse proxy hops to trust — see [Running Behind a Reverse Proxy](#running-behind-a-reverse-proxy) |
-| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                           |
+| Variable                      | Required | Default                   | Description                                                                                                                                                     |
+| ----------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                                                                                   |
+| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username, or a reverse-proxy Basic-auth username — see [Node-RED Authentication](#node-red-authentication)                                       |
+| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password, or a reverse-proxy Basic-auth password — see [Node-RED Authentication](#node-red-authentication)                                       |
+| `NODERED_ADMIN_AUTH_ENABLED`  | No       | `false`                   | Set `true` when `NODERED_USERNAME`/`PASSWORD` are Node-RED's _own_ `adminAuth` credentials, to exchange them for a Bearer token instead of sending static Basic |
+| `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                                                                                       |
+| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                                                                                               |
+| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                                                                                        |
+| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                                                                                        |
+| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)                                                                  |
+| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                                                                                    |
+| `PORT`                        | No       | `3000`                    | Listen port                                                                                                                                                     |
+| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                                                                                                |
+| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                                                                                            |
+| `TRUST_PROXY`                 | No       | `false`                   | Reverse proxy hops to trust — see [Running Behind a Reverse Proxy](#running-behind-a-reverse-proxy)                                                             |
+| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                                                                                       |
 
 ### Running Behind a Reverse Proxy
 

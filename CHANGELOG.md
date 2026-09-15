@@ -61,6 +61,40 @@ and this project adheres to
 
 ### Fixed
 
+- **Node-RED Username/Password Authentication**: when `NODERED_USERNAME` +
+  `NODERED_PASSWORD` are Node-RED's own `adminAuth` credentials, sending them as
+  a static HTTP Basic header on every request doesn't work — Node-RED's admin
+  API only accepts Bearer tokens issued via the `/auth/token` password grant, so
+  every request in this mode failed with `401`
+  - New opt-in `NODERED_ADMIN_AUTH_ENABLED=true` switches to exchanging the
+    credentials for a Bearer token on demand, cached in memory and transparently
+    re-exchanged shortly before expiry or immediately after a `401`. Left unset
+    (the default), the existing static Basic header is sent unchanged — for
+    deployments where these credentials actually belong to a reverse proxy in
+    front of Node-RED rather than Node-RED's own `adminAuth`, which is a real,
+    supported setup and not something this fix should break
+  - Node-RED's `/comms` WebSocket (used by `get_node_errors`) authenticates
+    entirely in-band — an `{ auth: "<token>" }` message sent right after the
+    connection opens, not via connection headers — so it was never actually
+    authenticating regardless of Basic vs. Bearer. Both WebSocket entry points
+    now send the real handshake when `NODERED_ADMIN_AUTH_ENABLED` or
+    `NODERED_API_TOKEN` provide a token, and correctly parse Node-RED's actual
+    wire format (a flat `{ auth: "ok" | "fail" }` reply; regular events arrive
+    batched as a JSON array per message, not one object per message)
+  - `get_node_errors`'s `statusesMayBeIncomplete` previously reflected only
+    whether the socket was open, so an unauthenticated connection (silently
+    muted by Node-RED rather than closed) reported a confident, wrong "no
+    errors" — it now also accounts for whether the handshake was actually
+    confirmed
+  - A client constructed with an explicit `Authorization` header (used by the
+    per-tenant OAuth path in `callToolPublic`) is left untouched — the new token
+    resolution never overwrites tenant-supplied credentials
+  - The token exchange respects `NODERED_TIMEOUT` like the rest of the client,
+    instead of being able to hang indefinitely
+  - Added unit tests covering token caching/reuse, forced refresh, concurrent
+    request de-duplication, the 401-retry-once path, the per-tenant override,
+    the opt-in gate, and the WebSocket handshake (including the batched-array
+    wire format and the corrected `statusesMayBeIncomplete` logic)
 - **TypeScript Strict Mode Compliance**: Resolved all
   `exactOptionalPropertyTypes` errors
   - Fixed SSEConnection, SSEClientInfo, SSEError type definitions

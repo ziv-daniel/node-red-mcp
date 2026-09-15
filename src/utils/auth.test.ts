@@ -4,7 +4,7 @@
 
 import type { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import type { McpAuthContext } from '../types/mcp-extensions.js';
 
@@ -25,6 +25,13 @@ import {
   type AuthPayload,
   type AuthRequest,
 } from './auth.js';
+
+vi.mock('axios', () => ({
+  default: {
+    post: vi.fn(),
+    isAxiosError: vi.fn(() => false),
+  },
+}));
 
 describe('Auth Utils', () => {
   const mockSecret = 'test-secret-key-minimum-32-chars-xxxx';
@@ -716,5 +723,263 @@ describe('Rate Limiting Utilities', () => {
 
       expect(getRateLimitKey(req as any)).toBe('user:user123');
     });
+  });
+});
+
+describe('resolveNodeRedAuthHeader', () => {
+  // Each test re-imports the module fresh (via resetModules) so the
+  // in-memory token cache doesn't leak between tests.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    delete process.env.NODERED_USERNAME;
+    delete process.env.NODERED_PASSWORD;
+    delete process.env.NODERED_API_TOKEN;
+    delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    process.env.NODERED_URL = 'http://localhost:1880';
+  });
+
+  it('passes NODERED_API_TOKEN through unchanged without hitting the network', async () => {
+    process.env.NODERED_API_TOKEN = 'static-token';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer static-token' });
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('exchanges username/password for a bearer token and caches it', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const first = await resolveNodeRedAuthHeader();
+    const second = await resolveNodeRedAuthHeader();
+
+    expect(first).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(second).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:1880/auth/token',
+      expect.objectContaining({ grant_type: 'password', username: 'admin', password: 'secret' }),
+      expect.anything()
+    );
+  });
+
+  it('strips a trailing slash from NODERED_URL before building the token endpoint', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_URL = 'http://localhost:1880/';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:1880/auth/token',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('clamps the cache TTL to a floor instead of going negative for a short-lived token', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    // expires_in shorter than the 60s safety buffer would otherwise make
+    // the computed expiry land in the past, forcing a re-exchange on every
+    // single call instead of caching at all.
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 10 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+    await resolveNodeRedAuthHeader();
+
+    expect(axios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('forceRefresh bypasses the cache and re-exchanges credentials', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({ data: { access_token: 'tok-1', expires_in: 3600 } })
+      .mockResolvedValueOnce({ data: { access_token: 'tok-2', expires_in: 3600 } });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+    const refreshed = await resolveNodeRedAuthHeader(true);
+
+    expect(refreshed).toEqual({ Authorization: 'Bearer tok-2' });
+    expect(axios.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('dedupes concurrent calls into a single token exchange', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    let resolvePost!: (value: { data: { access_token: string; expires_in: number } }) => void;
+    vi.mocked(axios.post).mockReturnValue(
+      new Promise(resolve => {
+        resolvePost = resolve;
+      })
+    );
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const call1 = resolveNodeRedAuthHeader();
+    const call2 = resolveNodeRedAuthHeader();
+    resolvePost({ data: { access_token: 'tok-1', expires_in: 3600 } });
+
+    const [r1, r2] = await Promise.all([call1, call2]);
+
+    expect(r1).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(r2).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a static Basic header when the admin-auth gate is off (default)', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    // NODERED_ADMIN_AUTH_ENABLED deliberately left unset.
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header.Authorization).toBe(`Basic ${Buffer.from('admin:secret').toString('base64')}`);
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a static Basic header when the gate is literally "false"', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'false';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header.Authorization).toBe(`Basic ${Buffer.from('admin:secret').toString('base64')}`);
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('bearer mode (NODERED_API_TOKEN) is unaffected by the gate being off', async () => {
+    process.env.NODERED_API_TOKEN = 'static-token';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer static-token' });
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+});
+
+describe('isNodeRedAdminAuthEnabled', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+  });
+
+  it('is false when unset', async () => {
+    const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
+    expect(isNodeRedAdminAuthEnabled()).toBe(false);
+  });
+
+  it('is false for any value other than the literal string "true"', async () => {
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'false';
+    const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
+    expect(isNodeRedAdminAuthEnabled()).toBe(false);
+  });
+
+  it('is true when set to "true"', async () => {
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
+    expect(isNodeRedAdminAuthEnabled()).toBe(true);
+  });
+});
+
+describe('resolveNodeRedAuthToken', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    delete process.env.NODERED_USERNAME;
+    delete process.env.NODERED_PASSWORD;
+    delete process.env.NODERED_API_TOKEN;
+    delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    process.env.NODERED_URL = 'http://localhost:1880';
+  });
+
+  it('returns the token directly in bearer mode', async () => {
+    process.env.NODERED_API_TOKEN = 'static-token';
+    const { resolveNodeRedAuthToken } = await import('./auth.js');
+
+    expect(await resolveNodeRedAuthToken()).toBe('static-token');
+  });
+
+  it('returns undefined in basic mode when the gate is off', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthToken } = await import('./auth.js');
+
+    expect(await resolveNodeRedAuthToken()).toBeUndefined();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('returns undefined when no credentials are configured', async () => {
+    const { resolveNodeRedAuthToken } = await import('./auth.js');
+    expect(await resolveNodeRedAuthToken()).toBeUndefined();
+  });
+
+  it('exchanges and returns the token in basic mode when the gate is on, sharing the cache with resolveNodeRedAuthHeader', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthToken, resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const token = await resolveNodeRedAuthToken();
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(token).toBe('tok-1');
+    expect(header).toEqual({ Authorization: 'Bearer tok-1' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('forceRefresh re-exchanges the token', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({ data: { access_token: 'tok-1', expires_in: 3600 } })
+      .mockResolvedValueOnce({ data: { access_token: 'tok-2', expires_in: 3600 } });
+    const { resolveNodeRedAuthToken } = await import('./auth.js');
+
+    await resolveNodeRedAuthToken();
+    const refreshed = await resolveNodeRedAuthToken(true);
+
+    expect(refreshed).toBe('tok-2');
+    expect(axios.post).toHaveBeenCalledTimes(2);
   });
 });
