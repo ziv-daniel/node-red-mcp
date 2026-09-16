@@ -23,6 +23,7 @@ import {
   isNodeRedAdminAuthEnabled,
   validateNodeRedAuth,
   getTlsRejectUnauthorized,
+  getNodeRedAuthScope,
 } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
@@ -781,7 +782,7 @@ export class NodeRedAPIClient {
       const response = await this.client.post('/auth/token', {
         client_id: 'node-red-admin',
         grant_type: 'password',
-        scope: '*',
+        scope: getNodeRedAuthScope(),
         username,
         password,
       });
