@@ -4,7 +4,7 @@
 
 import type { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import type { McpAuthContext } from '../types/mcp-extensions.js';
 
@@ -22,6 +22,7 @@ import {
   validateNodeRedAuth,
   getNodeRedAuthHeader,
   getRateLimitKey,
+  getNodeRedAuthScope,
   type AuthPayload,
   type AuthRequest,
 } from './auth.js';
@@ -736,7 +737,12 @@ describe('resolveNodeRedAuthHeader', () => {
     delete process.env.NODERED_PASSWORD;
     delete process.env.NODERED_API_TOKEN;
     delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    delete process.env.MCP_READ_ONLY;
     process.env.NODERED_URL = 'http://localhost:1880';
+  });
+
+  afterEach(() => {
+    delete process.env.MCP_READ_ONLY;
   });
 
   it('passes NODERED_API_TOKEN through unchanged without hitting the network', async () => {
@@ -768,7 +774,32 @@ describe('resolveNodeRedAuthHeader', () => {
     expect(axios.post).toHaveBeenCalledTimes(1);
     expect(axios.post).toHaveBeenCalledWith(
       'http://localhost:1880/auth/token',
-      expect.objectContaining({ grant_type: 'password', username: 'admin', password: 'secret' }),
+      expect.objectContaining({
+        grant_type: 'password',
+        username: 'admin',
+        password: 'secret',
+        scope: '*',
+      }),
+      expect.anything()
+    );
+  });
+
+  it("requests scope 'read' under MCP_READ_ONLY so a read-scoped Node-RED user can authenticate", async () => {
+    process.env.NODERED_USERNAME = 'mcpread';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.MCP_READ_ONLY = 'true';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { access_token: 'tok-1', expires_in: 3600 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await resolveNodeRedAuthHeader();
+
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:1880/auth/token',
+      expect.objectContaining({ scope: 'read' }),
       expect.anything()
     );
   });
@@ -981,5 +1012,37 @@ describe('resolveNodeRedAuthToken', () => {
 
     expect(refreshed).toBe('tok-2');
     expect(axios.post).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getNodeRedAuthScope', () => {
+  beforeEach(() => {
+    delete process.env.NODERED_AUTH_SCOPE;
+    delete process.env.MCP_READ_ONLY;
+  });
+
+  afterEach(() => {
+    delete process.env.NODERED_AUTH_SCOPE;
+    delete process.env.MCP_READ_ONLY;
+  });
+
+  it("defaults to '*' so existing deployments are unaffected", () => {
+    expect(getNodeRedAuthScope()).toBe('*');
+  });
+
+  it("narrows to 'read' when MCP_READ_ONLY is on", () => {
+    process.env.MCP_READ_ONLY = 'true';
+    expect(getNodeRedAuthScope()).toBe('read');
+  });
+
+  it('lets NODERED_AUTH_SCOPE override the read-only derivation', () => {
+    process.env.MCP_READ_ONLY = 'true';
+    process.env.NODERED_AUTH_SCOPE = '*';
+    expect(getNodeRedAuthScope()).toBe('*');
+  });
+
+  it('ignores a blank override rather than requesting an empty scope', () => {
+    process.env.NODERED_AUTH_SCOPE = '   ';
+    expect(getNodeRedAuthScope()).toBe('*');
   });
 });
