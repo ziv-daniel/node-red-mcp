@@ -40,9 +40,21 @@ jobs:
 
       - name: 📦 Get yarn cache directory path
         id: yarn-cache-dir-path
-        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          # Wrapping the substitution in `echo` discards its exit status, so an
+          # unresolvable cache folder used to reach actions/cache as an empty
+          # `path` and fail the job. Caching is an optimization — degrade to a
+          # cold cache instead.
+          if dir="$(yarn config get cacheFolder 2>/dev/null)" && [ -n "$dir" ]; then
+            echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not resolve the yarn cacheFolder; continuing without the dependency cache"
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 📦 Cache yarn dependencies
+        if: steps.yarn-cache-dir-path.outputs.dir != ''
         uses: actions/cache@v6
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
@@ -83,6 +95,8 @@ jobs:
     timeout-minutes: 20
 
     strategy:
+      # One Node version's environment problem shouldn't cancel the other leg.
+      fail-fast: false
       matrix:
         node-version: ['22', '23']
 
@@ -100,9 +114,21 @@ jobs:
 
       - name: 📦 Get yarn cache directory path
         id: yarn-cache-dir-path
-        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          # Wrapping the substitution in `echo` discards its exit status, so an
+          # unresolvable cache folder used to reach actions/cache as an empty
+          # `path` and fail the job. Caching is an optimization — degrade to a
+          # cold cache instead.
+          if dir="$(yarn config get cacheFolder 2>/dev/null)" && [ -n "$dir" ]; then
+            echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not resolve the yarn cacheFolder; continuing without the dependency cache"
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 📦 Cache yarn dependencies
+        if: steps.yarn-cache-dir-path.outputs.dir != ''
         uses: actions/cache@v6
         with:
           path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
