@@ -225,6 +225,20 @@ on your deployment, and this server needs to know which:
   WebSocket upgrade — exactly what a proxy in this position expects, and exactly
   what Node-RED's own admin API would reject if its `adminAuth` were enabled.
 
+In this mode the exchange requests a scope, and Node-RED validates it against
+the user's own `adminAuth` permissions. The default is `*`, narrowing to `read`
+when [`MCP_READ_ONLY`](#-read-only-mode) is set — so a Node-RED user declared
+with `permissions: "read"` can be used as-is. Set **`NODERED_AUTH_SCOPE`**
+explicitly to override either default. This matters because Node-RED rejects an
+over-broad scope request with the _same_ `invalid_grant` / "Invalid resource
+owner credentials" response it gives for a wrong password, so a scope mismatch
+would otherwise look exactly like a bad credential.
+
+Pairing a read-scoped Node-RED user with `MCP_READ_ONLY` is the stronger
+configuration of the two: `MCP_READ_ONLY` hides the write tools, while the
+Node-RED permission is enforced by Node-RED's own admin API regardless of what
+this server sends.
+
 Alternatively, **`NODERED_API_TOKEN`** supplies an already-issued Node-RED
 bearer token directly (e.g. one you obtained yourself via `/auth/token`). Useful
 if you don't want this server to hold your Node-RED password, at the cost of
@@ -252,6 +266,7 @@ credential pair sent independently of the Bearer exchange.
 | `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password, or a reverse-proxy Basic-auth password — see [Node-RED Authentication](#node-red-authentication)                                       |
 | `NODERED_ADMIN_AUTH_ENABLED`  | No       | `false`                   | Set `true` when `NODERED_USERNAME`/`PASSWORD` are Node-RED's _own_ `adminAuth` credentials, to exchange them for a Bearer token instead of sending static Basic |
 | `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                                                                                       |
+| `NODERED_AUTH_SCOPE`          | No       | `*`                       | Scope requested in the `/auth/token` exchange; defaults to `read` under `MCP_READ_ONLY` — set explicitly for a narrower `adminAuth` permission                  |
 | `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                                                                                               |
 | `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                                                                                        |
 | `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                                                                                        |

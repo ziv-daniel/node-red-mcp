@@ -362,11 +362,58 @@ function getNodeRedTokenHttpsAgent(): https.Agent {
   return nodeRedTokenHttpsAgent;
 }
 
+/**
+ * True when MCP_READ_ONLY=true — write tools are hidden from tool listings
+ * and rejected if called directly, leaving all read/search/diagnostic
+ * capabilities intact. Useful when exposing this server to remote agents
+ * where accidental mutation of a live Node-RED instance is a real risk.
+ *
+ * Lives here, rather than only on McpServer, because the Node-RED token
+ * exchange needs it too (see getNodeRedAuthScope) and the two must agree: a
+ * server that hides its write tools while holding a `*` token — or the
+ * reverse — is precisely the mismatch this flag exists to avoid.
+ */
+export function isReadOnlyMode(): boolean {
+  return process.env.MCP_READ_ONLY === 'true';
+}
+
+/**
+ * The scope requested in the /auth/token password grant.
+ *
+ * Node-RED validates the requested scope against the user's own adminAuth
+ * permissions, so asking for `*` as a user with `permissions: "read"` fails
+ * the exchange outright — a 403 carrying `invalid_grant` / "Invalid resource
+ * owner credentials", i.e. byte-for-byte what a wrong password returns. That
+ * made a read-scoped user look like a credentials typo.
+ *
+ * Precedence:
+ *   1. NODERED_AUTH_SCOPE — explicit override, always wins
+ *   2. `read` when MCP_READ_ONLY is on
+ *   3. `*` — the previous behaviour, so existing deployments are untouched
+ *
+ * Narrowing by default is safe in the direction that matters: Node-RED will
+ * happily issue a `read` token to a full admin, but will never issue `*` to a
+ * read-only user.
+ */
+export function getNodeRedAuthScope(): string {
+  const override = process.env.NODERED_AUTH_SCOPE?.trim();
+  if (override) {
+    return override;
+  }
+  return isReadOnlyMode() ? 'read' : '*';
+}
+
 async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
   const baseURL = (process.env.NODERED_URL || 'http://localhost:1880').replace(/\/+$/, '');
   const response = await axios.post(
     `${baseURL}/auth/token`,
-    { client_id: 'node-red-admin', grant_type: 'password', scope: '*', username, password },
+    {
+      client_id: 'node-red-admin',
+      grant_type: 'password',
+      scope: getNodeRedAuthScope(),
+      username,
+      password,
+    },
     {
       timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
       httpsAgent: getNodeRedTokenHttpsAgent(),

@@ -36,6 +36,7 @@ import {
   resolveNodeRedAuthHeader,
   isNodeRedAdminAuthEnabled,
   validateNodeRedAuth,
+  getNodeRedAuthScope,
 } from '../utils/auth.js';
 
 import { NodeRedAPIClient } from './nodered-api.js';
@@ -71,6 +72,7 @@ vi.mock('../utils/auth.js', () => ({
   isNodeRedAdminAuthEnabled: vi.fn(() => true),
   validateNodeRedAuth: vi.fn(() => ({ type: 'none' })),
   getTlsRejectUnauthorized: vi.fn(() => true),
+  getNodeRedAuthScope: vi.fn(() => '*'),
 }));
 
 describe('NodeRedAPIClient', () => {
@@ -763,6 +765,18 @@ describe('NodeRedAPIClient', () => {
           username: 'admin',
           password: 'password',
         });
+      });
+
+      it('requests the derived scope rather than a hardcoded "*"', async () => {
+        vi.mocked(getNodeRedAuthScope).mockReturnValueOnce('read');
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: mockAuthToken });
+
+        await client.login('mcpread', 'password');
+
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/auth/token',
+          expect.objectContaining({ scope: 'read' })
+        );
       });
     });
 

@@ -29,6 +29,7 @@ import {
   NodeRedPromptTemplate,
 } from '../types/mcp-extensions.js';
 import type { NodeRedCredentials } from '../types/oauth.js';
+import { isReadOnlyMode } from '../utils/auth.js';
 import {
   AppError,
   NodeRedError,
@@ -378,21 +379,11 @@ export class McpNodeRedServer {
   }
 
   /**
-   * True when MCP_READ_ONLY=true — write tools are hidden from tool listings
-   * and rejected if called directly, leaving all read/search/diagnostic
-   * capabilities intact. Useful when exposing this server to remote agents
-   * where accidental mutation of a live Node-RED instance is a real risk.
-   */
-  private isReadOnlyMode(): boolean {
-    return process.env.MCP_READ_ONLY === 'true';
-  }
-
-  /**
    * Get tool definitions, filtered to read-only tools when MCP_READ_ONLY is set
    */
   public getToolDefinitions() {
     const tools = this.getAllToolDefinitions();
-    return this.isReadOnlyMode() ? tools.filter(tool => tool.annotations?.readOnlyHint) : tools;
+    return isReadOnlyMode() ? tools.filter(tool => tool.annotations?.readOnlyHint) : tools;
   }
 
   /**
@@ -875,7 +866,7 @@ export class McpNodeRedServer {
     let result: McpToolResult;
 
     try {
-      if (this.isReadOnlyMode()) {
+      if (isReadOnlyMode()) {
         const tool = this.getAllToolDefinitions().find(t => t.name === name);
         if (tool && !tool.annotations?.readOnlyHint) {
           throw new Error(
