@@ -20,6 +20,7 @@ import {
 import {
   mockSettings,
   mockRuntimeInfo,
+  mockDiagnosticsReport,
   mockNodeTypes,
   mockInstalledModules,
   mockSearchResult,
@@ -579,13 +580,108 @@ describe('NodeRedAPIClient', () => {
     });
 
     describe('getRuntimeInfo', () => {
-      it('should return runtime info', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockRuntimeInfo });
+      // getRuntimeInfo now reads two endpoints, so route by URL rather than
+      // relying on call order.
+      const routeGet =
+        (overrides: Record<string, unknown> = {}) =>
+        (url: string) => {
+          if (url in overrides) {
+            const value = overrides[url];
+            return value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
+          }
+          if (url === '/diagnostics') return Promise.resolve({ data: mockDiagnosticsReport });
+          if (url === '/flows') return Promise.resolve({ data: mockFlows });
+          if (url === '/settings') return Promise.resolve({ data: mockSettings });
+          return Promise.reject(new Error(`unexpected GET ${url}`));
+        };
+
+      const httpError = (status: number): AxiosError => {
+        const err = new Error(`HTTP ${status}`) as AxiosError;
+        err.isAxiosError = true;
+        err.response = { status } as NonNullable<AxiosError['response']>;
+        return err;
+      };
+
+      it('reads /diagnostics, not the nonexistent /admin/info', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet());
+
+        await client.getRuntimeInfo();
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/diagnostics');
+        expect(mockAxiosInstance.get).not.toHaveBeenCalledWith('/admin/info');
+      });
+
+      it('preserves the NodeRedRuntimeInfo contract rather than passing the report through', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet());
 
         const info = await client.getRuntimeInfo();
 
-        expect(info).toEqual(mockRuntimeInfo);
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/admin/info');
+        expect(info.version).toBe('3.1.0');
+        // /diagnostics reports module -> version string; the contract is
+        // module -> { version }.
+        expect(info.modules).toEqual({
+          'node-red-contrib-mqtt': { version: '1.2.0' },
+          'node-red-dashboard': { version: '3.6.0' },
+        });
+        // nodejs.memoryUsage is already bytes with matching keys, narrowed to
+        // the four documented fields.
+        expect(info.memory).toEqual({
+          rss: 100000000,
+          heapTotal: 50000000,
+          heapUsed: 30000000,
+          external: 5000000,
+        });
+        expect(info.flowFile).toBe('flows.json');
+        expect(info.source).toBe('diagnostics');
+      });
+
+      it('counts node instances per type from the deployed flows', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet());
+
+        const info = await client.getRuntimeInfo();
+
+        // /diagnostics carries no per-type counts, so these come from /flows.
+        expect(Object.keys(info.nodes).length).toBeGreaterThan(0);
+        // Containers are not node instances.
+        expect(info.nodes).not.toHaveProperty('tab');
+        expect(info.nodes).not.toHaveProperty('subflow');
+        for (const entry of Object.values(info.nodes)) {
+          expect(entry.count).toBeGreaterThan(0);
+        }
+      });
+
+      it('surfaces the runtime state fields the report adds', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet());
+
+        const info = await client.getRuntimeInfo();
+
+        expect(info.isStarted).toBe(true);
+        expect(info.flows).toEqual({ state: 'start', started: true });
+        expect(info.nodejs?.version).toBe('v22.11.0');
+        expect(info.os?.type).toBe('Linux');
+      });
+
+      it.each([
+        ['disabled in settings', 403],
+        ['absent on older Node-RED', 404],
+      ])('falls back to /settings when diagnostics are %s', async (_label, status) => {
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': httpError(status) }));
+
+        const info = await client.getRuntimeInfo();
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/settings');
+        expect(info.source).toBe('settings');
+        expect(info.version).toBe(mockSettings.version);
+        // Still contract-shaped, so healthCheck and clients don't break.
+        expect(info.modules).toEqual({});
+        expect(info.memory).toEqual({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0 });
+        expect(info.nodes).toBeDefined();
+      });
+
+      it('propagates a genuine diagnostics failure instead of masking it as a fallback', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': httpError(500) }));
+
+        await expect(client.getRuntimeInfo()).rejects.toThrow();
       });
     });
 
@@ -622,7 +718,11 @@ describe('NodeRedAPIClient', () => {
 
     describe('getVersion', () => {
       it('should return Node-RED version', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: mockRuntimeInfo });
+        mockAxiosInstance.get.mockImplementation((url: string) => {
+          if (url === '/diagnostics') return Promise.resolve({ data: mockDiagnosticsReport });
+          if (url === '/flows') return Promise.resolve({ data: mockFlows });
+          return Promise.reject(new Error(`unexpected GET ${url}`));
+        });
 
         const version = await client.getVersion();
 
@@ -809,10 +909,12 @@ describe('NodeRedAPIClient', () => {
 
   describe('Health Check', () => {
     it('should return healthy status when all checks pass', async () => {
-      mockAxiosInstance.get
-        .mockResolvedValueOnce({ data: mockSettings })
-        .mockResolvedValueOnce({ data: mockFlows })
-        .mockResolvedValueOnce({ data: mockRuntimeInfo });
+      mockAxiosInstance.get.mockImplementation((url: string) => {
+        if (url === '/settings') return Promise.resolve({ data: mockSettings });
+        if (url === '/flows') return Promise.resolve({ data: mockFlows });
+        if (url === '/diagnostics') return Promise.resolve({ data: mockDiagnosticsReport });
+        return Promise.reject(new Error(`unexpected GET ${url}`));
+      });
 
       const health = await client.healthCheck();
 

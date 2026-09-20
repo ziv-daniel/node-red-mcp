@@ -65,6 +65,52 @@ const SAFE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 // Library-style path: same charset but slashes allowed as separators, no traversal
 const SAFE_LIBRARY_PATH_RE = /^[A-Za-z0-9_./-]+$/;
 
+/**
+ * Per-node-type instance counts, which /diagnostics does not report.
+ *
+ * Node-RED's GET /flows returns a flat array in which tabs, config nodes and
+ * ordinary nodes are siblings; some callers hand us the nested form where each
+ * tab carries its own `nodes`. Both are handled, and tabs/subflow definitions
+ * are excluded because they are containers, not node instances.
+ */
+function countNodeTypes(flows: NodeRedFlow[]): NodeRedRuntimeInfo['nodes'] {
+  const counts: NodeRedRuntimeInfo['nodes'] = {};
+
+  const tally = (type?: string): void => {
+    if (!type || type === 'tab' || type === 'subflow') return;
+    counts[type] = { count: (counts[type]?.count ?? 0) + 1 };
+  };
+
+  for (const entry of flows ?? []) {
+    if (Array.isArray(entry?.nodes)) {
+      for (const node of entry.nodes) tally(node?.type);
+    } else {
+      tally(entry?.type);
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * /diagnostics reports `nodejs.memoryUsage` straight from process.memoryUsage(),
+ * so the keys and byte units already match the contract; this narrows it to the
+ * four documented fields and tolerates the value being absent entirely (the
+ * /settings fallback cannot measure memory).
+ */
+function toMemoryUsage(usage: Record<string, unknown> | undefined): NodeRedRuntimeInfo['memory'] {
+  const read = (key: string): number => {
+    const value = Number(usage?.[key]);
+    return Number.isFinite(value) ? value : 0;
+  };
+  return {
+    rss: read('rss'),
+    heapTotal: read('heapTotal'),
+    heapUsed: read('heapUsed'),
+    external: read('external'),
+  };
+}
+
 export class NodeRedAPIClient {
   private client: AxiosInstance;
   private config: NodeRedAPIConfig;
@@ -617,14 +663,74 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Get runtime information
+   * Get runtime information.
+   *
+   * Sourced from GET /diagnostics (GET /admin/info, used previously, is not
+   * part of Node-RED's Admin API and always 404s). The report is mapped onto
+   * NodeRedRuntimeInfo rather than passed through: /diagnostics reports
+   * `runtime.modules` as module -> version *string* where the contract is
+   * module -> { version }, and has no per-type node counts at all, so those
+   * are counted from the deployed flows.
    */
   async getRuntimeInfo(): Promise<NodeRedRuntimeInfo> {
     try {
-      const response = await this.client.get('/admin/info');
-      return response.data;
+      const [report, flows] = await Promise.all([this.fetchDiagnosticsReport(), this.getFlows()]);
+      const nodes = countNodeTypes(flows);
+
+      if (!report) {
+        const settings = (await this.getSettings()) as { version?: string; flowFile?: string };
+        return {
+          source: 'settings',
+          version: settings?.version ?? 'unknown',
+          nodes,
+          modules: {},
+          memory: toMemoryUsage(undefined),
+          ...(settings?.flowFile ? { flowFile: settings.flowFile } : {}),
+        };
+      }
+
+      const runtime = report.runtime ?? {};
+      const modules: NodeRedRuntimeInfo['modules'] = {};
+      for (const [name, version] of Object.entries(runtime.modules ?? {})) {
+        modules[name] = { version: String(version) };
+      }
+      // /diagnostics writes the string 'UNSET' rather than omitting a setting.
+      const flowFile = runtime.settings?.flowFile;
+
+      return {
+        source: 'diagnostics',
+        version: runtime.version ?? 'unknown',
+        nodes,
+        modules,
+        memory: toMemoryUsage(report.nodejs?.memoryUsage),
+        ...(flowFile && flowFile !== 'UNSET' ? { flowFile } : {}),
+        isStarted: runtime.isStarted,
+        flows: runtime.flows,
+        nodejs: report.nodejs,
+        os: report.os,
+      };
     } catch (error) {
       handleNodeRedError(error, 'getRuntimeInfo');
+    }
+  }
+
+  /**
+   * GET /diagnostics, or null when the endpoint is unavailable rather than
+   * broken: Node-RED answers 403 `diagnostics.disabled` when diagnostics are
+   * switched off in settings, and 404 on versions predating the endpoint.
+   * Both mean "fall back to /settings". Anything else is a real failure and
+   * propagates.
+   */
+  private async fetchDiagnosticsReport(): Promise<any | null> {
+    try {
+      const response = await this.client.get('/diagnostics');
+      return response.data;
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      if (status === 403 || status === 404) {
+        return null;
+      }
+      throw error;
     }
   }
 

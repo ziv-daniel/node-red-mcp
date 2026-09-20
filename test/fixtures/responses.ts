@@ -11,6 +11,7 @@ import {
 
 // Runtime and Settings
 export const mockSettings: NodeRedSettings = {
+  version: '3.1.0',
   httpNodeRoot: '/api',
   httpAdminRoot: '/admin',
   adminAuth: {
@@ -48,6 +49,52 @@ export const mockRuntimeInfo: NodeRedRuntimeInfo = {
 };
 
 // Node Types
+/**
+ * Shaped after the real GET /diagnostics report built by
+ * @node-red/runtime's lib/api/diagnostics.js — note that `runtime.modules`
+ * maps module name to a bare version *string*, and `nodejs.memoryUsage` is
+ * process.memoryUsage() in bytes.
+ */
+export const mockDiagnosticsReport = {
+  report: 'diagnostics',
+  scope: 'basic',
+  nodejs: {
+    version: 'v22.11.0',
+    arch: 'x64',
+    platform: 'linux',
+    memoryUsage: {
+      rss: 100000000,
+      heapTotal: 50000000,
+      heapUsed: 30000000,
+      external: 5000000,
+      arrayBuffers: 1000000,
+    },
+  },
+  os: {
+    type: 'Linux',
+    release: '6.1.0',
+    arch: 'x64',
+    platform: 'linux',
+    totalmem: 8000000000,
+    freemem: 4000000000,
+    containerised: false,
+  },
+  runtime: {
+    version: '3.1.0',
+    isStarted: true,
+    flows: { state: 'start', started: true },
+    modules: {
+      'node-red-contrib-mqtt': '1.2.0',
+      'node-red-dashboard': '3.6.0',
+    },
+    settings: {
+      available: true,
+      flowFile: 'flows.json',
+      adminAuth: 'SET',
+    },
+  },
+};
+
 export const mockNodeTypes: NodeRedNodeType[] = [
   {
     id: 'node-red/inject',
