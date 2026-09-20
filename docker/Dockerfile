@@ -103,6 +103,14 @@ CMD ["node", ".yarn/releases/yarn-stable-temp.cjs", "dev"]
 # ============================================================================
 FROM base AS production
 
+# Build-time metadata for the /version endpoint (src/server/express-app.ts).
+# Left unset, the endpoint reports 'unknown' — expected for any build that
+# doesn't pass these (e.g. a plain `docker build` with no --build-arg).
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIME=${BUILD_TIME}
+
 # Install production runtime dependencies only
 RUN apk add --no-cache \
         tini && \
