@@ -168,6 +168,62 @@ describe('ExpressApp', () => {
       });
     });
 
+    describe('GET /version', () => {
+      const originalGitSha = process.env.GIT_SHA;
+      const originalBuildTime = process.env.BUILD_TIME;
+
+      afterEach(() => {
+        if (originalGitSha === undefined) {
+          delete process.env.GIT_SHA;
+        } else {
+          process.env.GIT_SHA = originalGitSha;
+        }
+        if (originalBuildTime === undefined) {
+          delete process.env.BUILD_TIME;
+        } else {
+          process.env.BUILD_TIME = originalBuildTime;
+        }
+      });
+
+      it('should report unknown commitSha and buildTime when unset', async () => {
+        delete process.env.GIT_SHA;
+        delete process.env.BUILD_TIME;
+
+        const res = await request(app).get('/version');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('version');
+        expect(res.body).toHaveProperty('commitSha', 'unknown');
+        expect(res.body).toHaveProperty('buildTime', 'unknown');
+      });
+
+      it('should report GIT_SHA and BUILD_TIME when set by the build', async () => {
+        process.env.GIT_SHA = 'abc1234';
+        process.env.BUILD_TIME = '2026-09-20T08:00:00Z';
+
+        const newExpressApp = new ExpressApp(mockMcpServer as unknown as McpNodeRedServer, {
+          port: 3001,
+          host: 'localhost',
+          cors: { origin: '*', credentials: false },
+          rateLimit: { windowMs: 900000, max: 1000 },
+          helmet: false,
+        });
+        const res = await request(newExpressApp.getApp()).get('/version');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toHaveProperty('commitSha', 'abc1234');
+        expect(res.body).toHaveProperty('buildTime', '2026-09-20T08:00:00Z');
+      });
+
+      it('should not expose sensitive server internals', async () => {
+        const res = await request(app).get('/version');
+
+        expect(res.body).not.toHaveProperty('memory');
+        expect(res.body).not.toHaveProperty('uptime');
+        expect(res.body).not.toHaveProperty('env');
+      });
+    });
+
     describe('GET /ping', () => {
       it('should return ping response', async () => {
         const res = await request(app).get('/ping');

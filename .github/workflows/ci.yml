@@ -275,6 +275,10 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v7
 
+      - name: 🕐 Compute build time
+        id: build-time
+        run: echo "time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -318,6 +322,8 @@ jobs:
           build-args: |
             NODE_VERSION=${{ env.NODE_VERSION }}
             YARN_VERSION=${{ env.YARN_VERSION }}
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.build-time.outputs.time }}
 
   # Deployment: Dokploy on the production host auto-pulls
   # ghcr.io/ziv-daniel/node-red-mcp:latest after the docker job

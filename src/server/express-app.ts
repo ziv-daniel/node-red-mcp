@@ -29,6 +29,12 @@ import { OAuthServer } from './oauth-server.js';
 import { SessionManager } from './session-manager.js';
 import { SSEHandler } from './sse-handler.js';
 
+// Mirrors package.json's "version" field. Other endpoints in this file
+// (`/.well-known/mcp.json`, `/api/info`) already hardcode their own stale
+// copies of this value rather than importing package.json — kept consistent
+// with that existing pattern rather than introducing a new import mechanism.
+const packageVersion = '2.0.0';
+
 /**
  * Value accepted by Express's `trust proxy` setting.
  */
@@ -564,6 +570,19 @@ export class ExpressApp {
         });
       })
     );
+
+    // Version/build info endpoint (public — minimal info only).
+    // GIT_SHA and BUILD_TIME are injected at Docker build time (see
+    // docker/Dockerfile and .github/workflows/ci.yml); they read back as
+    // 'unknown' for any build that doesn't set them (e.g. a local `yarn dev`
+    // run), which is expected and not an error.
+    this.app.get('/version', (_req: Request, res: Response) => {
+      res.json({
+        version: packageVersion,
+        commitSha: process.env.GIT_SHA || 'unknown',
+        buildTime: process.env.BUILD_TIME || 'unknown',
+      });
+    });
 
     // MCP Server Discovery endpoint (.well-known/mcp.json)
     // As per MCP November 2025 spec for server discovery
