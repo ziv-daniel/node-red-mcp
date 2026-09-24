@@ -683,6 +683,38 @@ describe('NodeRedAPIClient', () => {
 
         await expect(client.getRuntimeInfo()).rejects.toThrow();
       });
+
+      // The inner /flows and /settings reads must not be wrapped twice: a
+      // re-wrapped NodeRedError has no .response, so it would collapse to 500.
+      const upstream = (response: (typeof mockErrorResponses)[keyof typeof mockErrorResponses]) =>
+        Object.assign(new Error(`HTTP ${response.status}`), { isAxiosError: true, response });
+
+      it.each([
+        ['/flows', mockErrorResponses.unauthorized, 401],
+        ['/diagnostics', mockErrorResponses.unauthorized, 401],
+        ['/flows', mockErrorResponses.notFound, 404],
+      ])('surfaces the real status when %s fails (%#)', async (url, response, status) => {
+        mockAxiosInstance.get.mockImplementation(routeGet({ [url]: upstream(response) }));
+
+        await expect(client.getRuntimeInfo()).rejects.toMatchObject({
+          statusCode: status,
+          nodeRedStatusCode: status,
+        });
+      });
+
+      it('surfaces the real status when the /settings fallback fails', async () => {
+        mockAxiosInstance.get.mockImplementation(
+          routeGet({
+            '/diagnostics': httpError(404),
+            '/settings': upstream(mockErrorResponses.unauthorized),
+          })
+        );
+
+        await expect(client.getRuntimeInfo()).rejects.toMatchObject({
+          statusCode: 401,
+          nodeRedStatusCode: 401,
+        });
+      });
     });
 
     describe('getFlowStatus', () => {
@@ -921,6 +953,33 @@ describe('NodeRedAPIClient', () => {
       expect(health.healthy).toBe(true);
       expect(health.details).toHaveProperty('version');
       expect(health.details).toHaveProperty('flowCount');
+    });
+
+    it.each([
+      ['available', { data: mockDiagnosticsReport }],
+      ['unavailable', null],
+    ])('requests each endpoint once when diagnostics are %s', async (_label, diagnostics) => {
+      mockAxiosInstance.get.mockImplementation((url: string) => {
+        if (url === '/settings') return Promise.resolve({ data: mockSettings });
+        if (url === '/flows') return Promise.resolve({ data: mockFlows });
+        if (url === '/diagnostics') {
+          return diagnostics
+            ? Promise.resolve(diagnostics)
+            : Promise.reject(
+                Object.assign(new Error('HTTP 403'), {
+                  isAxiosError: true,
+                  response: { status: 403 },
+                })
+              );
+        }
+        return Promise.reject(new Error(`unexpected GET ${url}`));
+      });
+
+      const health = await client.healthCheck();
+
+      expect(health.healthy).toBe(true);
+      const urls = mockAxiosInstance.get.mock.calls.map(([url]: [string]) => url);
+      expect(urls.sort()).toEqual(['/diagnostics', '/flows', '/settings']);
     });
 
     it('should return unhealthy status on error', async () => {

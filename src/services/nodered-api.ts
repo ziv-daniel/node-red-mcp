@@ -81,7 +81,7 @@ function countNodeTypes(flows: NodeRedFlow[]): NodeRedRuntimeInfo['nodes'] {
     counts[type] = { count: (counts[type]?.count ?? 0) + 1 };
   };
 
-  for (const entry of flows ?? []) {
+  for (const entry of Array.isArray(flows) ? flows : []) {
     if (Array.isArray(entry?.nodes)) {
       for (const node of entry.nodes) tally(node?.type);
     } else {
@@ -108,6 +108,52 @@ function toMemoryUsage(usage: Record<string, unknown> | undefined): NodeRedRunti
     heapTotal: read('heapTotal'),
     heapUsed: read('heapUsed'),
     external: read('external'),
+  };
+}
+
+/**
+ * Map a GET /diagnostics report onto NodeRedRuntimeInfo, or — when the report
+ * is unavailable (null) — build the reduced form from GET /settings. Kept pure
+ * so healthCheck() can reuse the flows and settings it already fetched instead
+ * of requesting them a second time through getRuntimeInfo().
+ */
+function buildRuntimeInfo(
+  report: any | null,
+  flows: NodeRedFlow[],
+  settings: { version?: string; flowFile?: string } | undefined
+): NodeRedRuntimeInfo {
+  const nodes = countNodeTypes(flows);
+
+  if (!report) {
+    return {
+      source: 'settings',
+      version: settings?.version ?? 'unknown',
+      nodes,
+      modules: {},
+      memory: toMemoryUsage(undefined),
+      ...(settings?.flowFile ? { flowFile: settings.flowFile } : {}),
+    };
+  }
+
+  const runtime = report.runtime ?? {};
+  const modules: NodeRedRuntimeInfo['modules'] = {};
+  for (const [name, version] of Object.entries(runtime.modules ?? {})) {
+    modules[name] = { version: String(version) };
+  }
+  // /diagnostics writes the string 'UNSET' rather than omitting a setting.
+  const flowFile = runtime.settings?.flowFile;
+
+  return {
+    source: 'diagnostics',
+    version: runtime.version ?? 'unknown',
+    nodes,
+    modules,
+    memory: toMemoryUsage(report.nodejs?.memoryUsage),
+    ...(flowFile && flowFile !== 'UNSET' ? { flowFile } : {}),
+    isStarted: runtime.isStarted,
+    flows: runtime.flows,
+    nodejs: report.nodejs,
+    os: report.os,
   };
 }
 
@@ -674,41 +720,15 @@ export class NodeRedAPIClient {
    */
   async getRuntimeInfo(): Promise<NodeRedRuntimeInfo> {
     try {
-      const [report, flows] = await Promise.all([this.fetchDiagnosticsReport(), this.getFlows()]);
-      const nodes = countNodeTypes(flows);
-
-      if (!report) {
-        const settings = (await this.getSettings()) as { version?: string; flowFile?: string };
-        return {
-          source: 'settings',
-          version: settings?.version ?? 'unknown',
-          nodes,
-          modules: {},
-          memory: toMemoryUsage(undefined),
-          ...(settings?.flowFile ? { flowFile: settings.flowFile } : {}),
-        };
-      }
-
-      const runtime = report.runtime ?? {};
-      const modules: NodeRedRuntimeInfo['modules'] = {};
-      for (const [name, version] of Object.entries(runtime.modules ?? {})) {
-        modules[name] = { version: String(version) };
-      }
-      // /diagnostics writes the string 'UNSET' rather than omitting a setting.
-      const flowFile = runtime.settings?.flowFile;
-
-      return {
-        source: 'diagnostics',
-        version: runtime.version ?? 'unknown',
-        nodes,
-        modules,
-        memory: toMemoryUsage(report.nodejs?.memoryUsage),
-        ...(flowFile && flowFile !== 'UNSET' ? { flowFile } : {}),
-        isStarted: runtime.isStarted,
-        flows: runtime.flows,
-        nodejs: report.nodejs,
-        os: report.os,
-      };
+      // Raw client calls rather than getFlows()/getSettings(): those already
+      // wrap failures in a NodeRedError, which carries no .response, so
+      // wrapping it again below would collapse a real 401/403 into a flat 500.
+      const [report, flowsResponse] = await Promise.all([
+        this.fetchDiagnosticsReport(),
+        this.client.get('/flows'),
+      ]);
+      const settings = report ? undefined : (await this.client.get('/settings')).data;
+      return buildRuntimeInfo(report, flowsResponse.data, settings);
     } catch (error) {
       handleNodeRedError(error, 'getRuntimeInfo');
     }
@@ -1057,11 +1077,14 @@ export class NodeRedAPIClient {
    */
   async healthCheck(): Promise<{ healthy: boolean; details: any }> {
     try {
-      const [settings, flows, runtime] = await Promise.all([
+      // getRuntimeInfo() would fetch /flows (and /settings on its fallback
+      // path) again, so fetch each endpoint once and build the info locally.
+      const [settings, flows, report] = await Promise.all([
         this.getSettings(),
         this.getFlows(),
-        this.getRuntimeInfo(),
+        this.fetchDiagnosticsReport(),
       ]);
+      const runtime = buildRuntimeInfo(report, flows, settings);
 
       return {
         healthy: true,
