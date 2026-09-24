@@ -119,13 +119,12 @@ jobs:
     name: 🎭 E2E Tests
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '"ubuntu-latest"' || '["self-hosted","linux","x64","homelab"]') }}
     timeout-minutes: 30
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
     needs: [quality]
 
     services:
       node-red:
         image: nodered/node-red:latest
-        ports:
-          - 1880
         env:
           NODE_ENV: development
         options: >-
@@ -146,11 +145,8 @@ jobs:
       - name: 🏗️ Build project
         run: node .yarn/releases/yarn-stable-temp.cjs build:prod
 
-      - name: 🎭 Install Playwright browsers
-        run: node .yarn/releases/yarn-stable-temp.cjs playwright install --with-deps chromium
-
       - name: ⏳ Wait for Node-RED to be ready
-        run: timeout 90s bash -c 'until curl -sf http://localhost:${{ job.services['node-red'].ports[1880] }}; do sleep 3; done'
+        run: timeout 90s bash -c 'until curl -sf http://node-red:1880; do sleep 3; done'
 
       - name: Allocate isolated MCP port
         run: echo "MCP_PORT=$((20000 + GITHUB_RUN_ID % 40000))" >> "$GITHUB_ENV"
@@ -162,7 +158,7 @@ jobs:
           NODERED_SKIP_CREDENTIAL_VALIDATION: 'true'
           MCP_TRANSPORT: http
           HTTP_ENABLED: true
-          NODERED_URL: http://localhost:${{ job.services['node-red'].ports[1880] }}
+          NODERED_URL: http://node-red:1880
           JWT_SECRET: ci-test-secret-minimum-32-characters-ok
 
       - name: ⏳ Wait for MCP server to be ready
@@ -173,7 +169,7 @@ jobs:
       - name: 🧪 Run E2E tests
         run: BASE_URL="http://localhost:$MCP_PORT" node .yarn/releases/yarn-stable-temp.cjs test:e2e
         env:
-          NODERED_URL: http://localhost:${{ job.services['node-red'].ports[1880] }}
+          NODERED_URL: http://node-red:1880
 
       - name: 📊 Upload E2E test results
         uses: actions/upload-artifact@v7
