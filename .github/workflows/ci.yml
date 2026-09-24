@@ -152,7 +152,7 @@ jobs:
         run: echo "MCP_PORT=$((20000 + GITHUB_RUN_ID % 40000))" >> "$GITHUB_ENV"
 
       - name: 🚀 Start MCP server in background
-        run: PORT="$MCP_PORT" CORS_ORIGIN="http://localhost:$MCP_PORT" node dist/index.mjs > "$RUNNER_TEMP/mcp-server.log" 2>&1 &
+        run: PORT="$MCP_PORT" CORS_ORIGIN="http://localhost:3000,http://localhost:$MCP_PORT" node dist/index.mjs > "$RUNNER_TEMP/mcp-server.log" 2>&1 &
         env:
           NODE_ENV: test
           NODERED_SKIP_CREDENTIAL_VALIDATION: 'true'
