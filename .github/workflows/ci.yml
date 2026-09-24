@@ -17,10 +17,11 @@ env:
   REGISTRY_URL: 'ghcr.io'
 
 jobs:
+  # Fork PRs use GitHub-hosted runners; the homelab pool has the host Docker socket.
   # Job 1: Code Quality & Security Analysis
   quality:
     name: 🔍 Code Quality & Security
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '"ubuntu-latest"' || '["self-hosted","linux","x64","homelab"]') }}
     timeout-minutes: 15
 
     steps:
@@ -37,30 +38,6 @@ jobs:
 
       - name: 🧶 Enable Corepack
         run: corepack enable
-
-      - name: 📦 Get yarn cache directory path
-        id: yarn-cache-dir-path
-        shell: bash
-        run: |
-          # Wrapping the substitution in `echo` discards its exit status, so an
-          # unresolvable cache folder used to reach actions/cache as an empty
-          # `path` and fail the job. Caching is an optimization — degrade to a
-          # cold cache instead.
-          if dir="$(yarn config get cacheFolder 2>/dev/null)" && [ -n "$dir" ]; then
-            echo "dir=$dir" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Could not resolve the yarn cacheFolder; continuing without the dependency cache"
-            echo "dir=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 📦 Cache yarn dependencies
-        if: steps.yarn-cache-dir-path.outputs.dir != ''
-        uses: actions/cache@v6
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
 
       - name: 📥 Install dependencies
         run: yarn install --immutable
@@ -91,7 +68,7 @@ jobs:
   # Job 2: Build & Unit Tests
   test:
     name: 🧪 Test Suite
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '"ubuntu-latest"' || '["self-hosted","linux","x64","homelab"]') }}
     timeout-minutes: 20
 
     strategy:
@@ -112,30 +89,6 @@ jobs:
       - name: 🧶 Enable Corepack
         run: corepack enable
 
-      - name: 📦 Get yarn cache directory path
-        id: yarn-cache-dir-path
-        shell: bash
-        run: |
-          # Wrapping the substitution in `echo` discards its exit status, so an
-          # unresolvable cache folder used to reach actions/cache as an empty
-          # `path` and fail the job. Caching is an optimization — degrade to a
-          # cold cache instead.
-          if dir="$(yarn config get cacheFolder 2>/dev/null)" && [ -n "$dir" ]; then
-            echo "dir=$dir" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::Could not resolve the yarn cacheFolder; continuing without the dependency cache"
-            echo "dir=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: 📦 Cache yarn dependencies
-        if: steps.yarn-cache-dir-path.outputs.dir != ''
-        uses: actions/cache@v6
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
       - name: 📥 Install dependencies
         run: yarn install --immutable
 
@@ -150,6 +103,8 @@ jobs:
 
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v7
+        timeout-minutes: 3
+        continue-on-error: true
         if: matrix.node-version == '22'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -162,15 +117,14 @@ jobs:
   # TODO: Re-enable after fixing silent error handling in src/index.ts
   e2e:
     name: 🎭 E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '"ubuntu-latest"' || '["self-hosted","linux","x64","homelab"]') }}
     timeout-minutes: 30
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
     needs: [quality]
 
     services:
       node-red:
         image: nodered/node-red:latest
-        ports:
-          - 1880:1880
         env:
           NODE_ENV: development
         options: >-
@@ -191,37 +145,36 @@ jobs:
       - name: 🏗️ Build project
         run: node .yarn/releases/yarn-stable-temp.cjs build:prod
 
-      - name: 🎭 Install Playwright browsers
-        run: node .yarn/releases/yarn-stable-temp.cjs playwright install --with-deps chromium
-
       - name: ⏳ Wait for Node-RED to be ready
-        run: timeout 90s bash -c 'until curl -sf http://localhost:1880; do sleep 3; done'
+        run: timeout 90s bash -c 'until curl -sf http://node-red:1880; do sleep 3; done'
+
+      - name: Allocate isolated MCP port
+        run: echo "MCP_PORT=$((20000 + GITHUB_RUN_ID % 40000))" >> "$GITHUB_ENV"
 
       - name: 🚀 Start MCP server in background
-        run: node dist/index.mjs > /tmp/mcp-server.log 2>&1 &
+        run: PORT="$MCP_PORT" CORS_ORIGIN="http://localhost:3000,http://localhost:$MCP_PORT" node dist/index.mjs > "$RUNNER_TEMP/mcp-server.log" 2>&1 &
         env:
           NODE_ENV: test
           NODERED_SKIP_CREDENTIAL_VALIDATION: 'true'
-          PORT: 3000
           MCP_TRANSPORT: http
           HTTP_ENABLED: true
-          NODERED_URL: http://localhost:1880
+          NODERED_URL: http://node-red:1880
           JWT_SECRET: ci-test-secret-minimum-32-characters-ok
-          CORS_ORIGIN: http://localhost:3000
 
       - name: ⏳ Wait for MCP server to be ready
         run: |
-          timeout 60s bash -c 'until curl -sf http://localhost:3000/health; do sleep 2; done' || \
-          (echo "=== MCP server log ===" && cat /tmp/mcp-server.log && exit 1)
+          timeout 60s bash -c 'until curl -sf http://localhost:$MCP_PORT/health; do sleep 2; done' || \
+          (echo "=== MCP server log ===" && cat "$RUNNER_TEMP/mcp-server.log" && exit 1)
 
       - name: 🧪 Run E2E tests
-        run: node .yarn/releases/yarn-stable-temp.cjs test:e2e
+        run: BASE_URL="http://localhost:$MCP_PORT" node .yarn/releases/yarn-stable-temp.cjs test:e2e
         env:
-          BASE_URL: http://localhost:3000
-          NODERED_URL: http://localhost:1880
+          NODERED_URL: http://node-red:1880
 
       - name: 📊 Upload E2E test results
         uses: actions/upload-artifact@v7
+        timeout-minutes: 3
+        continue-on-error: true
         if: always()
         with:
           name: e2e-results-${{ github.run_id }}
@@ -233,7 +186,7 @@ jobs:
   # Job 4: Security Scanning
   security:
     name: 🛡️ Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '"ubuntu-latest"' || '["self-hosted","linux","x64","homelab"]') }}
     timeout-minutes: 15
     if: github.event_name != 'schedule'
 
@@ -262,6 +215,7 @@ jobs:
 
   docker:
     name: 🐳 Docker Build & Push
+    # Multi-arch ARM64 emulation is not stable on the current x64 homelab host.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: [quality, test]
@@ -278,6 +232,9 @@ jobs:
       - name: 🕐 Compute build time
         id: build-time
         run: echo "time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: 🐧 Set up ARM64 emulation
+        uses: docker/setup-qemu-action@v3
 
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -317,8 +274,6 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           build-args: |
             NODE_VERSION=${{ env.NODE_VERSION }}
             YARN_VERSION=${{ env.YARN_VERSION }}
