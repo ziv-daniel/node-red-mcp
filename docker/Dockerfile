@@ -146,8 +146,13 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER mcpserver
 
 # Health check
+#
+# Only probe HTTP when HTTP is actually being served. This stage defaults to
+# MCP_TRANSPORT=stdio, which never calls listen(), so an unconditional curl
+# would mark every default-configured container unhealthy forever. The
+# condition mirrors docker-entrypoint.sh so the two cannot drift.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+    CMD sh -c '[ "$HTTP_ENABLED" = "true" ] || [ "$MCP_TRANSPORT" = "http" ] || [ "$MCP_TRANSPORT" = "both" ] || exit 0; curl -f http://localhost:${PORT}/health'
 
 # Expose port
 EXPOSE ${PORT}

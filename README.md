@@ -75,6 +75,7 @@ yarn build
 docker run -e NODERED_URL=http://your-nodered:1880 \
            -e NODERED_USERNAME=admin \
            -e NODERED_PASSWORD=password \
+           -e MCP_TRANSPORT=http \
            -p 3000:3000 \
            ghcr.io/ziv-daniel/node-red-mcp:latest
 ```
@@ -164,10 +165,20 @@ Built-in prompt templates for common tasks:
 
 ### Transport Modes
 
-| Mode                | Env Var               | Endpoint     | Use Case                  |
-| ------------------- | --------------------- | ------------ | ------------------------- |
-| **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`  | Production, remote agents |
-| **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout | Claude Desktop            |
+| Mode                | Env Var               | Endpoint          | Use Case                                    |
+| ------------------- | --------------------- | ----------------- | ------------------------------------------- |
+| **Streamable HTTP** | `MCP_TRANSPORT=http`  | `POST /mcp`       | Production, remote agents                   |
+| **Stdio**           | `MCP_TRANSPORT=stdio` | stdin/stdout      | Claude Desktop                              |
+| **Both**            | `MCP_TRANSPORT=both`  | both of the above | Serving HTTP while also attached over stdio |
+
+**The default is `stdio`, and the published Docker image bakes that in.**
+Nothing listens on a port until you ask it to, so a container started without
+`MCP_TRANSPORT` will not answer on `-p 3000:3000` and its healthcheck — which
+probes `/health` over HTTP — will never pass. To serve HTTP, set it explicitly:
+
+```bash
+-e MCP_TRANSPORT=http
+```
 
 ### Authentication
 
@@ -267,7 +278,8 @@ credential pair sent independently of the Bearer exchange.
 | `NODERED_ADMIN_AUTH_ENABLED`  | No       | `false`                   | Set `true` when `NODERED_USERNAME`/`PASSWORD` are Node-RED's _own_ `adminAuth` credentials, to exchange them for a Bearer token instead of sending static Basic |
 | `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                                                                                       |
 | `NODERED_AUTH_SCOPE`          | No       | `*`                       | Scope requested in the `/auth/token` exchange; defaults to `read` under `MCP_READ_ONLY` — set explicitly for a narrower `adminAuth` permission                  |
-| `MCP_TRANSPORT`               | No       | `http`                    | `http` or `stdio`                                                                                                                                               |
+| `MCP_TRANSPORT`               | No       | `stdio`                   | `stdio`, `http`, or `both`. The published image bakes in `stdio`; set `http` to serve the HTTP endpoint and let the healthcheck pass                            |
+| `HTTP_ENABLED`                | No       | `false`                   | Serve HTTP alongside `MCP_TRANSPORT=stdio`. Ignored when transport is `http`/`both` — it can turn HTTP on, never off                                            |
 | `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                                                                                        |
 | `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                                                                                        |
 | `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)                                                                  |
