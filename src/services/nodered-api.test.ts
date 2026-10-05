@@ -16,6 +16,7 @@ import {
   mockDisabledFlow,
   mockFlowWithoutLabel,
   mockConfigNode,
+  mockFlatFlows,
 } from '../../test/fixtures/flows.js';
 import {
   mockSettings,
@@ -590,7 +591,7 @@ describe('NodeRedAPIClient', () => {
             return value instanceof Error ? Promise.reject(value) : Promise.resolve(value);
           }
           if (url === '/diagnostics') return Promise.resolve({ data: mockDiagnosticsReport });
-          if (url === '/flows') return Promise.resolve({ data: mockFlows });
+          if (url === '/flows') return Promise.resolve({ data: mockFlatFlows });
           if (url === '/settings') return Promise.resolve({ data: mockSettings });
           return Promise.reject(new Error(`unexpected GET ${url}`));
         };
@@ -635,19 +636,23 @@ describe('NodeRedAPIClient', () => {
         expect(info.source).toBe('diagnostics');
       });
 
-      it('counts node instances per type from the deployed flows', async () => {
+      it('counts node instances per type from the flat /flows array', async () => {
         mockAxiosInstance.get.mockImplementation(routeGet());
 
         const info = await client.getRuntimeInfo();
 
         // /diagnostics carries no per-type counts, so these come from /flows.
-        expect(Object.keys(info.nodes).length).toBeGreaterThan(0);
-        // Containers are not node instances.
-        expect(info.nodes).not.toHaveProperty('tab');
-        expect(info.nodes).not.toHaveProperty('subflow');
-        for (const entry of Object.values(info.nodes)) {
-          expect(entry.count).toBeGreaterThan(0);
-        }
+        // Tabs, the subflow definition and the group are containers and are
+        // skipped; config nodes, disabled nodes, subflow instances and the
+        // nodes inside a subflow definition are all counted.
+        expect(info.nodes).toEqual({
+          'mqtt-broker': { count: 1 },
+          inject: { count: 2 },
+          debug: { count: 1 },
+          function: { count: 2 },
+          'mqtt in': { count: 1 },
+          'subflow:sf-1': { count: 1 },
+        });
       });
 
       it('surfaces the runtime state fields the report adds', async () => {
@@ -659,6 +664,39 @@ describe('NodeRedAPIClient', () => {
         expect(info.flows).toEqual({ state: 'start', started: true });
         expect(info.nodejs?.version).toBe('v22.11.0');
         expect(info.os?.type).toBe('Linux');
+      });
+
+      it('narrows nodejs, os and flows to the documented, type-checked fields', async () => {
+        const report = structuredClone(mockDiagnosticsReport) as any;
+        // Fields a future Node-RED could add (its commented-out "admin" scope
+        // adds these), plus values of the wrong type.
+        report.os.hostname = 'secret-host';
+        report.os.networkInterfaces = { eth0: [] };
+        report.os.uptime = 'a while';
+        report.nodejs.execPath = '/usr/bin/node';
+        report.nodejs.arch = 64;
+        report.runtime.flows.started = 'yes';
+        report.runtime.isStarted = 'true';
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': { data: report } }));
+
+        const info = await client.getRuntimeInfo();
+
+        expect(info.os).toEqual({
+          type: 'Linux',
+          release: '6.1.0',
+          arch: 'x64',
+          platform: 'linux',
+          totalmem: 8000000000,
+          freemem: 4000000000,
+          containerised: false,
+        });
+        expect(info.nodejs).toEqual({
+          version: 'v22.11.0',
+          platform: 'linux',
+          memoryUsage: mockDiagnosticsReport.nodejs.memoryUsage,
+        });
+        expect(info.flows).toEqual({ state: 'start' });
+        expect(info).not.toHaveProperty('isStarted');
       });
 
       it.each([
@@ -714,6 +752,44 @@ describe('NodeRedAPIClient', () => {
           statusCode: 401,
           nodeRedStatusCode: 401,
         });
+      });
+
+      // A login page served with HTTP 200 must fail like getFlows() does, not
+      // map to a plausible empty result.
+      const loginPage = { data: mockErrorResponses.htmlResponse.data };
+
+      it.each([
+        ['/flows and /diagnostics', { '/flows': loginPage, '/diagnostics': loginPage }],
+        ['/flows', { '/flows': loginPage }],
+        ['/diagnostics', { '/diagnostics': loginPage }],
+        ['the /settings fallback', { '/diagnostics': httpError(403), '/settings': loginPage }],
+      ])('rejects an HTML body from %s as a 502', async (_label, overrides) => {
+        mockAxiosInstance.get.mockImplementation(routeGet(overrides));
+
+        await expect(client.getRuntimeInfo()).rejects.toMatchObject({
+          statusCode: 502,
+          message: expect.stringContaining('Node-RED returned HTML content'),
+        });
+      });
+
+      it('rejects an empty /diagnostics body instead of treating it as unavailable', async () => {
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': { data: '' } }));
+        await expect(client.getRuntimeInfo()).rejects.toThrow('Node-RED returned HTML content');
+
+        mockAxiosInstance.get.mockClear();
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': { data: null } }));
+        await expect(client.getRuntimeInfo()).rejects.toThrow('instead of diagnostics data');
+        expect(mockAxiosInstance.get).not.toHaveBeenCalledWith('/settings');
+      });
+
+      it('rejects a non-array /flows body', async () => {
+        mockAxiosInstance.get.mockImplementation(
+          routeGet({ '/flows': { data: { rev: 'abc', flows: [] } } })
+        );
+
+        await expect(client.getRuntimeInfo()).rejects.toThrow(
+          'unexpected object instead of flow data'
+        );
       });
     });
 
@@ -989,6 +1065,22 @@ describe('NodeRedAPIClient', () => {
 
       expect(health.healthy).toBe(false);
       expect(health.details).toHaveProperty('error');
+    });
+
+    it('reports unhealthy when /diagnostics answers 200 with a login page', async () => {
+      mockAxiosInstance.get.mockImplementation((url: string) => {
+        if (url === '/settings') return Promise.resolve({ data: mockSettings });
+        if (url === '/flows') return Promise.resolve({ data: mockFlows });
+        if (url === '/diagnostics') {
+          return Promise.resolve({ data: mockErrorResponses.htmlResponse.data });
+        }
+        return Promise.reject(new Error(`unexpected GET ${url}`));
+      });
+
+      const health = await client.healthCheck();
+
+      expect(health.healthy).toBe(false);
+      expect(health.details.error).toContain('instead of diagnostics data');
     });
   });
 
