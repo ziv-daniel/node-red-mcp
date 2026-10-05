@@ -193,59 +193,83 @@ function toFlowsState(value: unknown): NodeRedRuntimeInfo['flows'] {
   return definedOnly({ state: asString(flows.state), started: asBoolean(flows.started) });
 }
 
-/**
- * Map a GET /diagnostics report onto NodeRedRuntimeInfo, or — when the report
- * is unavailable (null) — build the reduced form from GET /settings. Kept pure
- * so healthCheck() can reuse the flows and settings it already fetched instead
- * of requesting them a second time through getRuntimeInfo().
- *
- * Every input is an unchecked response body, so each is validated here: a
- * login page served with HTTP 200 must fail like getFlows() does, not map to
- * a plausible empty result.
- */
-function buildRuntimeInfo(report: unknown, flows: unknown, settings: unknown): NodeRedRuntimeInfo {
-  if (!Array.isArray(flows)) throw unexpectedBody(flows, 'flow data');
-  const nodes = countNodeTypes(flows);
+/** A usable flow file name: /diagnostics writes 'UNSET' rather than omitting a setting. */
+function toFlowFile(value: unknown): string | undefined {
+  const flowFile = asString(value);
+  return flowFile && flowFile !== 'UNSET' ? flowFile : undefined;
+}
 
-  if (report === null) {
-    const fallback = asObject(settings);
-    if (!fallback) throw unexpectedBody(settings, 'settings data');
-    return {
-      source: 'settings',
-      version: asString(fallback.version) ?? 'unknown',
-      nodes,
-      modules: {},
-      memory: toMemoryUsage(undefined),
-      ...definedOnly({ flowFile: asString(fallback.flowFile) || undefined }),
-    };
-  }
-
-  const diagnostics = asObject(report);
-  if (!diagnostics) throw unexpectedBody(report, 'diagnostics data');
-
-  const runtime = asObject(diagnostics.runtime) ?? {};
+/** /diagnostics reports module -> version string; the contract is module -> { version }. */
+function toModuleVersions(value: unknown): NodeRedRuntimeInfo['modules'] {
   const modules: NodeRedRuntimeInfo['modules'] = {};
-  for (const [name, version] of Object.entries(asObject(runtime.modules) ?? {})) {
+  for (const [name, version] of Object.entries(asObject(value) ?? {})) {
     if (typeof version === 'string') modules[name] = { version };
   }
-  // /diagnostics writes the string 'UNSET' rather than omitting a setting.
-  const flowFile = asString(asObject(runtime.settings)?.flowFile);
+  return modules;
+}
+
+/**
+ * The reduced runtime info GET /settings can supply when diagnostics are
+ * unavailable: no modules or memory, so `source` marks them as unmeasured.
+ */
+function runtimeInfoFromSettings(
+  settings: unknown,
+  nodes: NodeRedRuntimeInfo['nodes']
+): NodeRedRuntimeInfo {
+  const fallback = asObject(settings);
+  if (!fallback) throw unexpectedBody(settings, 'settings data');
+  return {
+    source: 'settings',
+    version: asString(fallback.version) ?? 'unknown',
+    nodes,
+    modules: {},
+    memory: toMemoryUsage(undefined),
+    ...definedOnly({ flowFile: toFlowFile(fallback.flowFile) }),
+  };
+}
+
+/** Map a GET /diagnostics report onto NodeRedRuntimeInfo. */
+function runtimeInfoFromDiagnostics(
+  report: unknown,
+  nodes: NodeRedRuntimeInfo['nodes']
+): NodeRedRuntimeInfo {
+  const diagnostics = asObject(report);
+  if (!diagnostics) throw unexpectedBody(report, 'diagnostics data');
+  const runtime = asObject(diagnostics.runtime) ?? {};
   const nodejs = asObject(diagnostics.nodejs);
 
   return {
     source: 'diagnostics',
     version: asString(runtime.version) ?? 'unknown',
     nodes,
-    modules,
+    modules: toModuleVersions(runtime.modules),
     memory: toMemoryUsage(asObject(nodejs?.memoryUsage)),
     ...definedOnly({
-      flowFile: flowFile === 'UNSET' ? undefined : flowFile || undefined,
+      flowFile: toFlowFile(asObject(runtime.settings)?.flowFile),
       isStarted: asBoolean(runtime.isStarted),
       flows: toFlowsState(runtime.flows),
       nodejs: toNodejsInfo(nodejs),
       os: toOsInfo(diagnostics.os),
     }),
   };
+}
+
+/**
+ * Build NodeRedRuntimeInfo from the /diagnostics report, or — when the report
+ * is unavailable (null) — from GET /settings. Kept pure so healthCheck() can
+ * reuse the flows and settings it already fetched instead of requesting them a
+ * second time through getRuntimeInfo().
+ *
+ * Every input is an unchecked response body, so each is validated before it
+ * is mapped: a login page served with HTTP 200 must fail like getFlows() does,
+ * not map to a plausible empty result.
+ */
+function buildRuntimeInfo(report: unknown, flows: unknown, settings: unknown): NodeRedRuntimeInfo {
+  if (!Array.isArray(flows)) throw unexpectedBody(flows, 'flow data');
+  const nodes = countNodeTypes(flows);
+  return report === null
+    ? runtimeInfoFromSettings(settings, nodes)
+    : runtimeInfoFromDiagnostics(report, nodes);
 }
 
 export class NodeRedAPIClient {

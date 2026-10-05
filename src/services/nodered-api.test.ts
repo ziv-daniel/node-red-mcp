@@ -666,6 +666,16 @@ describe('NodeRedAPIClient', () => {
         expect(info.os?.type).toBe('Linux');
       });
 
+      it("omits flowFile when /diagnostics reports the 'UNSET' sentinel", async () => {
+        const report = structuredClone(mockDiagnosticsReport);
+        report.runtime.settings.flowFile = 'UNSET';
+        mockAxiosInstance.get.mockImplementation(routeGet({ '/diagnostics': { data: report } }));
+
+        const info = await client.getRuntimeInfo();
+
+        expect(info).not.toHaveProperty('flowFile');
+      });
+
       it('narrows nodejs, os and flows to the documented, type-checked fields', async () => {
         const report = structuredClone(mockDiagnosticsReport) as any;
         // Fields a future Node-RED could add (its commented-out "admin" scope
