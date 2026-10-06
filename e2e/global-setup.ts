@@ -12,8 +12,8 @@ async function globalSetup(config: FullConfig) {
   process.env.NODE_ENV = 'test';
   process.env.MCP_TRANSPORT = 'http';
   process.env.HTTP_ENABLED = 'true';
-  process.env.PORT = '3000';
-  process.env.NODERED_URL = 'http://localhost:1880';
+  process.env.PORT ||= '3000';
+  process.env.NODERED_URL ||= 'http://localhost:1880';
 
   // Setup test data or configuration if needed
   console.log('✅ Environment variables configured');

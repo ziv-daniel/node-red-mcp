@@ -76,12 +76,12 @@ export default defineConfig({
     {
       // Start the Node-RED MCP Server
       command: 'yarn start',
-      url: 'http://localhost:3000/health',
+      url: (process.env.BASE_URL || 'http://localhost:3000') + '/health',
       reuseExistingServer: true,
       timeout: 120 * 1000, // 2 minutes to start
       env: {
         NODE_ENV: 'test',
-        PORT: '3000',
+        PORT: process.env.MCP_PORT || '3000',
         MCP_TRANSPORT: 'http',
         HTTP_ENABLED: 'true',
       },
@@ -89,7 +89,7 @@ export default defineConfig({
     {
       // Start Node-RED instance for integration testing
       command: 'npx node-red --settings e2e/node-red-settings.js --userDir e2e/node-red-data',
-      url: 'http://localhost:1880',
+      url: process.env.NODERED_URL || 'http://localhost:1880',
       reuseExistingServer: true,
       timeout: 60 * 1000,
       env: {
