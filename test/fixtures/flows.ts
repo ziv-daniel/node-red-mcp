@@ -88,6 +88,27 @@ export const mockFlows: NodeRedFlow[] = [
   mockFlowWithoutLabel,
 ];
 
+/**
+ * GET /flows as Node-RED actually returns it (API v1): one flat array in which
+ * tabs, subflow definitions, groups, config nodes and ordinary nodes are all
+ * siblings, with `z` naming the tab or subflow a node belongs to. Unlike
+ * mockFlows, nothing is nested under a `nodes` key.
+ */
+export const mockFlatFlows = [
+  { id: 'tab-1', type: 'tab', label: 'Main', disabled: false, info: '' },
+  { id: 'tab-2', type: 'tab', label: 'Off', disabled: true, info: '' },
+  { id: 'sf-1', type: 'subflow', name: 'Formatter', in: [], out: [] },
+  { id: 'group-1', type: 'group', z: 'tab-1', nodes: ['inject-1', 'debug-1'] },
+  { id: 'broker-1', type: 'mqtt-broker', name: 'Local MQTT', broker: 'localhost' },
+  { id: 'inject-1', type: 'inject', z: 'tab-1', g: 'group-1', wires: [['debug-1']] },
+  { id: 'inject-2', type: 'inject', z: 'tab-1', wires: [['sf-inst-1']] },
+  { id: 'debug-1', type: 'debug', z: 'tab-1', wires: [] },
+  { id: 'fn-off', type: 'function', z: 'tab-1', d: true, wires: [] },
+  { id: 'mqtt-in-1', type: 'mqtt in', z: 'tab-2', broker: 'broker-1', wires: [] },
+  { id: 'sf-inst-1', type: 'subflow:sf-1', z: 'tab-1', wires: [] },
+  { id: 'sf-fn-1', type: 'function', z: 'sf-1', wires: [] },
+];
+
 export const mockFlowSummaries: NodeRedFlowSummary[] = [
   {
     id: 'flow-1',

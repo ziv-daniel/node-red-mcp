@@ -98,6 +98,8 @@ export interface NodeRedNodeType {
 }
 
 export interface NodeRedSettings {
+  /** Node-RED version; GET /settings reports it via getRuntimeSettings. */
+  version?: string;
   httpNodeRoot: string;
   httpAdminRoot: string;
   httpStatic?: string;
@@ -152,6 +154,39 @@ export interface NodeRedRuntimeInfo {
     external: number;
   };
   flowFile?: string;
+
+  // Everything below is additive — sourced from GET /diagnostics, which the
+  // fields above predate. All optional, so the /settings fallback (and the
+  // existing fixtures) still satisfy the type.
+
+  /** Which endpoint the report came from. `settings` means diagnostics were
+   *  unavailable, and `modules`/`memory` above are empty rather than measured. */
+  source?: 'diagnostics' | 'settings';
+  /** Whether the Node-RED runtime has finished starting. */
+  isStarted?: boolean;
+  flows?: {
+    state?: string;
+    started?: boolean;
+  };
+  nodejs?: {
+    version?: string;
+    arch?: string;
+    platform?: string;
+    memoryUsage?: Record<string, number>;
+  };
+  os?: {
+    type?: string;
+    release?: string;
+    version?: string;
+    arch?: string;
+    platform?: string;
+    totalmem?: number;
+    freemem?: number;
+    uptime?: number;
+    loadavg?: number[];
+    containerised?: boolean | string;
+    wsl?: boolean;
+  };
 }
 
 export interface NodeRedFlowStatus {

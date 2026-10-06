@@ -65,6 +65,213 @@ const SAFE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
 // Library-style path: same charset but slashes allowed as separators, no traversal
 const SAFE_LIBRARY_PATH_RE = /^[A-Za-z0-9_./-]+$/;
 
+type JsonObject = Record<string, unknown>;
+
+const asObject = (value: unknown): JsonObject | undefined =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as JsonObject)
+    : undefined;
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+const asBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
+/** Drop undefined values, so optional properties are omitted rather than set to undefined. */
+function definedOnly<T extends object>(obj: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
+}
+
+/**
+ * The error for a 200 response whose body is not the JSON an endpoint
+ * documents — typically a login page served by an auth redirect or proxy.
+ * handleNodeRedError maps the "Node-RED returned HTML" wording to a 502.
+ */
+function unexpectedBody(body: unknown, what: string): Error {
+  if (typeof body === 'string') {
+    return new Error(
+      `Node-RED returned HTML content instead of ${what}. Check authentication and endpoint configuration.`
+    );
+  }
+  const kind = body === null ? 'null' : Array.isArray(body) ? 'array' : typeof body;
+  return new Error(`Node-RED returned an unexpected ${kind} instead of ${what}`);
+}
+
+// Containers rather than node instances. A subflow *instance* (`subflow:<id>`)
+// is an ordinary node and is counted; only the subflow definition is skipped.
+const CONTAINER_TYPES = new Set(['tab', 'subflow', 'group']);
+
+/**
+ * Per-node-type instance counts, which /diagnostics does not report.
+ *
+ * GET /flows (API v1, which this client uses) returns one flat array in which
+ * tabs, subflow definitions, groups, config nodes and ordinary nodes are all
+ * siblings, so each entry is tallied by its own `type`.
+ */
+function countNodeTypes(flows: unknown[]): NodeRedRuntimeInfo['nodes'] {
+  const counts: NodeRedRuntimeInfo['nodes'] = {};
+  for (const entry of flows) {
+    const type = asString(asObject(entry)?.type);
+    if (!type || CONTAINER_TYPES.has(type)) continue;
+    counts[type] = { count: (counts[type]?.count ?? 0) + 1 };
+  }
+  return counts;
+}
+
+/**
+ * /diagnostics reports `nodejs.memoryUsage` straight from process.memoryUsage(),
+ * so the keys and byte units already match the contract; this narrows it to the
+ * four documented fields and tolerates the value being absent entirely (the
+ * /settings fallback cannot measure memory).
+ */
+function toMemoryUsage(usage: JsonObject | undefined): NodeRedRuntimeInfo['memory'] {
+  const read = (key: string): number => asNumber(usage?.[key]) ?? 0;
+  return {
+    rss: read('rss'),
+    heapTotal: read('heapTotal'),
+    heapUsed: read('heapUsed'),
+    external: read('external'),
+  };
+}
+
+/** Numeric entries only, so a non-number cannot reach `Record<string, number>`. */
+function numericEntries(value: unknown): Record<string, number> | undefined {
+  const source = asObject(value);
+  if (!source) return undefined;
+  const result: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(source)) {
+    const n = asNumber(entry);
+    if (n !== undefined) result[key] = n;
+  }
+  return result;
+}
+
+/**
+ * The report's `nodejs`, `os` and `runtime.flows` blocks, narrowed to the
+ * documented fields with each value type-checked — the same treatment
+ * toMemoryUsage gives memory — so a future Node-RED adding fields (its
+ * commented-out "admin" scope would add hostname, cpus and network
+ * interfaces) or changing a type cannot pass through to clients unchecked.
+ */
+function toNodejsInfo(value: unknown): NodeRedRuntimeInfo['nodejs'] {
+  const nodejs = asObject(value);
+  if (!nodejs) return undefined;
+  return definedOnly({
+    version: asString(nodejs.version),
+    arch: asString(nodejs.arch),
+    platform: asString(nodejs.platform),
+    memoryUsage: numericEntries(nodejs.memoryUsage),
+  });
+}
+
+function toOsInfo(value: unknown): NodeRedRuntimeInfo['os'] {
+  const os = asObject(value);
+  if (!os) return undefined;
+  const loadavg = Array.isArray(os.loadavg) ? os.loadavg.map(asNumber) : undefined;
+  return definedOnly({
+    type: asString(os.type),
+    release: asString(os.release),
+    version: asString(os.version),
+    arch: asString(os.arch),
+    platform: asString(os.platform),
+    totalmem: asNumber(os.totalmem),
+    freemem: asNumber(os.freemem),
+    uptime: asNumber(os.uptime),
+    loadavg: loadavg?.every(n => n !== undefined) ? loadavg : undefined,
+    // Node-RED reports a boolean, or the container kind ('docker', 'kubepod', 'lxc').
+    containerised: asBoolean(os.containerised) ?? asString(os.containerised),
+    wsl: asBoolean(os.wsl),
+  });
+}
+
+function toFlowsState(value: unknown): NodeRedRuntimeInfo['flows'] {
+  const flows = asObject(value);
+  if (!flows) return undefined;
+  return definedOnly({ state: asString(flows.state), started: asBoolean(flows.started) });
+}
+
+/** A usable flow file name: /diagnostics writes 'UNSET' rather than omitting a setting. */
+function toFlowFile(value: unknown): string | undefined {
+  const flowFile = asString(value);
+  return flowFile && flowFile !== 'UNSET' ? flowFile : undefined;
+}
+
+/** /diagnostics reports module -> version string; the contract is module -> { version }. */
+function toModuleVersions(value: unknown): NodeRedRuntimeInfo['modules'] {
+  const modules: NodeRedRuntimeInfo['modules'] = {};
+  for (const [name, version] of Object.entries(asObject(value) ?? {})) {
+    if (typeof version === 'string') modules[name] = { version };
+  }
+  return modules;
+}
+
+/**
+ * The reduced runtime info GET /settings can supply when diagnostics are
+ * unavailable: no modules or memory, so `source` marks them as unmeasured.
+ */
+function runtimeInfoFromSettings(
+  settings: unknown,
+  nodes: NodeRedRuntimeInfo['nodes']
+): NodeRedRuntimeInfo {
+  const fallback = asObject(settings);
+  if (!fallback) throw unexpectedBody(settings, 'settings data');
+  return {
+    source: 'settings',
+    version: asString(fallback.version) ?? 'unknown',
+    nodes,
+    modules: {},
+    memory: toMemoryUsage(undefined),
+    ...definedOnly({ flowFile: toFlowFile(fallback.flowFile) }),
+  };
+}
+
+/** Map a GET /diagnostics report onto NodeRedRuntimeInfo. */
+function runtimeInfoFromDiagnostics(
+  report: unknown,
+  nodes: NodeRedRuntimeInfo['nodes']
+): NodeRedRuntimeInfo {
+  const diagnostics = asObject(report);
+  if (!diagnostics) throw unexpectedBody(report, 'diagnostics data');
+  const runtime = asObject(diagnostics.runtime) ?? {};
+  const nodejs = asObject(diagnostics.nodejs);
+
+  return {
+    source: 'diagnostics',
+    version: asString(runtime.version) ?? 'unknown',
+    nodes,
+    modules: toModuleVersions(runtime.modules),
+    memory: toMemoryUsage(asObject(nodejs?.memoryUsage)),
+    ...definedOnly({
+      flowFile: toFlowFile(asObject(runtime.settings)?.flowFile),
+      isStarted: asBoolean(runtime.isStarted),
+      flows: toFlowsState(runtime.flows),
+      nodejs: toNodejsInfo(nodejs),
+      os: toOsInfo(diagnostics.os),
+    }),
+  };
+}
+
+/**
+ * Build NodeRedRuntimeInfo from the /diagnostics report, or — when the report
+ * is unavailable (null) — from GET /settings. Kept pure so healthCheck() can
+ * reuse the flows and settings it already fetched instead of requesting them a
+ * second time through getRuntimeInfo().
+ *
+ * Every input is an unchecked response body, so each is validated before it
+ * is mapped: a login page served with HTTP 200 must fail like getFlows() does,
+ * not map to a plausible empty result.
+ */
+function buildRuntimeInfo(report: unknown, flows: unknown, settings: unknown): NodeRedRuntimeInfo {
+  if (!Array.isArray(flows)) throw unexpectedBody(flows, 'flow data');
+  const nodes = countNodeTypes(flows);
+  return report === null
+    ? runtimeInfoFromSettings(settings, nodes)
+    : runtimeInfoFromDiagnostics(report, nodes);
+}
+
 export class NodeRedAPIClient {
   private client: AxiosInstance;
   private config: NodeRedAPIConfig;
@@ -339,9 +546,7 @@ export class NodeRedAPIClient {
       // Additional validation for the flows response
       if (!Array.isArray(response.data)) {
         if (typeof response.data === 'string' && response.data.includes('Node-RED')) {
-          throw new Error(
-            'Node-RED returned HTML content instead of flow data. Check authentication and endpoint configuration.'
-          );
+          throw unexpectedBody(response.data, 'flow data');
         }
       }
 
@@ -617,15 +822,52 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Get runtime information
+   * Get runtime information.
+   *
+   * Sourced from GET /diagnostics (GET /admin/info, used previously, is not
+   * part of Node-RED's Admin API and always 404s). The report is mapped onto
+   * NodeRedRuntimeInfo rather than passed through: /diagnostics reports
+   * `runtime.modules` as module -> version *string* where the contract is
+   * module -> { version }, and has no per-type node counts at all, so those
+   * are counted from the deployed flows.
    */
   async getRuntimeInfo(): Promise<NodeRedRuntimeInfo> {
     try {
-      const response = await this.client.get('/admin/info');
-      return response.data;
+      // Raw client calls rather than getFlows()/getSettings(): those already
+      // wrap failures in a NodeRedError, which carries no .response, so
+      // wrapping it again below would collapse a real 401/403 into a flat 500.
+      const [report, flowsResponse] = await Promise.all([
+        this.fetchDiagnosticsReport(),
+        this.client.get('/flows'),
+      ]);
+      const settings = report ? undefined : (await this.client.get('/settings')).data;
+      return buildRuntimeInfo(report, flowsResponse.data, settings);
     } catch (error) {
       handleNodeRedError(error, 'getRuntimeInfo');
     }
+  }
+
+  /**
+   * GET /diagnostics, or null when the endpoint is unavailable rather than
+   * broken: Node-RED answers 403 `diagnostics.disabled` when diagnostics are
+   * switched off in settings, and 404 on versions predating the endpoint.
+   * Both mean "fall back to /settings". Anything else is a real failure and
+   * propagates.
+   */
+  private async fetchDiagnosticsReport(): Promise<unknown> {
+    let data: unknown;
+    try {
+      data = (await this.client.get('/diagnostics')).data;
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      if (status === 403 || status === 404) {
+        return null;
+      }
+      throw error;
+    }
+    // null means "unavailable", so an empty 200 body must not be read as it.
+    if (data === null || data === undefined) throw unexpectedBody(data, 'diagnostics data');
+    return data;
   }
 
   /**
@@ -951,11 +1193,14 @@ export class NodeRedAPIClient {
    */
   async healthCheck(): Promise<{ healthy: boolean; details: any }> {
     try {
-      const [settings, flows, runtime] = await Promise.all([
+      // getRuntimeInfo() would fetch /flows (and /settings on its fallback
+      // path) again, so fetch each endpoint once and build the info locally.
+      const [settings, flows, report] = await Promise.all([
         this.getSettings(),
         this.getFlows(),
-        this.getRuntimeInfo(),
+        this.fetchDiagnosticsReport(),
       ]);
+      const runtime = buildRuntimeInfo(report, flows, settings);
 
       return {
         healthy: true,
