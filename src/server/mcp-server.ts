@@ -791,7 +791,7 @@ export class McpNodeRedServer {
       {
         name: 'get_runtime_info',
         description:
-          'Get Node-RED runtime information including version, installed node types, and memory usage',
+          'Get Node-RED runtime information: version, runtime/flow state, per-type node counts, installed modules, memory usage, and Node.js/OS details',
         annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {}, required: [] },
       },
