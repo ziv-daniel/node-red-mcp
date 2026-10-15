@@ -19,6 +19,7 @@ const { mockNodeRedClient, mockSSEHandler } = vi.hoisted(() => ({
   mockNodeRedClient: {
     getFlows: vi.fn(),
     getFlowSummaries: vi.fn(),
+    getFlowsWithRev: vi.fn(),
     getFlow: vi.fn(),
     createFlow: vi.fn(),
     updateFlow: vi.fn(),
@@ -81,6 +82,7 @@ describe('MCP Protocol Integration', () => {
     // Set up mock return values
     mockNodeRedClient.getFlows.mockResolvedValue(mockFlows);
     mockNodeRedClient.getFlowSummaries.mockResolvedValue([]);
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: [] });
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
     mockNodeRedClient.updateFlow.mockResolvedValue(mockFlowTab);

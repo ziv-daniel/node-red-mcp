@@ -199,8 +199,21 @@ export interface NodeRedFlowStatus {
 }
 
 export interface NodeRedDeploymentOptions {
-  type: 'full' | 'nodes' | 'flows';
+  type: 'full' | 'nodes' | 'flows' | 'reload';
+  /** @deprecated Unused; retained for compatibility. */
   nodes?: string[];
+  /**
+   * Pre-built flat Admin API v2 flows array. When omitted (and type is not
+   * `reload`), the current flows are fetched and re-posted.
+   */
+  flows?: NodeRedNode[];
+  /**
+   * Flow revision for conditional deploy. When omitted together with `flows`,
+   * Node-RED forces the deploy. Ignored for `reload`.
+   */
+  rev?: string;
+  /** Optional top-level v2 credentials object (per-node map or encrypted `$`). */
+  credentials?: Record<string, unknown>;
 }
 
 export interface NodeRedAPIError {

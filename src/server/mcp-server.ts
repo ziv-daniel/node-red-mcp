@@ -397,7 +397,7 @@ export class McpNodeRedServer {
       {
         name: 'get_flows',
         description:
-          'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data). Supports pagination (limit/offset), sorting (label/nodeCount/disabled), and filtering by disabled state or label substring.',
+          'Get Node-RED flows with flexible filtering (summary info by default, use includeDetails for full data). Supports pagination (limit/offset), sorting (label/nodeCount/disabled), and filtering by disabled state or label substring. Also returns the current Admin API v2 flow revision as a top-level `rev` field (alongside `data`) — pass that value as `expected_rev` to deploy_flow / deploy_nodes.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
@@ -452,7 +452,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'get_flow',
-        description: 'Get specific Node-RED flow by ID',
+        description:
+          'Get specific Node-RED flow by ID. Also returns the current Admin API v2 flow revision as a top-level `rev` field (alongside `data`) — pass that value as `expected_rev` to deploy_flow / deploy_nodes.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
@@ -502,7 +503,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'update_flow',
-        description: 'Update an existing Node-RED flow',
+        description:
+          'Replace an existing Node-RED tab via PUT /flow/:id (no revision check). Prefer deploy_flow for concurrent-safe edits that use Admin API v2 rev checking.',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -519,9 +521,44 @@ export class McpNodeRedServer {
         },
       },
       {
+        name: 'deploy_flow',
+        description:
+          "Safely replace one tab's contents using Admin API v2 optimistic concurrency. Requires expected_rev from a prior get_flows/get_flow. Only that tab object and nodes with z equal to the tab id are replaced; every other tab, subflow, and global config node is left untouched. WARNING: any existing node on this tab that is omitted from flowData.nodes/configs is deleted. Prefer this over update_flow. If expected_rev is stale (human edited in the editor, etc.), fails with HTTP 409 — re-read flows, re-apply your change, and retry with the new rev. Returns the new rev on success. Default deployment type is 'flows'; pass type 'nodes' for modified-nodes deploy.",
+        annotations: { readOnlyHint: false },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            flowId: { type: 'string', description: 'Tab id to replace' },
+            flowData: {
+              type: 'object',
+              description:
+                'Full replacement tab content (same shape as update_flow): label/disabled/info/env plus nodes (and optional configs). Omitted nodes on this tab are deleted.',
+            },
+            expected_rev: {
+              type: 'string',
+              description:
+                'Flow revision from the prior get_flows/get_flow read. Posted as Admin API v2 `rev` for optimistic concurrency.',
+            },
+            type: {
+              type: 'string',
+              enum: ['flows', 'nodes'],
+              description:
+                "Node-RED-Deployment-Type for the POST (default: 'flows'). Use 'nodes' to restart only changed nodes.",
+              default: 'flows',
+            },
+            validate: {
+              type: 'boolean',
+              description: 'If true, validate flowData for structural errors before deploying',
+              default: false,
+            },
+          },
+          required: ['flowId', 'flowData', 'expected_rev'],
+        },
+      },
+      {
         name: 'deploy_nodes',
         description:
-          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button (Admin API v2, Node-RED-Deployment-Type: nodes). Every node not listed here, including in the same or other tabs, is left completely untouched and does not restart. Prefer this over update_flow/enable_flow/disable_flow when editing a tab that holds a long-lived connection that must not be dropped. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to. A concurrent edit that changes the flow revision returns HTTP 409 — retry after re-reading flows. Optional credentials uses the v2 top-level credentials object; omit it to leave existing stored credentials unchanged.",
+          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button (Admin API v2, Node-RED-Deployment-Type: nodes). Requires expected_rev from a prior get_flows/get_flow. Every node not listed here is left untouched and does not restart. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to. If expected_rev is stale, fails with HTTP 409 — re-read flows, re-apply your change, and retry. Returns the new rev on success. Optional credentials uses the v2 top-level credentials object.",
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -533,6 +570,11 @@ export class McpNodeRedServer {
               items: { type: 'object' },
               minItems: 1,
             },
+            expected_rev: {
+              type: 'string',
+              description:
+                'Flow revision from the prior get_flows/get_flow read. Posted as Admin API v2 `rev` for optimistic concurrency.',
+            },
             credentials: {
               type: 'object',
               description:
@@ -540,7 +582,7 @@ export class McpNodeRedServer {
               additionalProperties: true,
             },
           },
-          required: ['nodes'],
+          required: ['nodes', 'expected_rev'],
         },
       },
       {
@@ -905,9 +947,15 @@ export class McpNodeRedServer {
         case 'get_flows': {
           const includeDetails = args?.includeDetails || false;
           const types = args?.types || ['tab', 'subflow'];
-          let flowData: any[] = includeDetails
-            ? await this.nodeRedClient.getFlows()
-            : await this.nodeRedClient.getFlowSummaries(types);
+          // Fetch rev alongside the legacy data shape so deploy_* can use
+          // expected_rev without breaking existing consumers of `data`.
+          const [{ rev }, flowDataRaw] = await Promise.all([
+            this.nodeRedClient.getFlowsWithRev(),
+            includeDetails
+              ? this.nodeRedClient.getFlows()
+              : this.nodeRedClient.getFlowSummaries(types),
+          ]);
+          let flowData: any[] = flowDataRaw;
 
           const { sortBy, order } = parseSort(args, FLOW_SORT_KEYS);
 
@@ -925,16 +973,20 @@ export class McpNodeRedServer {
           }
 
           if (isPaginated(args)) {
-            result = { success: true, data: applyPagination(flowData, args), timestamp };
+            result = { success: true, data: applyPagination(flowData, args), rev, timestamp };
           } else {
-            result = { success: true, data: flowData, timestamp };
+            result = { success: true, data: flowData, rev, timestamp };
           }
           break;
         }
 
         case 'get_flow': {
           const flowId = await this.resolveFlowId(args, 'get');
-          result = { success: true, data: await this.nodeRedClient.getFlow(flowId), timestamp };
+          const [flow, { rev }] = await Promise.all([
+            this.nodeRedClient.getFlow(flowId),
+            this.nodeRedClient.getFlowsWithRev(),
+          ]);
+          result = { success: true, data: flow, rev, timestamp };
           break;
         }
 
@@ -966,10 +1018,50 @@ export class McpNodeRedServer {
           return { content: [{ type: 'text', text: `Flow ${flowId} updated successfully` }] };
         }
 
+        case 'deploy_flow': {
+          const flowId = await this.resolveFlowId(args, 'deploy');
+          if (!args?.flowData) throw new Error('Missing required parameter: flowData');
+          const expectedRev = args?.expected_rev;
+          if (typeof expectedRev !== 'string' || expectedRev.length === 0) {
+            throw new Error(
+              'Missing required parameter: expected_rev (from get_flows / get_flow `rev`)'
+            );
+          }
+          if (args?.validate) validateFlowOrThrow(args.flowData);
+          const deployType = args?.type === 'nodes' ? 'nodes' : 'flows';
+          const deployed = await this.nodeRedClient.deployFlow(flowId, args.flowData, {
+            expectedRev,
+            type: deployType,
+          });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    message: `Deployed flow ${flowId} (type=${deployType})`,
+                    rev: deployed.rev,
+                    timestamp,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
         case 'deploy_nodes': {
           const nodes = args?.nodes;
           if (!Array.isArray(nodes) || nodes.length === 0) {
             throw new Error('Missing required parameter: nodes (non-empty array)');
+          }
+          const expectedRev = args?.expected_rev;
+          if (typeof expectedRev !== 'string' || expectedRev.length === 0) {
+            throw new Error(
+              'Missing required parameter: expected_rev (from get_flows / get_flow `rev`)'
+            );
           }
           const seenIds = new Set<string>();
           for (let i = 0; i < nodes.length; i++) {
@@ -997,12 +1089,25 @@ export class McpNodeRedServer {
               'credentials must be an object keyed by node id (or encrypted `$` form)'
             );
           }
-          const deployed = await this.nodeRedClient.deployModifiedNodes(nodes, credentials);
+          const deployed = await this.nodeRedClient.deployModifiedNodes(
+            nodes,
+            expectedRev,
+            credentials
+          );
           return {
             content: [
               {
                 type: 'text',
-                text: `Deployed ${nodes.length} node(s): ${nodes.map((n: { id: string }) => n.id).join(', ')} (new rev: ${deployed.rev})`,
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    message: `Deployed ${nodes.length} node(s): ${nodes.map((n: { id: string }) => n.id).join(', ')}`,
+                    rev: deployed.rev,
+                    timestamp,
+                  },
+                  null,
+                  2
+                ),
               },
             ],
           };
