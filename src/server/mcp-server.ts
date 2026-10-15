@@ -519,6 +519,25 @@ export class McpNodeRedServer {
         },
       },
       {
+        name: 'deploy_nodes',
+        description:
+          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button. Every node not listed here, including in the same or other tabs, is left completely untouched and does not restart. Use this instead of update_flow/enable_flow/disable_flow when editing a tab that holds a long-lived connection (e.g. a Discord bot node) that must not be dropped. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to.",
+        annotations: { readOnlyHint: false },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            nodes: {
+              type: 'array',
+              description:
+                'Full node objects to add or replace by id (each needs at minimum id, type, z, wires, plus whatever type-specific properties the node needs)',
+              items: { type: 'object' },
+              minItems: 1,
+            },
+          },
+          required: ['nodes'],
+        },
+      },
+      {
         name: 'enable_flow',
         description: 'Enable a specific Node-RED flow',
         annotations: { readOnlyHint: false },
@@ -939,6 +958,25 @@ export class McpNodeRedServer {
           if (args?.validate) validateFlowOrThrow(args.flowData);
           await this.nodeRedClient.updateFlow(flowId, args.flowData);
           return { content: [{ type: 'text', text: `Flow ${flowId} updated successfully` }] };
+        }
+
+        case 'deploy_nodes': {
+          const nodes = args?.nodes;
+          if (!Array.isArray(nodes) || nodes.length === 0) {
+            throw new Error('Missing required parameter: nodes (non-empty array)');
+          }
+          for (const node of nodes) {
+            if (!node?.id) throw new Error('Every node in `nodes` needs an `id`');
+          }
+          const deployed = await this.nodeRedClient.deployModifiedNodes(nodes);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Deployed ${nodes.length} node(s): ${nodes.map((n: { id: string }) => n.id).join(', ')} (new rev: ${deployed.rev})`,
+              },
+            ],
+          };
         }
 
         case 'enable_flow': {

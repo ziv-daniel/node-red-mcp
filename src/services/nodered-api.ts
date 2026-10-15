@@ -663,6 +663,64 @@ export class NodeRedAPIClient {
   }
 
   /**
+   * Get the full flow config plus the `rev` needed for a safe conditional
+   * deploy (Node-RED's v2 admin API only returns `rev` when this header is
+   * sent).
+   */
+  async getFlowsWithRev(): Promise<{ rev: string; flows: NodeRedNode[] }> {
+    try {
+      const response = await this.client.get('/flows', {
+        headers: { 'Node-RED-API-Version': 'v2' },
+      });
+      const data = response.data;
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        typeof data.rev !== 'string' ||
+        !Array.isArray(data.flows)
+      ) {
+        throw unexpectedBody(data, 'v2 flow data');
+      }
+      return { rev: data.rev, flows: data.flows };
+    } catch (error) {
+      handleNodeRedError(error, 'getFlowsWithRev');
+    }
+  }
+
+  /**
+   * Add or update specific nodes and deploy ONLY those nodes — the same
+   * mechanism as the editor's "Modified Nodes" button. Every node not in
+   * `nodes` (by `id`) is left completely untouched and does not restart,
+   * unlike `updateFlow`/`enableFlow`/`disableFlow`/`deleteFlow`, which replace
+   * (and therefore restart) an entire tab via `PUT /flow/:id`.
+   *
+   * Safe to use even on a tab with long-lived connections (e.g. a Discord bot
+   * node), since nothing outside `nodes` is redeployed.
+   */
+  async deployModifiedNodes(nodes: NodeRedNode[]): Promise<{ rev: string }> {
+    try {
+      const { rev, flows } = await this.getFlowsWithRev();
+      const byId = new Map(flows.map(node => [node.id, node]));
+      for (const node of nodes) {
+        byId.set(node.id, node);
+      }
+      const response = await this.client.post(
+        '/flows',
+        { rev, flows: Array.from(byId.values()) },
+        {
+          headers: {
+            'Node-RED-API-Version': 'v2',
+            'Node-RED-Deployment-Type': 'nodes',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      handleNodeRedError(error, 'deployModifiedNodes');
+    }
+  }
+
+  /**
    * Delete flow
    */
   async deleteFlow(flowId: string): Promise<void> {

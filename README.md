@@ -10,10 +10,10 @@
 
 ## 🌟 Features
 
-### 🔧 20 MCP Tools
+### 🔧 21 MCP Tools
 
 Full CRUD for flows, context variables, modules, and diagnostics — plus semantic
-search and real-time error detection.
+search, targeted node deploy, and real-time error detection.
 
 ### 📚 Prompts Library
 
@@ -90,6 +90,7 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 | `get_flow`              | Get a specific flow                | `flowId`                                         |
 | `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
 | `update_flow`           | Update an existing flow            | `flowId`, `flowData`, `validate?`                |
+| `deploy_nodes`          | Upsert nodes; deploy only those    | `nodes`                                          |
 | `enable_flow`           | Enable a flow                      | `flowId`                                         |
 | `disable_flow`          | Disable a flow                     | `flowId`                                         |
 | `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                  |
@@ -128,8 +129,8 @@ Set `MCP_READ_ONLY=true` to structurally prevent any mutation of your Node-RED
 flows — useful when exposing this server to remote AI agents where an accidental
 or unintended write to a live/production instance is a real risk.
 
-When enabled, write tools (`create_flow`, `update_flow`, `delete_flow`,
-`enable_flow`, `disable_flow`, `set_context`, `delete_context`,
+When enabled, write tools (`create_flow`, `update_flow`, `deploy_nodes`,
+`delete_flow`, `enable_flow`, `disable_flow`, `set_context`, `delete_context`,
 `install_module`) are removed from the tool list entirely — clients never see
 them as available capabilities — and are also rejected if called directly by
 name. All read, search, diagnostic, resource, and prompt capabilities remain

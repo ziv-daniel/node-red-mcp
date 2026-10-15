@@ -37,6 +37,7 @@ const mockNodeRedClient = {
   getFlow: vi.fn(),
   createFlow: vi.fn(),
   updateFlow: vi.fn(),
+  deployModifiedNodes: vi.fn(),
   enableFlow: vi.fn(),
   disableFlow: vi.fn(),
   searchModules: vi.fn(),
@@ -144,6 +145,7 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
     mockNodeRedClient.updateFlow.mockResolvedValue(mockFlowTab);
+    mockNodeRedClient.deployModifiedNodes.mockResolvedValue({ rev: 'rev-2' });
     mockNodeRedClient.enableFlow.mockResolvedValue(undefined);
     mockNodeRedClient.disableFlow.mockResolvedValue(undefined);
     mockNodeRedClient.searchModules.mockResolvedValue(mockSearchResult);
@@ -337,9 +339,9 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 20 tools defined', () => {
+    it('should have exactly 21 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(20);
+      expect(tools.length).toBe(21);
     });
 
     it('should include semantic_search_flows tool', () => {
@@ -488,6 +490,49 @@ describe('McpNodeRedServer', () => {
       const result = await mcpServer.callTool('update_flow', { flowId: 'flow-1' });
 
       expect(result.content[0].text).toContain('flowData');
+    });
+  });
+
+  describe('Tool Execution - deploy_nodes', () => {
+    it('deploys the given nodes and reports the new rev', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1' }];
+
+      const result = await mcpServer.callTool('deploy_nodes', { nodes });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes);
+      expect(result.content[0].text).toContain('node-a');
+      expect(result.content[0].text).toContain('rev-2');
+    });
+
+    it('rejects when nodes is missing or empty', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', { nodes: [] });
+
+      expect(result.content[0].text).toContain('nodes');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a node missing an id', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ type: 'inject', z: 'tab-1' }],
+      });
+
+      expect(result.content[0].text).toContain('id');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('is hidden and rejected in read-only mode', async () => {
+      process.env.MCP_READ_ONLY = 'true';
+      try {
+        const tools = mcpServer.getToolDefinitions();
+        expect(tools.find(t => t.name === 'deploy_nodes')).toBeUndefined();
+
+        const result = await mcpServer.callTool('deploy_nodes', {
+          nodes: [{ id: 'node-a', type: 'inject', z: 'tab-1' }],
+        });
+        expect(result.content[0].text).toContain('read-only mode');
+      } finally {
+        delete process.env.MCP_READ_ONLY;
+      }
     });
   });
 

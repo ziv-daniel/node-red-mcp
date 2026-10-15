@@ -312,6 +312,64 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
+    describe('getFlowsWithRev', () => {
+      it('requests the v2 API and returns rev + flows', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [mockFlowTab] },
+        });
+
+        const result = await client.getFlowsWithRev();
+
+        expect(result).toEqual({ rev: 'rev-1', flows: [mockFlowTab] });
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows', {
+          headers: { 'Node-RED-API-Version': 'v2' },
+        });
+      });
+
+      it('rejects an unexpected v2 body shape', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: [] });
+
+        await expect(client.getFlowsWithRev()).rejects.toThrow();
+      });
+    });
+
+    describe('deployModifiedNodes', () => {
+      it('upserts nodes by id into the current flows and deploys with type "nodes"', async () => {
+        const existingNodeA = { id: 'node-a', type: 'inject', z: 'tab-1' };
+        const existingNodeB = { id: 'node-b', type: 'debug', z: 'tab-1' };
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [existingNodeA, existingNodeB] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const updatedNodeA = { id: 'node-a', type: 'inject', z: 'tab-1', name: 'renamed' };
+        const newNodeC = { id: 'node-c', type: 'function', z: 'tab-1' };
+
+        const result = await client.deployModifiedNodes([updatedNodeA, newNodeC]);
+
+        expect(result).toEqual({ rev: 'rev-2' });
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          { rev: 'rev-1', flows: [updatedNodeA, existingNodeB, newNodeC] },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('propagates errors from the deploy request', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.post.mockRejectedValueOnce(new Error('conflict'));
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }])
+        ).rejects.toThrow();
+      });
+    });
+
     describe('deployFlows', () => {
       it('should deploy with default full type', async () => {
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
