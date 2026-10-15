@@ -499,9 +499,19 @@ describe('McpNodeRedServer', () => {
 
       const result = await mcpServer.callTool('deploy_nodes', { nodes });
 
-      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes);
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, undefined);
       expect(result.content[0].text).toContain('node-a');
       expect(result.content[0].text).toContain('rev-2');
+    });
+
+    it('forwards optional credentials to the API client', async () => {
+      const nodes = [{ id: 'node-a', type: 'mqtt-broker' }];
+      const credentials = { 'node-a': { user: 'u', password: 'p' } };
+
+      const result = await mcpServer.callTool('deploy_nodes', { nodes, credentials });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, credentials);
+      expect(result.content[0].text).toContain('node-a');
     });
 
     it('rejects when nodes is missing or empty', async () => {
@@ -517,6 +527,37 @@ describe('McpNodeRedServer', () => {
       });
 
       expect(result.content[0].text).toContain('id');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a node missing a type', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', z: 'tab-1' }],
+      });
+
+      expect(result.content[0].text).toContain('type');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate node ids', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [
+          { id: 'node-a', type: 'inject', z: 'tab-1' },
+          { id: 'node-a', type: 'debug', z: 'tab-1' },
+        ],
+      });
+
+      expect(result.content[0].text).toContain('Duplicate node id');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-object credentials value', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'inject', z: 'tab-1' }],
+        credentials: ['not-an-object'],
+      });
+
+      expect(result.content[0].text).toContain('credentials');
       expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
     });
 

@@ -360,6 +360,62 @@ describe('NodeRedAPIClient', () => {
         );
       });
 
+      it('includes top-level credentials when provided', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'node-a', type: 'mqtt-broker' }] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const credentials = { 'node-a': { user: 'u', password: 'p' } };
+        await client.deployModifiedNodes(
+          [{ id: 'node-a', type: 'mqtt-broker', name: 'broker' }],
+          credentials
+        );
+
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          {
+            rev: 'rev-1',
+            flows: [{ id: 'node-a', type: 'mqtt-broker', name: 'broker' }],
+            credentials,
+          },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('rejects an unexpected v2 deploy response shape', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { ok: true } });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }])
+        ).rejects.toThrow(/v2 deploy response/);
+      });
+
+      it('surfaces a clear conflict message on HTTP 409 version_mismatch', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.post.mockRejectedValueOnce({
+          response: {
+            status: 409,
+            statusText: 'Conflict',
+            data: { code: 'version_mismatch', message: 'Error' },
+            headers: { 'content-type': 'application/json' },
+            config: { method: 'post', url: '/flows' },
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }])
+        ).rejects.toThrow(/revision \(rev\) is out of date/);
+      });
+
       it('propagates errors from the deploy request', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
         mockAxiosInstance.post.mockRejectedValueOnce(new Error('conflict'));

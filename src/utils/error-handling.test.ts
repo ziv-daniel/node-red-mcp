@@ -515,6 +515,31 @@ describe('handleNodeRedError', () => {
     }
   });
 
+  it('should explain stale rev conflicts on HTTP 409 version_mismatch', () => {
+    const error = {
+      response: {
+        status: 409,
+        statusText: 'Conflict',
+        data: { code: 'version_mismatch', message: 'Error' },
+        headers: {},
+      },
+      config: { method: 'post', url: '/flows' },
+    };
+
+    try {
+      handleNodeRedError(error, 'deployModifiedNodes');
+      expect.unreachable('handleNodeRedError should throw');
+    } catch (e) {
+      const err = e as NodeRedError;
+      expect(err.statusCode).toBe(409);
+      expect(err.nodeRedStatusCode).toBe(409);
+      expect(err.message).toContain('version_mismatch');
+      expect(err.message).not.toMatch(/— Error\./);
+      expect(err.message).toContain('revision (rev) is out of date');
+      expect(err.message).toContain('POST /flows');
+    }
+  });
+
   it('should tolerate a response without headers', () => {
     const error = { response: { status: 502, data: 'bad gateway' } };
 

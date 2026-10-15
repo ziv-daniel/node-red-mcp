@@ -694,27 +694,44 @@ export class NodeRedAPIClient {
    * unlike `updateFlow`/`enableFlow`/`disableFlow`/`deleteFlow`, which replace
    * (and therefore restart) an entire tab via `PUT /flow/:id`.
    *
-   * Safe to use even on a tab with long-lived connections (e.g. a Discord bot
-   * node), since nothing outside `nodes` is redeployed.
+   * Safe to use even on a tab with long-lived connections (for example an MQTT
+   * client or WebSocket node), since nothing outside `nodes` is redeployed.
+   *
+   * Uses Admin API v2: GET /flows for `rev`, then POST /flows with
+   * `Node-RED-Deployment-Type: nodes`. A stale `rev` yields HTTP 409
+   * (`version_mismatch`). Optional `credentials` is the top-level v2 credentials
+   * object (per-node map or encrypted `$` blob); omitting it leaves the runtime
+   * credential store unchanged for nodes that do not carry inline credentials.
    */
-  async deployModifiedNodes(nodes: NodeRedNode[]): Promise<{ rev: string }> {
+  async deployModifiedNodes(
+    nodes: NodeRedNode[],
+    credentials?: Record<string, unknown>
+  ): Promise<{ rev: string }> {
     try {
       const { rev, flows } = await this.getFlowsWithRev();
       const byId = new Map(flows.map(node => [node.id, node]));
       for (const node of nodes) {
         byId.set(node.id, node);
       }
-      const response = await this.client.post(
-        '/flows',
-        { rev, flows: Array.from(byId.values()) },
-        {
-          headers: {
-            'Node-RED-API-Version': 'v2',
-            'Node-RED-Deployment-Type': 'nodes',
-          },
-        }
-      );
-      return response.data;
+      const body: {
+        rev: string;
+        flows: NodeRedNode[];
+        credentials?: Record<string, unknown>;
+      } = { rev, flows: Array.from(byId.values()) };
+      if (credentials !== undefined) {
+        body.credentials = credentials;
+      }
+      const response = await this.client.post('/flows', body, {
+        headers: {
+          'Node-RED-API-Version': 'v2',
+          'Node-RED-Deployment-Type': 'nodes',
+        },
+      });
+      const data = response.data;
+      if (!data || typeof data !== 'object' || typeof data.rev !== 'string') {
+        throw unexpectedBody(data, 'v2 deploy response');
+      }
+      return { rev: data.rev };
     } catch (error) {
       handleNodeRedError(error, 'deployModifiedNodes');
     }

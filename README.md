@@ -90,7 +90,7 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 | `get_flow`              | Get a specific flow                | `flowId`                                         |
 | `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
 | `update_flow`           | Update an existing flow            | `flowId`, `flowData`, `validate?`                |
-| `deploy_nodes`          | Upsert nodes; deploy only those    | `nodes`                                          |
+| `deploy_nodes`          | Upsert nodes; deploy only those    | `nodes`, `credentials?`                          |
 | `enable_flow`           | Enable a flow                      | `flowId`                                         |
 | `disable_flow`          | Disable a flow                     | `flowId`                                         |
 | `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                  |

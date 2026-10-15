@@ -14,7 +14,9 @@ and this project adheres to
 - **`deploy_nodes` tool**: Upsert specific nodes by id and deploy with
   `Node-RED-Deployment-Type: nodes` (editor "Modified Nodes"). Only the listed
   nodes restart; other nodes and long-lived connections on the same tab are left
-  untouched. Uses the v2 admin API (`rev` + full flows body).
+  untouched. Uses the v2 admin API (`rev` + full flows body), optional top-level
+  `credentials`, and clear HTTP 409 (`version_mismatch`) messaging when `rev` is
+  stale.
 - **Read-Only Mode (`MCP_READ_ONLY`)**: Structurally prevents mutation of
   Node-RED flows when exposing this server to remote agents
   - Write tools (`create_flow`, `update_flow`, `deploy_nodes`, `delete_flow`,

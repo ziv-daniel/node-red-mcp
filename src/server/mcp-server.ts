@@ -521,7 +521,7 @@ export class McpNodeRedServer {
       {
         name: 'deploy_nodes',
         description:
-          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button. Every node not listed here, including in the same or other tabs, is left completely untouched and does not restart. Use this instead of update_flow/enable_flow/disable_flow when editing a tab that holds a long-lived connection (e.g. a Discord bot node) that must not be dropped. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to.",
+          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button (Admin API v2, Node-RED-Deployment-Type: nodes). Every node not listed here, including in the same or other tabs, is left completely untouched and does not restart. Prefer this over update_flow/enable_flow/disable_flow when editing a tab that holds a long-lived connection that must not be dropped. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to. A concurrent edit that changes the flow revision returns HTTP 409 — retry after re-reading flows. Optional credentials uses the v2 top-level credentials object; omit it to leave existing stored credentials unchanged.",
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -529,9 +529,15 @@ export class McpNodeRedServer {
             nodes: {
               type: 'array',
               description:
-                'Full node objects to add or replace by id (each needs at minimum id, type, z, wires, plus whatever type-specific properties the node needs)',
+                'Full node objects to add or replace by id (each needs at minimum id and type; flow nodes usually also need z and wires, plus type-specific properties). Inline node.credentials is also accepted.',
               items: { type: 'object' },
               minItems: 1,
+            },
+            credentials: {
+              type: 'object',
+              description:
+                'Optional Admin API v2 credentials object: either a map of node id → credential fields, or an encrypted blob with a `$` key. Omit to leave the runtime credential store unchanged for nodes without inline credentials.',
+              additionalProperties: true,
             },
           },
           required: ['nodes'],
@@ -965,10 +971,33 @@ export class McpNodeRedServer {
           if (!Array.isArray(nodes) || nodes.length === 0) {
             throw new Error('Missing required parameter: nodes (non-empty array)');
           }
-          for (const node of nodes) {
-            if (!node?.id) throw new Error('Every node in `nodes` needs an `id`');
+          const seenIds = new Set<string>();
+          for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+            if (!node || typeof node !== 'object' || Array.isArray(node)) {
+              throw new Error(`nodes[${i}] must be a node object`);
+            }
+            if (typeof node.id !== 'string' || node.id.length === 0) {
+              throw new Error(`nodes[${i}] needs a non-empty string id`);
+            }
+            if (typeof node.type !== 'string' || node.type.length === 0) {
+              throw new Error(`nodes[${i}] (id=${node.id}) needs a non-empty string type`);
+            }
+            if (seenIds.has(node.id)) {
+              throw new Error(`Duplicate node id in nodes: ${node.id}`);
+            }
+            seenIds.add(node.id);
           }
-          const deployed = await this.nodeRedClient.deployModifiedNodes(nodes);
+          const credentials = args?.credentials;
+          if (
+            credentials !== undefined &&
+            (credentials === null || typeof credentials !== 'object' || Array.isArray(credentials))
+          ) {
+            throw new Error(
+              'credentials must be an object keyed by node id (or encrypted `$` form)'
+            );
+          }
+          const deployed = await this.nodeRedClient.deployModifiedNodes(nodes, credentials);
           return {
             content: [
               {
