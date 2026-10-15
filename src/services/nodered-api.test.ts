@@ -40,8 +40,13 @@ import {
   validateNodeRedAuth,
   getNodeRedAuthScope,
 } from '../utils/auth.js';
+import { NodeRedError } from '../utils/error-handling.js';
 
-import { NodeRedAPIClient } from './nodered-api.js';
+import {
+  NodeRedAPIClient,
+  assertExpectedFlowRev,
+  replaceFlowTabInFlatFlows,
+} from './nodered-api.js';
 
 // Mock axios
 vi.mock('axios', () => {
@@ -312,35 +317,401 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
-    describe('deployFlows', () => {
-      it('should deploy with default full type', async () => {
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
+    describe('getFlowsWithRev', () => {
+      it('requests the v2 API and returns rev + flows', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [mockFlowTab] },
+        });
 
-        await client.deployFlows();
+        const result = await client.getFlowsWithRev();
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'full' },
+        expect(result).toEqual({ rev: 'rev-1', flows: [mockFlowTab] });
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows', {
+          headers: { 'Node-RED-API-Version': 'v2' },
         });
       });
 
-      it('should deploy with specified type', async () => {
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
+      it('rejects an unexpected v2 body shape', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: [] });
+
+        await expect(client.getFlowsWithRev()).rejects.toThrow();
+      });
+    });
+
+    describe('assertExpectedFlowRev', () => {
+      it('passes when revs match', () => {
+        expect(() => assertExpectedFlowRev('rev-1', 'rev-1', 'test')).not.toThrow();
+      });
+
+      it('throws a 409-style NodeRedError when revs differ', () => {
+        try {
+          assertExpectedFlowRev('stale', 'fresh', 'deployModifiedNodes');
+          expect.unreachable('should throw');
+        } catch (e) {
+          expect(e).toBeInstanceOf(NodeRedError);
+          const err = e as NodeRedError;
+          expect(err.statusCode).toBe(409);
+          expect(err.message).toContain('expected_rev');
+          expect(err.message).toContain('re-read flows');
+          expect(err.nodeRedResponse).toMatchObject({
+            code: 'version_mismatch',
+            expected_rev: 'stale',
+            current_rev: 'fresh',
+          });
+        }
+      });
+    });
+
+    describe('deployModifiedNodes', () => {
+      it('upserts nodes by id and POSTs the caller expected_rev', async () => {
+        const existingNodeA = { id: 'node-a', type: 'inject', z: 'tab-1' };
+        const existingNodeB = { id: 'node-b', type: 'debug', z: 'tab-1' };
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [existingNodeA, existingNodeB] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const updatedNodeA = { id: 'node-a', type: 'inject', z: 'tab-1', name: 'renamed' };
+        const newNodeC = { id: 'node-c', type: 'function', z: 'tab-1' };
+
+        const result = await client.deployModifiedNodes([updatedNodeA, newNodeC], 'rev-1');
+
+        expect(result).toEqual({ rev: 'rev-2' });
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          { rev: 'rev-1', flows: [updatedNodeA, existingNodeB, newNodeC] },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('fails fast when expected_rev does not match the current rev', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-fresh', flows: [{ id: 'node-a', type: 'inject', z: 'tab-1' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }], 'rev-stale')
+        ).rejects.toThrow(/expected_rev 'rev-stale'/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('includes top-level credentials when provided', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'node-a', type: 'mqtt-broker' }] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const credentials = { 'node-a': { user: 'u', password: 'p' } };
+        await client.deployModifiedNodes(
+          [{ id: 'node-a', type: 'mqtt-broker', name: 'broker' }],
+          'rev-1',
+          credentials
+        );
+
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          {
+            rev: 'rev-1',
+            flows: [{ id: 'node-a', type: 'mqtt-broker', name: 'broker' }],
+            credentials,
+          },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('rejects an unexpected v2 deploy response shape', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { ok: true } });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }], 'rev-1')
+        ).rejects.toThrow(/v2 deploy response/);
+      });
+
+      it('surfaces a clear conflict message on HTTP 409 version_mismatch', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.post.mockRejectedValueOnce({
+          response: {
+            status: 409,
+            statusText: 'Conflict',
+            data: { code: 'version_mismatch', message: 'Error' },
+            headers: { 'content-type': 'application/json' },
+            config: { method: 'post', url: '/flows' },
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }], 'rev-1')
+        ).rejects.toThrow(/revision \(rev\) is out of date/);
+      });
+
+      it('propagates errors from the deploy request', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.post.mockRejectedValueOnce(new Error('conflict'));
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'tab-1' }], 'rev-1')
+        ).rejects.toThrow();
+      });
+    });
+
+    describe('replaceFlowTabInFlatFlows', () => {
+      it('replaces only the target tab and its children, keeping other tabs intact', () => {
+        const flat = [
+          { id: 'tab-a', type: 'tab', label: 'A' },
+          { id: 'tab-b', type: 'tab', label: 'B' },
+          { id: 'n-a1', type: 'inject', z: 'tab-a', wires: [[]] },
+          { id: 'n-a2', type: 'debug', z: 'tab-a', wires: [] },
+          { id: 'n-b1', type: 'inject', z: 'tab-b', wires: [[]] },
+          { id: 'broker-1', type: 'mqtt-broker', name: 'global' },
+        ];
+
+        const merged = replaceFlowTabInFlatFlows(flat, 'tab-a', {
+          label: 'A-renamed',
+          nodes: [{ id: 'n-a1', type: 'inject', name: 'only-one', wires: [[]] }],
+        });
+
+        expect(merged.find(n => n.id === 'tab-a')).toMatchObject({
+          type: 'tab',
+          label: 'A-renamed',
+        });
+        expect(merged.find(n => n.id === 'n-a1')).toMatchObject({
+          z: 'tab-a',
+          name: 'only-one',
+        });
+        // Omitted child deleted
+        expect(merged.find(n => n.id === 'n-a2')).toBeUndefined();
+        // Other tab + global config preserved
+        expect(merged.find(n => n.id === 'tab-b')).toEqual(flat[1]);
+        expect(merged.find(n => n.id === 'n-b1')).toEqual(flat[4]);
+        expect(merged.find(n => n.id === 'broker-1')).toEqual(flat[5]);
+      });
+
+      it('throws when the tab id does not exist', () => {
+        expect(() =>
+          replaceFlowTabInFlatFlows([{ id: 'tab-a', type: 'tab', label: 'A' }], 'missing', {
+            nodes: [],
+          })
+        ).toThrow(/Flow 'missing' not found/);
+      });
+    });
+
+    describe('deployFlow', () => {
+      it('merges the tab, POSTs expected_rev, and deploys with type "flows" by default', async () => {
+        const flat = [
+          { id: 'tab-a', type: 'tab', label: 'A' },
+          { id: 'tab-b', type: 'tab', label: 'B' },
+          { id: 'n-a1', type: 'inject', z: 'tab-a', wires: [[]] },
+          { id: 'n-b1', type: 'debug', z: 'tab-b', wires: [] },
+        ];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: flat } });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const result = await client.deployFlow(
+          'tab-a',
+          {
+            label: 'A2',
+            nodes: [{ id: 'n-a1', type: 'inject', name: 'kept', wires: [[]] }],
+          },
+          { expectedRev: 'rev-1' }
+        );
+
+        expect(result).toEqual({ rev: 'rev-2' });
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          {
+            rev: 'rev-1',
+            flows: expect.arrayContaining([
+              expect.objectContaining({ id: 'tab-a', label: 'A2' }),
+              expect.objectContaining({ id: 'n-a1', z: 'tab-a', name: 'kept' }),
+              expect.objectContaining({ id: 'tab-b', label: 'B' }),
+              expect.objectContaining({ id: 'n-b1', z: 'tab-b' }),
+            ]),
+          },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'flows',
+            },
+          }
+        );
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        expect(posted.flows).toHaveLength(4);
+      });
+
+      it('fails fast when expected_rev is stale', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-fresh',
+            flows: [{ id: 'tab-a', type: 'tab', label: 'A' }],
+          },
+        });
+
+        await expect(
+          client.deployFlow('tab-a', { nodes: [] }, { expectedRev: 'rev-stale' })
+        ).rejects.toThrow(/expected_rev 'rev-stale'/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('allows Deployment-Type "nodes"', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [{ id: 'tab-a', type: 'tab', label: 'A' }],
+          },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployFlow(
+          'tab-a',
+          { label: 'A', nodes: [] },
+          { expectedRev: 'rev-1', type: 'nodes' }
+        );
+
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          expect.objectContaining({ rev: 'rev-1' }),
+          expect.objectContaining({
+            headers: expect.objectContaining({
+              'Node-RED-Deployment-Type': 'nodes',
+            }),
+          })
+        );
+      });
+
+      it('errors when the tab id does not exist', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-a', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployFlow('nope', { nodes: [] }, { expectedRev: 'rev-1' })
+        ).rejects.toThrow(/Flow 'nope' not found/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('surfaces a clear conflict message on HTTP 409 version_mismatch', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-a', type: 'tab', label: 'A' }] },
+        });
+        mockAxiosInstance.post.mockRejectedValueOnce({
+          response: {
+            status: 409,
+            statusText: 'Conflict',
+            data: { code: 'version_mismatch', message: 'Error' },
+            headers: { 'content-type': 'application/json' },
+            config: { method: 'post', url: '/flows' },
+          },
+        });
+
+        await expect(
+          client.deployFlow('tab-a', { nodes: [] }, { expectedRev: 'rev-1' })
+        ).rejects.toThrow(/revision \(rev\) is out of date/);
+      });
+    });
+
+    describe('deployFlows', () => {
+      it('re-posts the current v2 flows+rev for default full type', async () => {
+        const flows = [{ id: 'flow-1', type: 'tab', label: 'Test Flow' }];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows } });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const result = await client.deployFlows();
+
+        expect(result).toEqual({ rev: 'rev-2' });
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows', {
+          headers: { 'Node-RED-API-Version': 'v2' },
+        });
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          { rev: 'rev-1', flows },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'full',
+            },
+          }
+        );
+      });
+
+      it('uses a caller-provided flows+rev body without a second GET', async () => {
+        const flows = [{ id: 'node-a', type: 'inject', z: 'tab-1' }];
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-9' } });
+
+        const result = await client.deployFlows({
+          type: 'nodes',
+          rev: 'rev-1',
+          flows,
+          credentials: { 'node-a': { user: 'u' } },
+        });
+
+        expect(result).toEqual({ rev: 'rev-9' });
+        expect(mockAxiosInstance.get).not.toHaveBeenCalled();
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          { rev: 'rev-1', flows, credentials: { 'node-a': { user: 'u' } } },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('re-posts the current v2 flows+rev for type "nodes"', async () => {
+        const flows = [{ id: 'node-a', type: 'inject', z: 'tab-1' }];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows } });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
 
         await client.deployFlows({ type: 'nodes' });
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'nodes' },
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          { rev: 'rev-1', flows },
+          {
+            headers: {
+              'Node-RED-API-Version': 'v2',
+              'Node-RED-Deployment-Type': 'nodes',
+            },
+          }
+        );
+      });
+
+      it('posts without a body for type "reload"', async () => {
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-1' } });
+
+        const result = await client.deployFlows({ type: 'reload' });
+
+        expect(result).toEqual({ rev: 'rev-1' });
+        expect(mockAxiosInstance.get).not.toHaveBeenCalled();
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', undefined, {
+          headers: {
+            'Node-RED-API-Version': 'v2',
+            'Node-RED-Deployment-Type': 'reload',
+          },
         });
       });
     });
 
     describe('enableFlow', () => {
-      it('should enable a flow and deploy', async () => {
+      it('enables a flow via PUT and does not call a null-body deploy', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDisabledFlow });
         mockAxiosInstance.put.mockResolvedValueOnce({
           data: { ...mockDisabledFlow, disabled: false },
         });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.enableFlow('flow-disabled');
 
@@ -349,17 +720,14 @@ describe('NodeRedAPIClient', () => {
           '/flow/flow-disabled',
           expect.objectContaining({ disabled: false })
         );
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'flows' },
-        });
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
     });
 
     describe('disableFlow', () => {
-      it('should disable a flow and deploy', async () => {
+      it('disables a flow via PUT and does not call a null-body deploy', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlowTab });
         mockAxiosInstance.put.mockResolvedValueOnce({ data: { ...mockFlowTab, disabled: true } });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.disableFlow('flow-1');
 
@@ -368,6 +736,7 @@ describe('NodeRedAPIClient', () => {
           '/flow/flow-1',
           expect.objectContaining({ disabled: true })
         );
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
     });
   });
@@ -1275,6 +1644,7 @@ describe('NodeRedAPIClient', () => {
     });
 
     it('deployFlows propagates error', async () => {
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
       mockAxiosInstance.post.mockRejectedValueOnce(err);
       await expect(client.deployFlows()).rejects.toThrow();
     });

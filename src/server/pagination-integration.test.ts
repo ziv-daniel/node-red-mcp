@@ -17,6 +17,7 @@ import { McpNodeRedServer } from './mcp-server.js';
 const mockNodeRedClient = {
   getFlows: vi.fn(),
   getFlowSummaries: vi.fn(),
+  getFlowsWithRev: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
   updateFlow: vi.fn(),
@@ -80,6 +81,7 @@ describe('Pagination + filters', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNodeRedClient.testConnection.mockResolvedValue(true);
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: [] });
     mcp = new McpNodeRedServer();
   });
 
@@ -94,6 +96,7 @@ describe('Pagination + filters', () => {
     beforeEach(() => {
       mockNodeRedClient.getFlowSummaries.mockResolvedValue(summaries);
       mockNodeRedClient.getFlows.mockResolvedValue(summaries);
+      mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: [] });
     });
 
     it('returns a plain array when no pagination params (legacy shape)', async () => {

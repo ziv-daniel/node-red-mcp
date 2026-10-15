@@ -10,10 +10,11 @@
 
 ## 🌟 Features
 
-### 🔧 20 MCP Tools
+### 🔧 22 MCP Tools
 
 Full CRUD for flows, context variables, modules, and diagnostics — plus semantic
-search and real-time error detection.
+search, targeted node deploy, revision-safe tab deploy, and real-time error
+detection.
 
 ### 📚 Prompts Library
 
@@ -86,10 +87,12 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 
 | Tool                    | Description                        | Key Parameters                                   |
 | ----------------------- | ---------------------------------- | ------------------------------------------------ |
-| `get_flows`             | List flows (summary or full)       | `includeDetails?`, `types?`, `limit?`, `offset?` |
-| `get_flow`              | Get a specific flow                | `flowId`                                         |
+| `get_flows`             | List flows (summary or full) + rev | `includeDetails?`, `types?`, `limit?`, `offset?` |
+| `get_flow`              | Get a specific flow + rev          | `flowId`                                         |
 | `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
-| `update_flow`           | Update an existing flow            | `flowId`, `flowData`, `validate?`                |
+| `update_flow`           | Update an existing flow (PUT)      | `flowId`, `flowData`, `validate?`                |
+| `deploy_flow`           | Replace one tab; rev-checked POST  | `flowId`, `flowData`, `expected_rev`, `type?`    |
+| `deploy_nodes`          | Upsert nodes; deploy only those    | `nodes`, `expected_rev`, `credentials?`          |
 | `enable_flow`           | Enable a flow                      | `flowId`                                         |
 | `disable_flow`          | Disable a flow                     | `flowId`                                         |
 | `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                  |
@@ -128,14 +131,14 @@ Set `MCP_READ_ONLY=true` to structurally prevent any mutation of your Node-RED
 flows — useful when exposing this server to remote AI agents where an accidental
 or unintended write to a live/production instance is a real risk.
 
-When enabled, write tools (`create_flow`, `update_flow`, `delete_flow`,
-`enable_flow`, `disable_flow`, `set_context`, `delete_context`,
-`install_module`) are removed from the tool list entirely — clients never see
-them as available capabilities — and are also rejected if called directly by
-name. All read, search, diagnostic, resource, and prompt capabilities remain
-fully available. This pairs naturally with `delete_flow`'s existing `dryRun`
-default for deployments that need read/write in the same session but still want
-an extra layer of protection against accidental writes.
+When enabled, write tools (`create_flow`, `update_flow`, `deploy_flow`,
+`deploy_nodes`, `delete_flow`, `enable_flow`, `disable_flow`, `set_context`,
+`delete_context`, `install_module`) are removed from the tool list entirely —
+clients never see them as available capabilities — and are also rejected if
+called directly by name. All read, search, diagnostic, resource, and prompt
+capabilities remain fully available. This pairs naturally with `delete_flow`'s
+existing `dryRun` default for deployments that need read/write in the same
+session but still want an extra layer of protection against accidental writes.
 
 ## 📦 MCP Resources
 
