@@ -332,6 +332,10 @@ export class NodeRedAPIClient {
       httpsAgent: new https.Agent({ rejectUnauthorized: getTlsRejectUnauthorized() }),
       headers: {
         'Content-Type': 'application/json',
+        // Some admin endpoints (notably GET /nodes) serve the editor's HTML
+        // bundle unless the request explicitly accepts JSON — without this
+        // they return text/html and break JSON parsing.
+        Accept: 'application/json',
         ...this.config.headers,
       },
     });
