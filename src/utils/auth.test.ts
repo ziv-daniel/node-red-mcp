@@ -737,6 +737,7 @@ describe('resolveNodeRedAuthHeader', () => {
     delete process.env.NODERED_PASSWORD;
     delete process.env.NODERED_API_TOKEN;
     delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    delete process.env.NODERED_AUTH_EXCHANGE;
     delete process.env.MCP_READ_ONLY;
     process.env.NODERED_URL = 'http://localhost:1880';
   });
@@ -821,6 +822,71 @@ describe('resolveNodeRedAuthHeader', () => {
       'http://localhost:1880/auth/token',
       expect.anything(),
       expect.anything()
+    );
+  });
+
+  it('exchanges credentials at the Signal K /login endpoint when NODERED_AUTH_EXCHANGE=signalk', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    // Sub-path admin root (embedded Node-RED behind signalk) — /login must
+    // resolve to the origin, not the admin path.
+    process.env.NODERED_URL = 'http://localhost:3000/plugins/signalk-node-red/redAdmin';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { token: 'sk-jwt-token', type: 'JWT' },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer sk-jwt-token' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:3000/login',
+      { username: 'admin', password: 'secret' },
+      expect.anything()
+    );
+  });
+
+  it('derives the signalk token cache TTL from the JWT exp claim', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    // Fake JWT with exp two hours out: header.payload.sig, base64url.
+    const exp = Math.floor(Date.now() / 1000) + 7200;
+    const b64url = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+    const token = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ exp })}.sig`;
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { token, type: 'JWT' },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const first = await resolveNodeRedAuthHeader();
+    const second = await resolveNodeRedAuthHeader();
+
+    expect(first).toEqual({ Authorization: `Bearer ${token}` });
+    expect(second).toEqual(first);
+    // Cached: still one exchange for the pair of resolutions.
+    expect(axios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a signalk /login response without a token', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { statusCode: 401 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await expect(resolveNodeRedAuthHeader()).rejects.toThrow(
+      /Unexpected response from Signal K \/login/
     );
   });
 
