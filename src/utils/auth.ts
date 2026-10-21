@@ -403,8 +403,56 @@ export function getNodeRedAuthScope(): string {
   return isReadOnlyMode() ? 'read' : '*';
 }
 
+/**
+ * Remaining lifetime of a JWT in milliseconds, read from its `exp` claim.
+ * Falls back to a conservative 1 hour for non-JWT or unreadable tokens —
+ * callers re-exchange on use, so guessing low only costs an extra login.
+ */
+function jwtLifetimeMs(token: string): number {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split('.')[1] || '', 'base64url').toString('utf8')
+    );
+    if (typeof payload.exp === 'number' && payload.exp * 1000 > Date.now()) {
+      return payload.exp * 1000 - Date.now();
+    }
+  } catch {
+    // not a JWT — use the default
+  }
+  return 3_600_000;
+}
+
 async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
   const baseURL = (process.env.NODERED_URL || 'http://localhost:1880').replace(/\/+$/, '');
+  const exchange = (process.env.NODERED_AUTH_EXCHANGE || 'nodered').toLowerCase();
+
+  if (exchange === 'signalk') {
+    // Signal K server security — e.g. the signalk-node-red plugin's embedded
+    // Node-RED, whose admin API is mounted under a sub-path behind the
+    // server's own authentication. Credentials are exchanged at the server's
+    // POST /login (at the origin, not under the admin sub-path) and the
+    // returned JWT authorizes every admin API request.
+    const origin = new URL(baseURL).origin;
+    const response = await axios.post(
+      `${origin}/login`,
+      { username, password },
+      {
+        timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
+        httpsAgent: getNodeRedTokenHttpsAgent(),
+      }
+    );
+    const token = response.data?.token;
+    if (typeof token !== 'string' || token.length === 0) {
+      throw new Error(
+        `Unexpected response from Signal K /login: ${JSON.stringify(response.data).substring(0, 200)}`
+      );
+    }
+    // Signal K's /login returns no expires_in — read the exp claim from the
+    // JWT itself, with a conservative fallback for opaque tokens.
+    const ttlMs = Math.max(jwtLifetimeMs(token) - 60_000, 5_000);
+    return { accessToken: token, expiresAt: Date.now() + ttlMs };
+  }
+
   const response = await axios.post(
     `${baseURL}/auth/token`,
     {
