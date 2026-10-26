@@ -25,7 +25,7 @@ import {
   getTlsRejectUnauthorized,
   getNodeRedAuthScope,
 } from '../utils/auth.js';
-import { handleNodeRedError } from '../utils/error-handling.js';
+import { handleNodeRedError, NodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 import { describeErrorForLog } from '../utils/safe-log.js';
 
@@ -109,6 +109,23 @@ export function groupFlowsWithNodes(entries: unknown): NodeRedFlow[] {
     );
   }
   return containers;
+}
+
+function isNotFound(error: unknown): boolean {
+  return (error as { response?: { status?: unknown } })?.response?.status === 404;
+}
+
+/**
+ * Node-RED's admin API can read and delete context but has no endpoint for
+ * writing it, so PUT /context/... answers 404 on a stock instance. Say that
+ * plainly instead of passing on a bare 404.
+ */
+function contextWriteUnsupported(context: string): NodeRedError {
+  return new NodeRedError(
+    `Node-RED's admin API cannot write context, so ${context} is not supported on this instance (PUT /context returned HTTP 404). Set the value from inside a flow instead, for example with a change node.`,
+    501,
+    404
+  );
 }
 
 /** Drop undefined values, so optional properties are omitted rather than set to undefined. */
@@ -983,6 +1000,7 @@ export class NodeRedAPIClient {
       this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/global/${key}`, { value });
     } catch (error) {
+      if (isNotFound(error)) throw contextWriteUnsupported(`setGlobalContext(${key})`);
       handleNodeRedError(error, `setGlobalContext(${key})`);
     }
   }
@@ -1023,6 +1041,7 @@ export class NodeRedAPIClient {
       this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/flow/${flowId}/${key}`, { value });
     } catch (error) {
+      if (isNotFound(error)) throw contextWriteUnsupported(`setFlowContext(${flowId}, ${key})`);
       handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
     }
   }

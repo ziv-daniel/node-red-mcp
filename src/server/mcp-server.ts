@@ -643,7 +643,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'set_context',
-        description: 'Write a Node-RED context variable.',
+        description:
+          'Write a Node-RED context variable. Not supported by stock Node-RED: its admin API cannot write context, so on a standard instance this fails with a clear error. To change context, set it from inside a flow (for example with a change node).',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',

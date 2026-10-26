@@ -944,6 +944,30 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
+    describe('context writes on stock Node-RED', () => {
+      const notFound = Object.assign(new Error('Request failed with status code 404'), {
+        response: { status: 404, statusText: 'Not Found', data: 'Cannot PUT' },
+      });
+
+      it('setGlobalContext explains that the admin API cannot write context', async () => {
+        mockAxiosInstance.put.mockRejectedValueOnce(notFound);
+
+        await expect(client.setGlobalContext('k', 1)).rejects.toMatchObject({
+          message: expect.stringContaining('admin API cannot write context'),
+          statusCode: 501,
+          nodeRedStatusCode: 404,
+        });
+      });
+
+      it('setFlowContext explains that the admin API cannot write context', async () => {
+        mockAxiosInstance.put.mockRejectedValueOnce(notFound);
+
+        await expect(client.setFlowContext('flow-1', 'k', 1)).rejects.toThrow(
+          /admin API cannot write context/
+        );
+      });
+    });
+
     describe('setFlowContext', () => {
       it('should set flow context value', async () => {
         mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
