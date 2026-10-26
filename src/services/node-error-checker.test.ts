@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 
 import { resolveNodeRedAuthHeader, resolveNodeRedAuthToken } from '../utils/auth.js';
 
@@ -69,14 +69,38 @@ describe('NodeErrorChecker', () => {
     });
     const checker = new NodeErrorChecker(client);
 
-    const result = await checker.check({ timeoutMs: 100 });
+    // Keep the real handshake independent of the deliberately short collection deadline.
+    const emit = WebSocket.prototype.emit;
+    let onOpen!: () => void;
+    const opened = new Promise<void>(resolve => {
+      onOpen = resolve;
+    });
+    const openSpy = vi.spyOn(WebSocket.prototype, 'emit').mockImplementation(function (
+      this: WebSocket,
+      event,
+      ...args
+    ) {
+      const emitted = emit.call(this, event, ...args);
+      if (event === 'open' && this.url === client.getCommsWsUrl()) onOpen();
+      return emitted;
+    });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
-    expect(result.errors).toEqual([]);
-    expect(result.warnings).toEqual([]);
-    expect(result.statusesMayBeIncomplete).toBe(false);
+    try {
+      const checking = checker.check({ timeoutMs: 100 });
+      await opened;
+      await vi.advanceTimersByTimeAsync(100);
+      const result = await checking;
 
-    wss.close();
-    await close();
+      expect(result.errors).toEqual([]);
+      expect(result.warnings).toEqual([]);
+      expect(result.statusesMayBeIncomplete).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      openSpy.mockRestore();
+      for (const ws of wss.clients) ws.terminate();
+      await close();
+    }
   });
 
   it('returns a red node in errors', async () => {
