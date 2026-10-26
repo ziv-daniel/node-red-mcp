@@ -26,6 +26,7 @@ import {
   getNodeRedAuthScope,
 } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
+import { describeErrorForLog } from '../utils/safe-log.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
 export interface NodeRedAPIConfig {
@@ -535,7 +536,7 @@ export class NodeRedAPIClient {
       await this.client.get('/');
       return true;
     } catch (error) {
-      console.error('Node-RED connection test failed:', error);
+      console.error(`Node-RED connection test failed: ${describeErrorForLog(error)}`);
       return false;
     }
   }

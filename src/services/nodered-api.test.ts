@@ -4,6 +4,8 @@
  * Comprehensive tests for the Node-RED API client service
  */
 
+import { inspect } from 'node:util';
+
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 
@@ -147,6 +149,37 @@ describe('NodeRedAPIClient', () => {
       const result = await client.testConnection();
 
       expect(result).toBe(false);
+    });
+
+    it('does not log the password when the token exchange fails', async () => {
+      const password = 'never-log-me';
+      const exchangeError = Object.assign(new Error('Request failed with status code 403'), {
+        config: {
+          method: 'post',
+          url: 'http://nodered.local/auth/token',
+          data: JSON.stringify({ username: 'admin', password }),
+          headers: {
+            Authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`,
+          },
+        },
+        response: { status: 403, data: { error: 'invalid_grant' } },
+      });
+      mockAxiosInstance.get.mockRejectedValueOnce(exchangeError);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        expect(await client.testConnection()).toBe(false);
+        // inspect() is what console.error uses to print objects
+        const logged = errorSpy.mock.calls
+          .flat()
+          .map(v => (typeof v === 'string' ? v : inspect(v, { depth: 5 })))
+          .join('\n');
+        expect(logged).not.toContain(password);
+        expect(logged).not.toContain(Buffer.from(`admin:${password}`).toString('base64'));
+        expect(logged).toContain('status=403');
+      } finally {
+        errorSpy.mockRestore();
+      }
     });
   });
 

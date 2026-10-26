@@ -17,6 +17,7 @@ import {
   resolveNodeRedAuthToken,
   getTlsRejectUnauthorized,
 } from '../utils/auth.js';
+import { describeErrorForLog } from '../utils/safe-log.js';
 
 export interface NodeRedWsConfig {
   baseURL: string;
@@ -92,7 +93,7 @@ export class NodeRedWsClient {
         headers,
       });
     } catch (err) {
-      console.error('NodeRedWsClient: failed to create WebSocket', err);
+      console.error(`NodeRedWsClient: failed to create WebSocket: ${describeErrorForLog(err)}`);
       this._scheduleReconnect();
       return;
     }
