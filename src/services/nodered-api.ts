@@ -79,6 +79,38 @@ const asNumber = (value: unknown): number | undefined =>
 const asBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
 
+/**
+ * Node-RED's GET /flows returns one flat array: tabs, subflow definitions,
+ * config nodes and every node, each node pointing at its tab or subflow
+ * through `z`. Code that walks `flow.nodes` needs them grouped. This returns
+ * the tabs and subflow definitions, each with `nodes` set to the entries whose
+ * `z` is its id. A tab that already carries a `nodes` array is kept as is.
+ */
+export function groupFlowsWithNodes(entries: unknown): NodeRedFlow[] {
+  if (!Array.isArray(entries)) return [];
+  const byContainer = new Map<string, NodeRedNode[]>();
+  for (const entry of entries) {
+    const z = (entry as { z?: unknown })?.z;
+    if (typeof z !== 'string') continue;
+    const list = byContainer.get(z);
+    if (list) list.push(entry as NodeRedNode);
+    else byContainer.set(z, [entry as NodeRedNode]);
+  }
+
+  const containers: NodeRedFlow[] = [];
+  for (const entry of entries as NodeRedFlow[]) {
+    const isContainer =
+      entry?.type === 'tab' ||
+      entry?.type === 'subflow' ||
+      (entry?.type === undefined && Array.isArray(entry?.nodes));
+    if (!isContainer) continue;
+    containers.push(
+      Array.isArray(entry.nodes) ? entry : { ...entry, nodes: byContainer.get(entry.id) ?? [] }
+    );
+  }
+  return containers;
+}
+
 /** Drop undefined values, so optional properties are omitted rather than set to undefined. */
 function definedOnly<T extends object>(obj: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
   return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as {
@@ -559,7 +591,17 @@ export class NodeRedAPIClient {
     } catch (error) {
       handleNodeRedError(error, 'getFlows');
     }
-  } /**
+  }
+
+  /**
+   * Get tabs and subflow definitions with their nodes attached, built from
+   * the flat GET /flows list (see groupFlowsWithNodes).
+   */
+  async getFlowsWithNodes(): Promise<NodeRedFlow[]> {
+    return groupFlowsWithNodes(await this.getFlows());
+  }
+
+  /**
    * Get lightweight flow summaries (without node details for token efficiency)
    * Only returns specified flow types, filtering out system flows and config nodes
    * @param types - Array of flow types to include (default: ['tab', 'subflow'])
@@ -569,7 +611,15 @@ export class NodeRedAPIClient {
       const [fullFlows, flowStatus] = await Promise.all([
         this.getFlows(),
         this.getFlowStatus().catch(() => null), // Graceful fallback if flow status not available
-      ]); // Filter flows based on requested types
+      ]);
+      // GET /flows is flat, so count each tab's nodes through their `z`.
+      const nodesPerContainer = new Map<string, number>();
+      for (const entry of fullFlows as { z?: unknown }[]) {
+        if (typeof entry?.z === 'string') {
+          nodesPerContainer.set(entry.z, (nodesPerContainer.get(entry.z) ?? 0) + 1);
+        }
+      }
+      // Filter flows based on requested types
       const userFlows = fullFlows.filter(flow => {
         // Determine the flow type (tab, subflow, or config node type)
         const hasNodes = Array.isArray(flow.nodes);
@@ -607,7 +657,7 @@ export class NodeRedAPIClient {
         }
 
         // Only add nodeCount if it's meaningful (> 0)
-        const nodeCount = flow.nodes?.length || 0;
+        const nodeCount = flow.nodes?.length || nodesPerContainer.get(flow.id) || 0;
         if (nodeCount > 0) {
           summary.nodeCount = nodeCount;
         }

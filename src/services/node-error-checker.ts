@@ -172,7 +172,9 @@ export class NodeErrorChecker {
 
     const [{ statuses, connected, authExpected, authConfirmed }, flows] = await Promise.all([
       collectStatuses(this.apiClient.getCommsWsUrl(), timeoutMs),
-      this.apiClient.getFlows().catch((): Awaited<ReturnType<NodeRedAPIClient['getFlows']>> => []),
+      this.apiClient
+        .getFlowsWithNodes()
+        .catch((): Awaited<ReturnType<NodeRedAPIClient['getFlowsWithNodes']>> => []),
     ]);
 
     const nodeIndex = new Map<

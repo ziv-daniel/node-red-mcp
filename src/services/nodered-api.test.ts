@@ -43,7 +43,7 @@ import {
   getNodeRedAuthScope,
 } from '../utils/auth.js';
 
-import { NodeRedAPIClient } from './nodered-api.js';
+import { groupFlowsWithNodes, NodeRedAPIClient } from './nodered-api.js';
 
 // Mock axios
 vi.mock('axios', () => {
@@ -1265,6 +1265,54 @@ describe('NodeRedAPIClient', () => {
 
       expect(summaries.find(s => s.id === mockConfigNode.id)).toBeUndefined();
       expect(summaries.find(s => s.id === 'tab-1')).toBeDefined();
+    });
+  });
+
+  describe('flat GET /flows (real Node-RED shape)', () => {
+    it('groupFlowsWithNodes puts each node under its tab or subflow', () => {
+      const flows = groupFlowsWithNodes(mockFlatFlows);
+
+      expect(flows.map(f => f.id)).toEqual(['tab-1', 'tab-2', 'sf-1']);
+      const byId = new Map(flows.map(f => [f.id, f.nodes?.map(n => n.id)]));
+      expect(byId.get('tab-1')).toEqual([
+        'group-1',
+        'inject-1',
+        'inject-2',
+        'debug-1',
+        'fn-off',
+        'sf-inst-1',
+      ]);
+      expect(byId.get('tab-2')).toEqual(['mqtt-in-1']);
+      expect(byId.get('sf-1')).toEqual(['sf-fn-1']);
+    });
+
+    it('groupFlowsWithNodes keeps containers that already carry nodes', () => {
+      const grouped = [{ id: 'f1', label: 'Grouped', nodes: [{ id: 'n1', type: 'inject' }] }];
+
+      expect(groupFlowsWithNodes(grouped)).toEqual(grouped);
+      expect(groupFlowsWithNodes('not an array')).toEqual([]);
+    });
+
+    it('getFlowsWithNodes groups the flat list from GET /flows', async () => {
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlatFlows });
+
+      const flows = await client.getFlowsWithNodes();
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows');
+      expect(flows.find(f => f.id === 'tab-2')?.nodes).toEqual([
+        expect.objectContaining({ id: 'mqtt-in-1', type: 'mqtt in' }),
+      ]);
+    });
+
+    it('getFlowSummaries counts nodes through their z', async () => {
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({ data: mockFlatFlows })
+        .mockResolvedValueOnce({ data: { state: 'start', flows: [] } });
+
+      const summaries = await client.getFlowSummaries();
+      const counts = Object.fromEntries(summaries.map(s => [s.id, s.nodeCount]));
+
+      expect(counts).toEqual({ 'tab-1': 6, 'tab-2': 1, 'sf-1': 1 });
     });
   });
 

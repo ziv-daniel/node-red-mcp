@@ -1088,7 +1088,7 @@ export class McpNodeRedServer {
             );
           }
 
-          const flows = await this.nodeRedClient.getFlows();
+          const flows = await this.nodeRedClient.getFlowsWithNodes();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
           const nodeTypePrefixLower = nodeTypePrefix?.toLowerCase();
@@ -1257,7 +1257,7 @@ export class McpNodeRedServer {
     ];
 
     try {
-      const flows = await this.nodeRedClient.getFlows();
+      const flows = await this.nodeRedClient.getFlowsWithNodes();
       for (const flow of flows) {
         resources.push({
           uri: `flow://${flow.id}`,

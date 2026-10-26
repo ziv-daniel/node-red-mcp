@@ -16,6 +16,8 @@ import { McpNodeRedServer } from './mcp-server.js';
 
 const mockNodeRedClient = {
   getFlows: vi.fn(),
+  // Fixtures here are already grouped, so this just passes getFlows through.
+  getFlowsWithNodes: vi.fn((): Promise<unknown> => mockNodeRedClient.getFlows()),
   getFlowSummaries: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),

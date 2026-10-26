@@ -33,6 +33,8 @@ import { SSEHandler } from './sse-handler.js';
 // Create mock instances that will be returned by the mocked constructors
 const mockNodeRedClient = {
   getFlows: vi.fn(),
+  // Fixtures here are already grouped, so this just passes getFlows through.
+  getFlowsWithNodes: vi.fn((): Promise<unknown> => mockNodeRedClient.getFlows()),
   getFlowSummaries: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
