@@ -60,15 +60,13 @@ nodes in error/warning state in real time.
   lines; LTS recommended). These security floors address
   [CVE-2026-111497](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
   Node 23/25 and older EOL lines are not supported.
-- **Yarn** 4.x (automatically managed via Corepack)
+- **Yarn** 4.x (managed via Corepack; on Node 25+ install it first with
+  `npm install -g corepack`)
 - **Docker** (optional, for containerized setup)
 
-For deployment, verify `node --version` in the final running service after an
-approved rebuild. Floating tags, package engine declarations, and Nixpacks
-major-version selection do not prove that an existing runtime contains the
-security patch. Nixpacks deployments require a separate patched-runtime build
-configuration or an approved switch to the Dockerfile; this PR does not change
-live deployment settings.
+After deploying, check `node --version` in the running service: the `engines`
+field and major-version-only builders (such as Nixpacks) do not guarantee a
+patched runtime.
 
 ### Native Installation
 

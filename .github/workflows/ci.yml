@@ -90,8 +90,9 @@ jobs:
         run: node -v
 
       - name: 🧶 Enable Corepack
+        # Node 25+ no longer bundles Corepack; install a pinned version on every leg.
         run: |
-          npm install -g corepack
+          npm install -g corepack@0.36.0
           corepack enable
 
       - name: 📥 Install dependencies
