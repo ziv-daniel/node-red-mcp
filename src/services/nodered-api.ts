@@ -26,8 +26,8 @@ import {
   getNodeRedAuthScope,
 } from '../utils/auth.js';
 import { handleNodeRedError } from '../utils/error-handling.js';
-import { describeErrorForLog } from '../utils/safe-log.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
+import { describeErrorForLog } from '../utils/safe-log.js';
 
 export interface NodeRedAPIConfig {
   baseURL: string;
