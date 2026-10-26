@@ -25,8 +25,9 @@ import {
   getTlsRejectUnauthorized,
   getNodeRedAuthScope,
 } from '../utils/auth.js';
-import { handleNodeRedError } from '../utils/error-handling.js';
+import { handleNodeRedError, NodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
+import { describeErrorForLog } from '../utils/safe-log.js';
 
 export interface NodeRedAPIConfig {
   baseURL: string;
@@ -77,6 +78,55 @@ const asNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 const asBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
+
+/**
+ * Node-RED's GET /flows returns one flat array: tabs, subflow definitions,
+ * config nodes and every node, each node pointing at its tab or subflow
+ * through `z`. Code that walks `flow.nodes` needs them grouped. This returns
+ * the tabs and subflow definitions, each with `nodes` set to the entries whose
+ * `z` is its id. A tab that already carries a `nodes` array is kept as is.
+ */
+export function groupFlowsWithNodes(entries: unknown): NodeRedFlow[] {
+  if (!Array.isArray(entries)) return [];
+  const byContainer = new Map<string, NodeRedNode[]>();
+  for (const entry of entries) {
+    const z = (entry as { z?: unknown })?.z;
+    if (typeof z !== 'string') continue;
+    const list = byContainer.get(z);
+    if (list) list.push(entry as NodeRedNode);
+    else byContainer.set(z, [entry as NodeRedNode]);
+  }
+
+  const containers: NodeRedFlow[] = [];
+  for (const entry of entries as NodeRedFlow[]) {
+    const isContainer =
+      entry?.type === 'tab' ||
+      entry?.type === 'subflow' ||
+      (entry?.type === undefined && Array.isArray(entry?.nodes));
+    if (!isContainer) continue;
+    containers.push(
+      Array.isArray(entry.nodes) ? entry : { ...entry, nodes: byContainer.get(entry.id) ?? [] }
+    );
+  }
+  return containers;
+}
+
+function isNotFound(error: unknown): boolean {
+  return (error as { response?: { status?: unknown } })?.response?.status === 404;
+}
+
+/**
+ * Node-RED's admin API can read and delete context but has no endpoint for
+ * writing it, so PUT /context/... answers 404 on a stock instance. Say that
+ * plainly instead of passing on a bare 404.
+ */
+function contextWriteUnsupported(context: string): NodeRedError {
+  return new NodeRedError(
+    `Node-RED's admin API cannot write context, so ${context} is not supported on this instance (PUT /context returned HTTP 404). Set the value from inside a flow instead, for example with a change node.`,
+    501,
+    404
+  );
+}
 
 /** Drop undefined values, so optional properties are omitted rather than set to undefined. */
 function definedOnly<T extends object>(obj: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
@@ -535,7 +585,7 @@ export class NodeRedAPIClient {
       await this.client.get('/');
       return true;
     } catch (error) {
-      console.error('Node-RED connection test failed:', error);
+      console.error(`Node-RED connection test failed: ${describeErrorForLog(error)}`);
       return false;
     }
   }
@@ -558,7 +608,17 @@ export class NodeRedAPIClient {
     } catch (error) {
       handleNodeRedError(error, 'getFlows');
     }
-  } /**
+  }
+
+  /**
+   * Get tabs and subflow definitions with their nodes attached, built from
+   * the flat GET /flows list (see groupFlowsWithNodes).
+   */
+  async getFlowsWithNodes(): Promise<NodeRedFlow[]> {
+    return groupFlowsWithNodes(await this.getFlows());
+  }
+
+  /**
    * Get lightweight flow summaries (without node details for token efficiency)
    * Only returns specified flow types, filtering out system flows and config nodes
    * @param types - Array of flow types to include (default: ['tab', 'subflow'])
@@ -568,7 +628,15 @@ export class NodeRedAPIClient {
       const [fullFlows, flowStatus] = await Promise.all([
         this.getFlows(),
         this.getFlowStatus().catch(() => null), // Graceful fallback if flow status not available
-      ]); // Filter flows based on requested types
+      ]);
+      // GET /flows is flat, so count each tab's nodes through their `z`.
+      const nodesPerContainer = new Map<string, number>();
+      for (const entry of fullFlows as { z?: unknown }[]) {
+        if (typeof entry?.z === 'string') {
+          nodesPerContainer.set(entry.z, (nodesPerContainer.get(entry.z) ?? 0) + 1);
+        }
+      }
+      // Filter flows based on requested types
       const userFlows = fullFlows.filter(flow => {
         // Determine the flow type (tab, subflow, or config node type)
         const hasNodes = Array.isArray(flow.nodes);
@@ -606,7 +674,7 @@ export class NodeRedAPIClient {
         }
 
         // Only add nodeCount if it's meaningful (> 0)
-        const nodeCount = flow.nodes?.length || 0;
+        const nodeCount = flow.nodes?.length || nodesPerContainer.get(flow.id) || 0;
         if (nodeCount > 0) {
           summary.nodeCount = nodeCount;
         }
@@ -932,6 +1000,7 @@ export class NodeRedAPIClient {
       this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/global/${key}`, { value });
     } catch (error) {
+      if (isNotFound(error)) throw contextWriteUnsupported(`setGlobalContext(${key})`);
       handleNodeRedError(error, `setGlobalContext(${key})`);
     }
   }
@@ -972,6 +1041,7 @@ export class NodeRedAPIClient {
       this.assertSafeSegment(key, 'key');
       await this.client.put(`/context/flow/${flowId}/${key}`, { value });
     } catch (error) {
+      if (isNotFound(error)) throw contextWriteUnsupported(`setFlowContext(${flowId}, ${key})`);
       handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
     }
   }

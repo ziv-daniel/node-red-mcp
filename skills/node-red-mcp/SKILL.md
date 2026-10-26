@@ -32,8 +32,8 @@ or raw JSON on success.
 | --------------------------------------- | -------------------------------------------------------------------- |
 | List flows, find one by name            | `get_flows` with `labelContains` (summary only: id, label, disabled) |
 | Read one flow's nodes                   | `get_flow` with `flowId`                                             |
-| Find nodes by type, name or property    | `search_flows` (see Known issues)                                    |
-| Find flows by topic in natural language | `semantic_search_flows` (BM25 keyword ranking, see Known issues)     |
+| Find nodes by type, name or property    | `search_flows`                                                       |
+| Find flows by topic in natural language | `semantic_search_flows` (BM25 unless `EMBEDDING_API_URL` is set)     |
 | Change a flow                           | `get_flow`, edit, `update_flow` with `validate: true`                |
 | Build a new flow                        | `create_flow` with `validate: true`                                  |
 | Check a deployed flow's wiring          | `validate_flow` with `flowId`                                        |
@@ -41,7 +41,7 @@ or raw JSON on success.
 | Turn a flow on or off                   | `enable_flow` / `disable_flow`                                       |
 | Remove a flow                           | `delete_flow` (dry run first)                                        |
 | Read context variables                  | `get_context` (`scope: "global"` or `"flow"` with `flowId`)          |
-| Write or delete context                 | `set_context`, `delete_context` (global only; see Known issues)      |
+| Write or delete context                 | `delete_context` (global only); `set_context` see Known issues       |
 | Find or install palette modules         | `search_modules` (npm registry), `install_module`                    |
 | Version, per-type node counts, modules  | `get_runtime_info`                                                   |
 | Is the runtime started or stopped       | `get_flow_state`                                                     |
@@ -130,23 +130,17 @@ the human. Only after their yes, call it again with `dryRun: false` and
 - In read-only mode (`MCP_READ_ONLY=true`) the write tools are absent from the
   tool list. Do not try to work around that; tell the human.
 
-## Known issues (v2.0.0)
+## Known issues
 
 Checked against Node-RED 4.1 and 5.0. Re-test after upgrading the server; remove
 an entry once it is fixed.
 
-- `search_flows` returns no matches and `semantic_search_flows` returns no
-  node-level hits, because `/flows` is a flat list. Workaround: `get_flows` with
-  `labelContains`, then `get_flow` on each candidate and search its nodes
-  yourself.
-- `get_flows` summaries carry no `nodeCount`, so `sortBy: "nodeCount"` has no
-  effect.
 - `enable_flow` and `disable_flow` apply the change, then report
   `success: false` with an HTTP 400 from `POST /flows`. Check the real state
   with `get_flows` before retrying.
-- `set_context` fails with 404: Node-RED's admin API cannot write context.
-- `get_installed_modules` fails with "returned HTML instead of JSON". Use
-  `get_runtime_info`, whose `modules` field lists installed modules.
+- `set_context` cannot work on a standard Node-RED: its admin API has no
+  endpoint for writing context, so the call fails with an error that says so. To
+  change a value, edit the flow that sets it (for example a change node).
 - `semantic_search_flows` only matches ASCII words. For labels in other
   languages use `get_flows` with `labelContains`.
 

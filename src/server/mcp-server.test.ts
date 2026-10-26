@@ -24,6 +24,7 @@ import {
   mockRuntimeInfo,
   mockSettings,
 } from '../../test/fixtures/responses.js';
+import { createEmbeddingProvider } from '../services/embedding-provider.js';
 import { NodeRedAPIClient } from '../services/nodered-api.js';
 import { NodeRedError } from '../utils/error-handling.js';
 
@@ -33,6 +34,8 @@ import { SSEHandler } from './sse-handler.js';
 // Create mock instances that will be returned by the mocked constructors
 const mockNodeRedClient = {
   getFlows: vi.fn(),
+  // Fixtures here are already grouped, so this just passes getFlows through.
+  getFlowsWithNodes: vi.fn((): Promise<unknown> => mockNodeRedClient.getFlows()),
   getFlowSummaries: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
@@ -195,6 +198,36 @@ describe('McpNodeRedServer', () => {
     it('should initialize SSEHandler', () => {
       expect(mcpServer.getSSEHandler()).toBeDefined();
       expect(mcpServer.getSSEHandler()).toBe(mockSSEHandler);
+    });
+
+    it('passes EMBEDDING_API_URL and EMBEDDING_MODEL to the embedding provider', () => {
+      vi.stubEnv('EMBEDDING_API_URL', 'http://embeddings.local/v1/');
+      vi.stubEnv('EMBEDDING_MODEL', 'nomic-embed-text');
+      try {
+        vi.mocked(createEmbeddingProvider).mockClear();
+        new McpNodeRedServer();
+
+        expect(createEmbeddingProvider).toHaveBeenCalledWith({
+          embeddingApiUrl: 'http://embeddings.local/v1',
+          embeddingModel: 'nomic-embed-text',
+        });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('uses BM25 (no embedding API) when EMBEDDING_API_URL is unset', () => {
+      vi.stubEnv('EMBEDDING_API_URL', '');
+      try {
+        vi.mocked(createEmbeddingProvider).mockClear();
+        new McpNodeRedServer();
+
+        expect(vi.mocked(createEmbeddingProvider).mock.calls[0]?.[0]).not.toHaveProperty(
+          'embeddingApiUrl'
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
 
     it('should use environment variables for configuration', () => {

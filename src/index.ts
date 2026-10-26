@@ -12,6 +12,7 @@ dotenv.config();
 console.log = originalConsoleLog; // Restore console.log
 import { ExpressApp } from './server/express-app.js';
 import { McpNodeRedServer } from './server/mcp-server.js';
+import { describeErrorForLog } from './utils/safe-log.js';
 
 // Configuration from environment variables
 const transport = process.env.MCP_TRANSPORT || 'stdio';
@@ -54,7 +55,7 @@ process.on('uncaughtException', error => {
 });
 
 process.on('unhandledRejection', reason => {
-  console.error('Unhandled rejection:', reason);
+  console.error(`Unhandled rejection: ${describeErrorForLog(reason)}`);
   process.exit(1);
 });
 

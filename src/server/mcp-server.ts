@@ -217,6 +217,19 @@ const FLOW_SORT_KEY_FNS: Record<FlowSortKey, (f: any) => string | number | boole
   disabled: f => Boolean(f?.disabled),
 };
 
+/**
+ * EMBEDDING_API_URL switches semantic_search_flows from BM25 to an
+ * OpenAI-compatible embeddings API; EMBEDDING_MODEL names the model to ask for.
+ */
+function semanticConfigFromEnv(): NonNullable<McpServerConfig['semantic']> {
+  const embeddingApiUrl = process.env.EMBEDDING_API_URL?.trim().replace(/\/+$/, '');
+  const embeddingModel = process.env.EMBEDDING_MODEL?.trim();
+  return {
+    ...(embeddingApiUrl ? { embeddingApiUrl } : {}),
+    ...(embeddingModel ? { embeddingModel } : {}),
+  };
+}
+
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
@@ -246,6 +259,7 @@ export class McpNodeRedServer {
         heartbeatInterval: parseInt(process.env.SSE_HEARTBEAT_INTERVAL || '30000'),
         maxConnections: parseInt(process.env.SSE_MAX_CONNECTIONS || '100'),
       },
+      semantic: semanticConfigFromEnv(),
       ...config,
     };
 
@@ -643,7 +657,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'set_context',
-        description: 'Write a Node-RED context variable.',
+        description:
+          'Write a Node-RED context variable. Not supported by stock Node-RED: its admin API cannot write context, so on a standard instance this fails with a clear error. To change context, set it from inside a flow (for example with a change node).',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -1088,7 +1103,7 @@ export class McpNodeRedServer {
             );
           }
 
-          const flows = await this.nodeRedClient.getFlows();
+          const flows = await this.nodeRedClient.getFlowsWithNodes();
           const typeFilterLower = typeFilter?.toLowerCase();
           const queryLower = query?.toLowerCase();
           const nodeTypePrefixLower = nodeTypePrefix?.toLowerCase();
@@ -1257,7 +1272,7 @@ export class McpNodeRedServer {
     ];
 
     try {
-      const flows = await this.nodeRedClient.getFlows();
+      const flows = await this.nodeRedClient.getFlowsWithNodes();
       for (const flow of flows) {
         resources.push({
           uri: `flow://${flow.id}`,

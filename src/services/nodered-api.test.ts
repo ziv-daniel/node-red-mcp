@@ -4,6 +4,8 @@
  * Comprehensive tests for the Node-RED API client service
  */
 
+import { inspect } from 'node:util';
+
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
 
@@ -41,7 +43,7 @@ import {
   getNodeRedAuthScope,
 } from '../utils/auth.js';
 
-import { NodeRedAPIClient } from './nodered-api.js';
+import { groupFlowsWithNodes, NodeRedAPIClient } from './nodered-api.js';
 
 // Mock axios
 vi.mock('axios', () => {
@@ -147,6 +149,37 @@ describe('NodeRedAPIClient', () => {
       const result = await client.testConnection();
 
       expect(result).toBe(false);
+    });
+
+    it('does not log the password when the token exchange fails', async () => {
+      const password = 'never-log-me';
+      const exchangeError = Object.assign(new Error('Request failed with status code 403'), {
+        config: {
+          method: 'post',
+          url: 'http://nodered.local/auth/token',
+          data: JSON.stringify({ username: 'admin', password }),
+          headers: {
+            Authorization: `Basic ${Buffer.from(`admin:${password}`).toString('base64')}`,
+          },
+        },
+        response: { status: 403, data: { error: 'invalid_grant' } },
+      });
+      mockAxiosInstance.get.mockRejectedValueOnce(exchangeError);
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        expect(await client.testConnection()).toBe(false);
+        // inspect() is what console.error uses to print objects
+        const logged = errorSpy.mock.calls
+          .flat()
+          .map(v => (typeof v === 'string' ? v : inspect(v, { depth: 5 })))
+          .join('\n');
+        expect(logged).not.toContain(password);
+        expect(logged).not.toContain(Buffer.from(`admin:${password}`).toString('base64'));
+        expect(logged).toContain('status=403');
+      } finally {
+        errorSpy.mockRestore();
+      }
     });
   });
 
@@ -911,6 +944,30 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
+    describe('context writes on stock Node-RED', () => {
+      const notFound = Object.assign(new Error('Request failed with status code 404'), {
+        response: { status: 404, statusText: 'Not Found', data: 'Cannot PUT' },
+      });
+
+      it('setGlobalContext explains that the admin API cannot write context', async () => {
+        mockAxiosInstance.put.mockRejectedValueOnce(notFound);
+
+        await expect(client.setGlobalContext('k', 1)).rejects.toMatchObject({
+          message: expect.stringContaining('admin API cannot write context'),
+          statusCode: 501,
+          nodeRedStatusCode: 404,
+        });
+      });
+
+      it('setFlowContext explains that the admin API cannot write context', async () => {
+        mockAxiosInstance.put.mockRejectedValueOnce(notFound);
+
+        await expect(client.setFlowContext('flow-1', 'k', 1)).rejects.toThrow(
+          /admin API cannot write context/
+        );
+      });
+    });
+
     describe('setFlowContext', () => {
       it('should set flow context value', async () => {
         mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
@@ -1232,6 +1289,54 @@ describe('NodeRedAPIClient', () => {
 
       expect(summaries.find(s => s.id === mockConfigNode.id)).toBeUndefined();
       expect(summaries.find(s => s.id === 'tab-1')).toBeDefined();
+    });
+  });
+
+  describe('flat GET /flows (real Node-RED shape)', () => {
+    it('groupFlowsWithNodes puts each node under its tab or subflow', () => {
+      const flows = groupFlowsWithNodes(mockFlatFlows);
+
+      expect(flows.map(f => f.id)).toEqual(['tab-1', 'tab-2', 'sf-1']);
+      const byId = new Map(flows.map(f => [f.id, f.nodes?.map(n => n.id)]));
+      expect(byId.get('tab-1')).toEqual([
+        'group-1',
+        'inject-1',
+        'inject-2',
+        'debug-1',
+        'fn-off',
+        'sf-inst-1',
+      ]);
+      expect(byId.get('tab-2')).toEqual(['mqtt-in-1']);
+      expect(byId.get('sf-1')).toEqual(['sf-fn-1']);
+    });
+
+    it('groupFlowsWithNodes keeps containers that already carry nodes', () => {
+      const grouped = [{ id: 'f1', label: 'Grouped', nodes: [{ id: 'n1', type: 'inject' }] }];
+
+      expect(groupFlowsWithNodes(grouped)).toEqual(grouped);
+      expect(groupFlowsWithNodes('not an array')).toEqual([]);
+    });
+
+    it('getFlowsWithNodes groups the flat list from GET /flows', async () => {
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlatFlows });
+
+      const flows = await client.getFlowsWithNodes();
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/flows');
+      expect(flows.find(f => f.id === 'tab-2')?.nodes).toEqual([
+        expect.objectContaining({ id: 'mqtt-in-1', type: 'mqtt in' }),
+      ]);
+    });
+
+    it('getFlowSummaries counts nodes through their z', async () => {
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({ data: mockFlatFlows })
+        .mockResolvedValueOnce({ data: { state: 'start', flows: [] } });
+
+      const summaries = await client.getFlowSummaries();
+      const counts = Object.fromEntries(summaries.map(s => [s.id, s.nodeCount]));
+
+      expect(counts).toEqual({ 'tab-1': 6, 'tab-2': 1, 'sf-1': 1 });
     });
   });
 
