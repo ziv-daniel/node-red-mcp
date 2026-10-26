@@ -217,6 +217,19 @@ const FLOW_SORT_KEY_FNS: Record<FlowSortKey, (f: any) => string | number | boole
   disabled: f => Boolean(f?.disabled),
 };
 
+/**
+ * EMBEDDING_API_URL switches semantic_search_flows from BM25 to an
+ * OpenAI-compatible embeddings API; EMBEDDING_MODEL names the model to ask for.
+ */
+function semanticConfigFromEnv(): NonNullable<McpServerConfig['semantic']> {
+  const embeddingApiUrl = process.env.EMBEDDING_API_URL?.trim().replace(/\/+$/, '');
+  const embeddingModel = process.env.EMBEDDING_MODEL?.trim();
+  return {
+    ...(embeddingApiUrl ? { embeddingApiUrl } : {}),
+    ...(embeddingModel ? { embeddingModel } : {}),
+  };
+}
+
 export class McpNodeRedServer {
   private server: Server;
   private nodeRedClient: NodeRedAPIClient;
@@ -246,6 +259,7 @@ export class McpNodeRedServer {
         heartbeatInterval: parseInt(process.env.SSE_HEARTBEAT_INTERVAL || '30000'),
         maxConnections: parseInt(process.env.SSE_MAX_CONNECTIONS || '100'),
       },
+      semantic: semanticConfigFromEnv(),
       ...config,
     };
 
