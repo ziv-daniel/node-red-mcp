@@ -48,6 +48,7 @@ nodes in error/warning state in real time.
 - [Read-Only Mode](#-read-only-mode)
 - [Resources](#-mcp-resources)
 - [Prompts](#-mcp-prompts)
+- [Agent Skill](#-agent-skill)
 - [Connecting](#-connecting-to-the-server)
 - [Node-RED Authentication](#node-red-authentication)
 - [Environment Variables](#-environment-variables)
@@ -111,7 +112,7 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 | ---------------- | --------------------------- | ----------------------------------- |
 | `get_context`    | Read global or flow context | `key?`, `scope?`, `flowId?`         |
 | `set_context`    | Write a context variable    | `key`, `value`, `scope?`, `flowId?` |
-| `delete_context` | Delete a context variable   | `key`, `scope?`, `flowId?`          |
+| `delete_context` | Delete a global variable    | `key`                               |
 
 ### Modules
 
@@ -169,6 +170,26 @@ Built-in prompt templates for common tasks:
 | `audit_security`     | Security audit of flow configurations      |
 | `document_flow`      | Generate documentation for a flow          |
 
+## 🧭 Agent Skill
+
+[`skills/node-red-mcp/SKILL.md`](skills/node-red-mcp/SKILL.md) teaches an AI
+agent how to use this server well: which tool fits each task, the safe edit
+workflow (read, edit the full flow, `update_flow` with `validate: true`, check
+`get_node_errors`), when to ask the human first, how to save tokens, and the
+current known issues with workarounds.
+
+Install it in Claude Code for all your projects:
+
+```bash
+mkdir -p ~/.claude/skills/node-red-mcp
+curl -fsSL https://raw.githubusercontent.com/ziv-daniel/node-red-mcp/main/skills/node-red-mcp/SKILL.md \
+  -o ~/.claude/skills/node-red-mcp/SKILL.md
+```
+
+For a single project, put it in that project's `.claude/skills/node-red-mcp/`
+instead. Claude Code loads it on its own when a task involves Node-RED. Other
+agents that read Markdown instructions can use the same file.
+
 ## 🔌 Connecting to the Server
 
 ### Transport Modes
@@ -215,9 +236,7 @@ endpoint.
 ### Claude Code / Remote Agent (HTTP)
 
 ```bash
-claude mcp add node-red \
-  --transport streamable-http \
-  --url https://<your-server>/mcp \
+claude mcp add --transport http node-red https://<your-server>/mcp \
   --header "Authorization: Basic <base64-credentials>"
 ```
 
