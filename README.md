@@ -1,7 +1,7 @@
 # 🚀 MCP Node-RED Server
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-22.23.4%2B%20%7C%2024.22.1%2B%20%7C%2026.12.1%2B-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7%2B-blue.svg)](https://www.typescriptlang.org/)
 [![CI/CD](https://github.com/ziv-daniel/node-red-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ziv-daniel/node-red-mcp/actions)
 
@@ -57,9 +57,17 @@ nodes in error/warning state in real time.
 
 ### Prerequisites
 
-- **Node.js** 22+ (LTS recommended)
-- **Yarn** 4.x (automatically managed via Corepack)
+- **Node.js** 22.23.4+, 24.22.1+, or 26.12.1+ (within those supported major
+  lines; LTS recommended). These security floors address
+  [CVE-2026-111497](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+  Node 23/25 and older EOL lines are not supported.
+- **Yarn** 4.x (managed via Corepack; on Node 25+ install it first with
+  `npm install -g corepack`)
 - **Docker** (optional, for containerized setup)
+
+After deploying, check `node --version` in the running service: the `engines`
+field and major-version-only builders (such as Nixpacks) do not guarantee a
+patched runtime.
 
 ### Native Installation
 

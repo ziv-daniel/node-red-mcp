@@ -5,9 +5,9 @@
 # 2025 Security & Performance Optimized
 #
 
-ARG NODE_VERSION=22
+ARG NODE_VERSION=22.23.4
 ARG YARN_VERSION=4.9.4
-ARG ALPINE_VERSION=3.19
+ARG ALPINE_VERSION=3.23
 
 # ============================================================================
 # Stage 1: Base image with security updates

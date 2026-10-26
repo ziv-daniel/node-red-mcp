@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '22.23.4'
   YARN_VERSION: '4.9.4'
   REGISTRY_URL: 'ghcr.io'
 
@@ -72,10 +72,10 @@ jobs:
     timeout-minutes: 20
 
     strategy:
-      # One Node version's environment problem shouldn't cancel the other leg.
+      # One Node version's environment problem shouldn't cancel the other legs.
       fail-fast: false
       matrix:
-        node-version: ['22', '23']
+        node-version: ['22.23.4', '24.22.1', '26.12.1']
 
     steps:
       - name: 📥 Checkout code
@@ -86,8 +86,14 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Verify resolved Node.js version
+        run: node -v
+
       - name: 🧶 Enable Corepack
-        run: corepack enable
+        # Node 25+ no longer bundles Corepack; install a pinned version on every leg.
+        run: |
+          npm install -g corepack@0.36.0
+          corepack enable
 
       - name: 📥 Install dependencies
         run: yarn install --immutable
@@ -105,7 +111,7 @@ jobs:
         uses: codecov/codecov-action@v7
         timeout-minutes: 3
         continue-on-error: true
-        if: matrix.node-version == '22'
+        if: matrix.node-version == env.NODE_VERSION
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
