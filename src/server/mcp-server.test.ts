@@ -64,9 +64,11 @@ const mockSSEHandler = {
   destroy: vi.fn(),
 };
 
-// Mock NodeRedAPIClient with a class
-vi.mock('../services/nodered-api.js', () => {
+// Mock NodeRedAPIClient with a class; keep real helpers (summarizeFlatFlows, etc.)
+vi.mock('../services/nodered-api.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../services/nodered-api.js')>();
   return {
+    ...actual,
     NodeRedAPIClient: class {
       constructor() {
         return mockNodeRedClient;
@@ -144,7 +146,59 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.testConnection.mockResolvedValue(true);
     mockNodeRedClient.getFlows.mockResolvedValue(mockFlows);
     mockNodeRedClient.getFlowSummaries.mockResolvedValue(mockFlowSummaries);
-    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: [] });
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({
+      rev: 'rev-1',
+      flows: [
+        {
+          id: 'flow-1',
+          type: 'tab',
+          label: 'Test Flow',
+          disabled: false,
+          info: 'A test flow for unit testing',
+        },
+        {
+          id: 'node-1',
+          type: 'inject',
+          name: 'Trigger',
+          x: 100,
+          y: 100,
+          z: 'flow-1',
+          wires: [['node-2']],
+        },
+        {
+          id: 'node-2',
+          type: 'debug',
+          name: 'Debug Output',
+          x: 300,
+          y: 100,
+          z: 'flow-1',
+          wires: [],
+        },
+        {
+          id: 'subflow-1',
+          type: 'subflow',
+          label: 'Test Subflow',
+          disabled: false,
+          info: 'A reusable subflow',
+        },
+        {
+          id: 'subflow-node-1',
+          type: 'function',
+          name: 'Process',
+          x: 200,
+          y: 150,
+          z: 'subflow-1',
+          wires: [],
+        },
+        {
+          id: 'flow-disabled',
+          type: 'tab',
+          label: 'Disabled Flow',
+          disabled: true,
+          info: 'This flow is disabled',
+        },
+      ],
+    });
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
     mockNodeRedClient.updateFlow.mockResolvedValue(mockFlowTab);
@@ -418,18 +472,21 @@ describe('McpNodeRedServer', () => {
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.success).toBe(true);
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
     });
   });
 
   describe('Tool Execution - get_flows', () => {
-    it('should return flow summaries by default', async () => {
+    it('should return flow summaries by default from a single getFlowsWithRev snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', {});
 
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['tab', 'subflow']);
       expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlows).not.toHaveBeenCalled();
       expect(result.content).toBeDefined();
       expect(result.content[0].type).toBe('text');
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.data.some((f: { id: string }) => f.id === 'flow-1')).toBe(true);
     });
 
     it('exposes the current rev alongside data without changing the data shape', async () => {
@@ -441,37 +498,52 @@ describe('McpNodeRedServer', () => {
       expect(Array.isArray(parsed.data)).toBe(true);
     });
 
-    it('should return full flows when includeDetails is true', async () => {
+    it('should return full flows when includeDetails is true from the same snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', { includeDetails: true });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlows).toHaveBeenCalled();
-      expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
       expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlows).not.toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
+      expect(parsed.data.some((n: { id: string }) => n.id === 'node-1')).toBe(true);
     });
 
-    it('should pass custom types to getFlowSummaries', async () => {
+    it('should filter summaries by custom types from the same snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', { types: ['tab'] });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['tab']);
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(parsed.data.every((f: { type?: string; id: string }) => f.id !== 'subflow-1')).toBe(
+        true
+      );
+      expect(parsed.data.some((f: { id: string }) => f.id === 'flow-1')).toBe(true);
     });
   });
 
   describe('Tool Execution - get_flow', () => {
-    it('should return specific flow', async () => {
+    it('should return specific flow derived from getFlowsWithRev', async () => {
       const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.id).toBe('flow-1');
+      expect(parsed.data.nodes).toHaveLength(2);
       expect(result.content).toBeDefined();
     });
 
-    it('exposes the current rev alongside the flow data', async () => {
+    it('exposes the current rev alongside the flow data from one snapshot', async () => {
       const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.success).toBe(true);
       expect(parsed.rev).toBe('rev-1');
-      expect(parsed.data).toEqual(mockFlowTab);
-      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(parsed.data.id).toBe('flow-1');
+      expect(parsed.data.label).toBe('Test Flow');
+      expect(parsed.data.nodes.map((n: { id: string }) => n.id)).toEqual(['node-1', 'node-2']);
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalledTimes(1);
+      expect(mockNodeRedClient.getFlow).not.toHaveBeenCalled();
     });
 
     it('should throw validation error when flowId is missing', async () => {
@@ -602,6 +674,7 @@ describe('McpNodeRedServer', () => {
       expect(deployFlow?.description).toMatch(/deleted/i);
       expect(deployFlow?.description).toMatch(/expected_rev/);
       expect(deployFlow?.inputSchema.required).toContain('expected_rev');
+      expect(deployFlow?.annotations?.destructiveHint).toBe(true);
       expect(updateFlow?.description).toMatch(/PUT \/flow\/:id/);
       expect(updateFlow?.description).toMatch(/deploy_flow/);
     });
@@ -623,7 +696,7 @@ describe('McpNodeRedServer', () => {
       expect(parsed.message).toContain('node-a');
     });
 
-    it('forwards optional credentials to the API client', async () => {
+    it('forwards optional credentials to the API client when keys match node ids', async () => {
       const nodes = [{ id: 'node-a', type: 'mqtt-broker' }];
       const credentials = { 'node-a': { user: 'u', password: 'p' } };
 
@@ -639,6 +712,52 @@ describe('McpNodeRedServer', () => {
         credentials
       );
       expect(result.content[0].text).toContain('node-a');
+    });
+
+    it('rejects credentials in the encrypted `$` form', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'mqtt-broker' }],
+        expected_rev: 'rev-1',
+        credentials: { $: 'encrypted-blob' },
+      });
+
+      expect(result.content[0].text).toMatch(/\$/);
+      expect(result.content[0].text).toMatch(/credential store/i);
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects credentials keys that are not in nodes', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'mqtt-broker' }],
+        expected_rev: 'rev-1',
+        credentials: { 'other-node': { user: 'u' } },
+      });
+
+      expect(result.content[0].text).toContain('other-node');
+      expect(result.content[0].text).toMatch(/does not match any id in nodes/);
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('validates nodes when validate is true', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [
+          { id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] },
+        ],
+        expected_rev: 'rev-1',
+        validate: true,
+      });
+
+      expect(result.content[0].text).toMatch(/Validation failed|wires/i);
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('skips structural validation when validate is omitted', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] }];
+      await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+      });
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', undefined);
     });
 
     it('rejects when nodes is missing or empty', async () => {
@@ -1321,7 +1440,7 @@ describe('McpNodeRedServer', () => {
 
   describe('Tool Execution - Error Handling', () => {
     it('should handle errors in tool execution', async () => {
-      mockNodeRedClient.getFlow.mockRejectedValueOnce(new Error('Connection failed'));
+      mockNodeRedClient.getFlowsWithRev.mockRejectedValueOnce(new Error('Connection failed'));
 
       const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
 
@@ -1591,9 +1710,10 @@ describe('McpNodeRedServer', () => {
         content: { flowId: 'flow-1' },
       });
       const result = await mcpServer.callTool('get_flow', {});
-      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
+      expect(parsed.data.id).toBe('flow-1');
     });
 
     it('should return error when flowId elicitation is declined', async () => {

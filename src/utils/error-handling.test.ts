@@ -540,6 +540,28 @@ describe('handleNodeRedError', () => {
     }
   });
 
+  it('should not add the stale-rev hint on unrelated HTTP 409 conflicts', () => {
+    const error = {
+      response: {
+        status: 409,
+        statusText: 'Conflict',
+        data: { code: 'something_else', message: 'busy' },
+        headers: {},
+      },
+      config: { method: 'put', url: '/flow/flow-1' },
+    };
+
+    try {
+      handleNodeRedError(error, 'updateFlow');
+      expect.unreachable('handleNodeRedError should throw');
+    } catch (e) {
+      const err = e as NodeRedError;
+      expect(err.statusCode).toBe(409);
+      expect(err.message).toContain('Conflict');
+      expect(err.message).not.toContain('revision (rev) is out of date');
+    }
+  });
+
   it('should tolerate a response without headers', () => {
     const error = { response: { status: 502, data: 'bad gateway' } };
 

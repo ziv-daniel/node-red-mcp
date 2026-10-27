@@ -152,34 +152,141 @@ export function replaceFlowTabInFlatFlows(
   if (flowData.info !== undefined) tabNode.info = flowData.info;
   if (flowData.env !== undefined) tabNode.env = flowData.env;
 
-  const children: NodeRedNode[] = [];
-  for (const node of flowData.nodes ?? []) {
-    if (!node || typeof node !== 'object') {
-      throw new Error('Every entry in flowData.nodes must be a node object');
+  const { children, childIds } = collectFlowTabChildren(flowId, flowData);
+  const kept = flows.filter(node => node.id !== flowId && node.z !== flowId);
+  for (const node of kept) {
+    if (childIds.has(node.id)) {
+      throw new Error(
+        `Node id '${node.id}' collides with an existing node outside this tab. Re-fetch flows and use a unique id.`
+      );
     }
-    if (typeof node.id !== 'string' || node.id.length === 0) {
-      throw new Error('Every node in flowData.nodes needs a non-empty string id');
-    }
-    if (typeof node.type !== 'string' || node.type.length === 0) {
-      throw new Error(`Node '${node.id}' in flowData.nodes needs a non-empty string type`);
-    }
-    children.push({ ...node, z: flowId });
   }
-  for (const config of flowData.configs ?? []) {
-    if (!config || typeof config !== 'object') {
-      throw new Error('Every entry in flowData.configs must be a node object');
+  return [...kept, tabNode, ...children];
+}
+
+function assertFlowChildNode(
+  entry: unknown,
+  kind: 'node' | 'config',
+  collection: 'nodes' | 'configs'
+): NodeRedNode {
+  if (!entry || typeof entry !== 'object') {
+    throw new Error(`Every entry in flowData.${collection} must be a node object`);
+  }
+  const node = entry as NodeRedNode;
+  if (typeof node.id !== 'string' || node.id.length === 0) {
+    throw new Error(`Every ${kind} in flowData.${collection} needs a non-empty string id`);
+  }
+  if (typeof node.type !== 'string' || node.type.length === 0) {
+    throw new Error(
+      `${kind === 'config' ? 'Config' : 'Node'} '${node.id}' in flowData.${collection} needs a non-empty string type`
+    );
+  }
+  return node;
+}
+
+function collectFlowTabChildren(
+  flowId: string,
+  flowData: Partial<NodeRedFlow>
+): { children: NodeRedNode[]; childIds: Set<string> } {
+  const children: NodeRedNode[] = [];
+  const childIds = new Set<string>();
+  const pushChild = (node: NodeRedNode, kind: 'node' | 'config'): void => {
+    if (node.id === flowId) {
+      throw new Error(
+        `${kind === 'config' ? 'Config' : 'Node'} id '${node.id}' collides with the tab/subflow id`
+      );
     }
-    if (typeof config.id !== 'string' || config.id.length === 0) {
-      throw new Error('Every config in flowData.configs needs a non-empty string id');
+    if (childIds.has(node.id)) {
+      throw new Error(`Duplicate ${kind} id in flowData: ${node.id}`);
     }
-    if (typeof config.type !== 'string' || config.type.length === 0) {
-      throw new Error(`Config '${config.id}' in flowData.configs needs a non-empty string type`);
-    }
-    children.push({ ...(config as NodeRedNode), z: flowId });
+    childIds.add(node.id);
+    children.push({ ...node, z: flowId });
+  };
+
+  for (const entry of flowData.nodes ?? []) {
+    pushChild({ ...assertFlowChildNode(entry, 'node', 'nodes') }, 'node');
+  }
+  for (const entry of flowData.configs ?? []) {
+    pushChild({ ...assertFlowChildNode(entry, 'config', 'configs') }, 'config');
+  }
+  return { children, childIds };
+}
+
+/**
+ * Build lightweight flow summaries from a flat Admin API flows array (the
+ * same snapshot returned by {@link NodeRedAPIClient.getFlowsWithRev}).
+ */
+export function summarizeFlatFlows(
+  flows: NodeRedNode[],
+  types: string[] = ['tab', 'subflow'],
+  flowStatus: NodeRedFlowStatus | null = null
+): NodeRedFlowSummary[] {
+  const typeSet = new Set(types);
+  const containers = flows.filter(
+    flow => typeof flow?.type === 'string' && typeSet.has(flow.type)
+  );
+
+  return containers.map(flow => {
+    const status = flowStatus?.flows?.find(f => f.id === flow.id);
+    const nodeCount = flows.filter(
+      n => n.z === flow.id && n.type !== 'tab' && n.type !== 'subflow' && n.type !== 'group'
+    ).length;
+
+    const summary: NodeRedFlowSummary = {
+      id: flow.id,
+      disabled: Boolean(flow.disabled),
+      status: flow.disabled ? 'inactive' : status?.state === 'stop' ? 'inactive' : 'active',
+    };
+
+    const label = typeof flow.label === 'string' ? flow.label.trim() : '';
+    if (label) summary.label = label;
+    // Subflow definitions commonly use `name` instead of `label`.
+    else if (typeof flow.name === 'string' && flow.name.trim()) summary.label = flow.name.trim();
+
+    const info = typeof flow.info === 'string' ? flow.info.trim() : '';
+    if (info) summary.info = info;
+
+    if (nodeCount > 0) summary.nodeCount = nodeCount;
+
+    return summary;
+  });
+}
+
+/**
+ * Reconstruct a nested tab/subflow object (GET /flow/:id shape) from a flat
+ * Admin API flows array so callers can pair it with the matching `rev` from
+ * the same {@link NodeRedAPIClient.getFlowsWithRev} snapshot.
+ */
+export function extractFlowFromFlatFlows(flows: NodeRedNode[], flowId: string): NodeRedFlow {
+  const tab = flows.find(node => node.id === flowId);
+  if (!tab || (tab.type !== 'tab' && tab.type !== 'subflow')) {
+    throw new Error(
+      `Flow '${flowId}' not found. Re-fetch flows and confirm the tab id before retrying.`
+    );
   }
 
-  const kept = flows.filter(node => node.id !== flowId && node.z !== flowId);
-  return [...kept, tabNode, ...children];
+  const nodes: NodeRedNode[] = flows
+    .filter(node => node.z === flowId)
+    .map(node => {
+      const copy: NodeRedNode = { ...node };
+      delete copy.z;
+      return copy;
+    });
+
+  const flow: NodeRedFlow = {
+    id: flowId,
+    type: tab.type,
+    nodes,
+  };
+  if (tab.label !== undefined) flow.label = tab.label;
+  if (tab.disabled !== undefined) flow.disabled = Boolean(tab.disabled);
+  if (tab.info !== undefined) flow.info = tab.info;
+  if (tab.env !== undefined) flow.env = tab.env;
+  // Subflow definitions commonly expose `name` instead of (or as well as) label.
+  if (typeof tab.name === 'string' && tab.name && flow.label === undefined) {
+    flow.label = tab.name;
+  }
+  return flow;
 }
 
 // Containers rather than node instances. A subflow *instance* (`subflow:<id>`)
@@ -796,8 +903,28 @@ export class NodeRedAPIClient {
     }
     const { rev: currentRev, flows } = await this.getFlowsWithRev();
     assertExpectedFlowRev(expectedRev, currentRev, 'deployModifiedNodes');
+
+    const tabIds = new Set(
+      flows.filter(n => n.type === 'tab' || n.type === 'subflow').map(n => n.id)
+    );
     const byId = new Map(flows.map(node => [node.id, node]));
     for (const node of nodes) {
+      const existing = byId.get(node.id);
+      if (existing && (existing.type === 'tab' || existing.type === 'subflow')) {
+        throw new Error(
+          `Refusing to overwrite tab/subflow id '${node.id}' via deploy_nodes. Use deploy_flow to replace a tab.`
+        );
+      }
+      if (node.z !== undefined && node.z !== null && node.z !== '') {
+        if (typeof node.z !== 'string') {
+          throw new Error(`Node '${node.id}' has an invalid z (expected a tab/subflow id string)`);
+        }
+        if (!tabIds.has(node.z)) {
+          throw new Error(
+            `Node '${node.id}' has z='${node.z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
+          );
+        }
+      }
       byId.set(node.id, node);
     }
     return this.deployFlows({

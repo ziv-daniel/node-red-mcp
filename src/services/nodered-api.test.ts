@@ -45,7 +45,9 @@ import { NodeRedError } from '../utils/error-handling.js';
 import {
   NodeRedAPIClient,
   assertExpectedFlowRev,
+  extractFlowFromFlatFlows,
   replaceFlowTabInFlatFlows,
+  summarizeFlatFlows,
 } from './nodered-api.js';
 
 // Mock axios
@@ -364,10 +366,11 @@ describe('NodeRedAPIClient', () => {
 
     describe('deployModifiedNodes', () => {
       it('upserts nodes by id and POSTs the caller expected_rev', async () => {
+        const tab = { id: 'tab-1', type: 'tab', label: 'A' };
         const existingNodeA = { id: 'node-a', type: 'inject', z: 'tab-1' };
         const existingNodeB = { id: 'node-b', type: 'debug', z: 'tab-1' };
         mockAxiosInstance.get.mockResolvedValueOnce({
-          data: { rev: 'rev-1', flows: [existingNodeA, existingNodeB] },
+          data: { rev: 'rev-1', flows: [tab, existingNodeA, existingNodeB] },
         });
         mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
 
@@ -379,7 +382,7 @@ describe('NodeRedAPIClient', () => {
         expect(result).toEqual({ rev: 'rev-2' });
         expect(mockAxiosInstance.post).toHaveBeenCalledWith(
           '/flows',
-          { rev: 'rev-1', flows: [updatedNodeA, existingNodeB, newNodeC] },
+          { rev: 'rev-1', flows: [tab, updatedNodeA, existingNodeB, newNodeC] },
           {
             headers: {
               'Node-RED-API-Version': 'v2',
@@ -429,9 +432,43 @@ describe('NodeRedAPIClient', () => {
         );
       });
 
+      it('rejects a z that does not match any existing tab or subflow', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [{ id: 'tab-1', type: 'tab', label: 'A' }],
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes(
+            [{ id: 'node-a', type: 'inject', z: 'missing-tab' }],
+            'rev-1'
+          )
+        ).rejects.toThrow(/does not match any existing tab or subflow/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('refuses to overwrite a tab or subflow id', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [{ id: 'tab-1', type: 'tab', label: 'A' }],
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'tab-1', type: 'inject', z: 'tab-1' }], 'rev-1')
+        ).rejects.toThrow(/Refusing to overwrite tab\/subflow id/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
       it('rejects an unexpected v2 deploy response shape', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({
-          data: { rev: 'rev-1', flows: [] },
+          data: {
+            rev: 'rev-1',
+            flows: [{ id: 'tab-1', type: 'tab', label: 'A' }],
+          },
         });
         mockAxiosInstance.post.mockResolvedValueOnce({ data: { ok: true } });
 
@@ -441,7 +478,9 @@ describe('NodeRedAPIClient', () => {
       });
 
       it('surfaces a clear conflict message on HTTP 409 version_mismatch', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
         mockAxiosInstance.post.mockRejectedValueOnce({
           response: {
             status: 409,
@@ -458,7 +497,9 @@ describe('NodeRedAPIClient', () => {
       });
 
       it('propagates errors from the deploy request', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: [] } });
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
         mockAxiosInstance.post.mockRejectedValueOnce(new Error('conflict'));
 
         await expect(
@@ -505,6 +546,62 @@ describe('NodeRedAPIClient', () => {
             nodes: [],
           })
         ).toThrow(/Flow 'missing' not found/);
+      });
+
+      it('rejects a child id that collides with a kept node on another tab', () => {
+        const flat = [
+          { id: 'tab-a', type: 'tab', label: 'A' },
+          { id: 'tab-b', type: 'tab', label: 'B' },
+          { id: 'n-b1', type: 'inject', z: 'tab-b', wires: [[]] },
+        ];
+        expect(() =>
+          replaceFlowTabInFlatFlows(flat, 'tab-a', {
+            nodes: [{ id: 'n-b1', type: 'debug', wires: [] }],
+          })
+        ).toThrow(/collides with an existing node outside this tab/);
+      });
+
+      it('rejects duplicate ids within flowData.nodes', () => {
+        expect(() =>
+          replaceFlowTabInFlatFlows([{ id: 'tab-a', type: 'tab', label: 'A' }], 'tab-a', {
+            nodes: [
+              { id: 'n1', type: 'inject', wires: [[]] },
+              { id: 'n1', type: 'debug', wires: [] },
+            ],
+          })
+        ).toThrow(/Duplicate node id in flowData: n1/);
+      });
+
+      it('rejects a child id that equals the tab id', () => {
+        expect(() =>
+          replaceFlowTabInFlatFlows([{ id: 'tab-a', type: 'tab', label: 'A' }], 'tab-a', {
+            nodes: [{ id: 'tab-a', type: 'inject', wires: [[]] }],
+          })
+        ).toThrow(/collides with the tab\/subflow id/);
+      });
+    });
+
+    describe('summarizeFlatFlows / extractFlowFromFlatFlows', () => {
+      it('summarizes tabs with node counts from the flat array', () => {
+        const summaries = summarizeFlatFlows(mockFlatFlows, ['tab', 'subflow']);
+        const main = summaries.find(s => s.id === 'tab-1');
+        expect(main).toMatchObject({ id: 'tab-1', label: 'Main', disabled: false });
+        expect(main?.nodeCount).toBeGreaterThan(0);
+        expect(summaries.find(s => s.id === 'sf-1')?.label).toBe('Formatter');
+      });
+
+      it('extracts a nested flow from the flat snapshot', () => {
+        const flow = extractFlowFromFlatFlows(mockFlatFlows, 'tab-1');
+        expect(flow.id).toBe('tab-1');
+        expect(flow.type).toBe('tab');
+        expect(flow.nodes.some(n => n.id === 'inject-1')).toBe(true);
+        expect(flow.nodes.every(n => (n as { z?: string }).z === undefined)).toBe(true);
+      });
+
+      it('throws when extracting a missing flow id', () => {
+        expect(() => extractFlowFromFlatFlows(mockFlatFlows, 'nope')).toThrow(
+          /Flow 'nope' not found/
+        );
       });
     });
 
