@@ -562,7 +562,7 @@ export class McpNodeRedServer {
       {
         name: 'deploy_nodes',
         description:
-          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button (Admin API v2, Node-RED-Deployment-Type: nodes). Requires expected_rev from a prior get_flows/get_flow. Every node not listed here is left untouched and does not restart. An existing node id is replaced in place; a new id is added to whichever tab its `z` field points to (z must match an existing tab/subflow). If expected_rev is stale, fails with HTTP 409 — re-read flows, re-apply your change, and retry. Returns the new rev on success. Optional credentials is a map of node id → credential fields for ids listed in nodes only (the encrypted `$` form is rejected because it would replace the whole credential store). Inline node.credentials is also accepted.",
+          "Add or update specific nodes and deploy ONLY those nodes — equivalent to the editor's 'Modified Nodes' button (Admin API v2, Node-RED-Deployment-Type: nodes). Requires expected_rev from a prior get_flows/get_flow. Every node not listed here is left untouched and does not restart. An existing node id is replaced in place (add-or-replace). Flow nodes must include `wires` or a `z` matching an existing tab/subflow; a node with neither is treated as a global config node (no tab membership). Tab/subflow types are rejected — use deploy_flow for those. If expected_rev is stale, fails with HTTP 409 — re-read flows, re-apply your change, and retry. Returns the new rev on success. Optional credentials is a map of node id → credential fields for ids listed in nodes only (the encrypted `$` form is rejected because it would replace the whole credential store). Inline node.credentials is also accepted.",
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -570,7 +570,7 @@ export class McpNodeRedServer {
             nodes: {
               type: 'array',
               description:
-                'Full node objects to add or replace by id (each needs at minimum id and type; flow nodes usually also need z and wires, plus type-specific properties). Inline node.credentials is also accepted.',
+                'Full node objects to add or replace by id (each needs at minimum id and type). Flow nodes must include wires or a z matching an existing tab/subflow; nodes with neither are treated as global config nodes. Inline node.credentials is also accepted.',
               items: { type: 'object' },
               minItems: 1,
             },

@@ -843,6 +843,18 @@ describe('McpNodeRedServer', () => {
       expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
     });
 
+    it('documents that flow nodes need wires or z (else global config)', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const deployNodes = tools.find(t => t.name === 'deploy_nodes');
+      expect(deployNodes?.description).toMatch(/wires/i);
+      expect(deployNodes?.description).toMatch(/global config/i);
+      const nodesProp = deployNodes?.inputSchema?.properties?.nodes as
+        | { description?: string }
+        | undefined;
+      expect(nodesProp?.description).toMatch(/wires/i);
+      expect(nodesProp?.description).toMatch(/global config/i);
+    });
+
     it('is hidden and rejected in read-only mode', async () => {
       process.env.MCP_READ_ONLY = 'true';
       try {
