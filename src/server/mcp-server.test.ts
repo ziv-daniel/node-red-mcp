@@ -751,6 +751,20 @@ describe('McpNodeRedServer', () => {
       expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
     });
 
+    it('accepts validate:true when a wire targets a node outside the batch but in the snapshot', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'flow-1', wires: [['node-2']] }];
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+        validate: true,
+      });
+
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', undefined);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+    });
+
     it('skips structural validation when validate is omitted', async () => {
       const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] }];
       await mcpServer.callTool('deploy_nodes', {

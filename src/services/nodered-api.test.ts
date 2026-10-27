@@ -463,6 +463,77 @@ describe('NodeRedAPIClient', () => {
         expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
 
+      it('rejects a flow node missing z', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-new', type: 'inject', wires: [[]] }], 'rev-1')
+        ).rejects.toThrow(/needs a non-empty z/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('rejects a flow node with empty-string z', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes(
+            [{ id: 'node-new', type: 'inject', z: '', wires: [[]] }],
+            'rev-1'
+          )
+        ).rejects.toThrow(/needs a non-empty z/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('allows a global config node with no z', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployModifiedNodes(
+          [{ id: 'broker-1', type: 'mqtt-broker', name: 'Local' }],
+          'rev-1'
+        );
+
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        expect(posted.flows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 'broker-1', type: 'mqtt-broker' }),
+          ])
+        );
+        expect(posted.flows.find((n: any) => n.id === 'broker-1').z).toBeUndefined();
+      });
+
+      it('keeps z when round-tripping get_flow extract output through deployModifiedNodes', async () => {
+        const flat = [
+          { id: 'tab-1', type: 'tab', label: 'A' },
+          { id: 'node-a', type: 'inject', z: 'tab-1', name: 'old', wires: [[]] },
+          { id: 'node-b', type: 'debug', z: 'tab-1', wires: [] },
+        ];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: flat } });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        const extracted = extractFlowFromFlatFlows(flat, 'tab-1');
+        const updated = extracted.nodes.map(n =>
+          n.id === 'node-a' ? { ...n, name: 'renamed' } : n
+        );
+
+        await client.deployModifiedNodes(updated, 'rev-1');
+
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        expect(posted.flows.find((n: any) => n.id === 'node-a')).toMatchObject({
+          z: 'tab-1',
+          name: 'renamed',
+        });
+        expect(posted.flows.find((n: any) => n.id === 'node-b')).toMatchObject({
+          z: 'tab-1',
+        });
+      });
+
       it('rejects an unexpected v2 deploy response shape', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({
           data: {
@@ -569,7 +640,16 @@ describe('NodeRedAPIClient', () => {
               { id: 'n1', type: 'debug', wires: [] },
             ],
           })
-        ).toThrow(/Duplicate node id in flowData: n1/);
+        ).toThrow(/Duplicate id in flowData: n1/);
+      });
+
+      it('rejects a duplicate id across nodes and configs with a neutral message', () => {
+        expect(() =>
+          replaceFlowTabInFlatFlows([{ id: 'tab-a', type: 'tab', label: 'A' }], 'tab-a', {
+            nodes: [{ id: 'shared', type: 'inject', wires: [[]] }],
+            configs: [{ id: 'shared', type: 'mqtt-broker' }],
+          })
+        ).toThrow(/^Duplicate id in flowData: shared$/);
       });
 
       it('rejects a child id that equals the tab id', () => {
@@ -590,12 +670,47 @@ describe('NodeRedAPIClient', () => {
         expect(summaries.find(s => s.id === 'sf-1')?.label).toBe('Formatter');
       });
 
-      it('extracts a nested flow from the flat snapshot', () => {
+      it('extracts a nested flow and preserves z on every child', () => {
         const flow = extractFlowFromFlatFlows(mockFlatFlows, 'tab-1');
         expect(flow.id).toBe('tab-1');
         expect(flow.type).toBe('tab');
         expect(flow.nodes.some(n => n.id === 'inject-1')).toBe(true);
-        expect(flow.nodes.every(n => (n as { z?: string }).z === undefined)).toBe(true);
+        expect(flow.nodes.every(n => n.z === 'tab-1')).toBe(true);
+      });
+
+      it('separates flow-scoped config nodes into configs', () => {
+        const flat = [
+          { id: 'tab-1', type: 'tab', label: 'Main' },
+          { id: 'inject-1', type: 'inject', z: 'tab-1', wires: [['debug-1']] },
+          { id: 'debug-1', type: 'debug', z: 'tab-1', wires: [] },
+          { id: 'broker-local', type: 'mqtt-broker', z: 'tab-1', broker: 'localhost' },
+        ];
+        const flow = extractFlowFromFlatFlows(flat, 'tab-1');
+        expect(flow.nodes.map(n => n.id).sort()).toEqual(['debug-1', 'inject-1']);
+        expect(flow.configs).toEqual([
+          expect.objectContaining({ id: 'broker-local', type: 'mqtt-broker', z: 'tab-1' }),
+        ]);
+      });
+
+      it('preserves subflow in/out/name from the flat definition', () => {
+        const flat = [
+          {
+            id: 'sf-1',
+            type: 'subflow',
+            name: 'Formatter',
+            in: [{ x: 10, y: 20, wires: [{ id: 'sf-fn-1' }] }],
+            out: [{ x: 100, y: 20, wires: [{ id: 'sf-fn-1', port: 0 }] }],
+          },
+          { id: 'sf-fn-1', type: 'function', z: 'sf-1', wires: [[]] },
+        ];
+        const flow = extractFlowFromFlatFlows(flat, 'sf-1');
+        expect(flow.type).toBe('subflow');
+        expect((flow as any).name).toBe('Formatter');
+        expect((flow as any).in).toEqual([{ x: 10, y: 20, wires: [{ id: 'sf-fn-1' }] }]);
+        expect((flow as any).out).toEqual([
+          { x: 100, y: 20, wires: [{ id: 'sf-fn-1', port: 0 }] },
+        ]);
+        expect(flow.nodes[0]).toMatchObject({ id: 'sf-fn-1', z: 'sf-1' });
       });
 
       it('throws when extracting a missing flow id', () => {

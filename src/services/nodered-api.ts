@@ -11,6 +11,7 @@ import {
   NodeRedFlow,
   NodeRedFlowSummary,
   NodeRedNode,
+  NodeRedConfig,
   NodeRedNodeType,
   NodeRedSettings,
   NodeRedRuntimeInfo,
@@ -197,7 +198,7 @@ function collectFlowTabChildren(
       );
     }
     if (childIds.has(node.id)) {
-      throw new Error(`Duplicate ${kind} id in flowData: ${node.id}`);
+      throw new Error(`Duplicate id in flowData: ${node.id}`);
     }
     childIds.add(node.id);
     children.push({ ...node, z: flowId });
@@ -253,9 +254,29 @@ export function summarizeFlatFlows(
 }
 
 /**
+ * Heuristic for config-node entries in a flat flows array when the type
+ * registry is unavailable: regular canvas nodes always carry a `wires` array,
+ * while config nodes (mqtt-broker, etc.) do not. Groups, junctions and
+ * subflow instances are never configs.
+ */
+export function isLikelyConfigNode(node: NodeRedNode): boolean {
+  const type = node?.type;
+  if (typeof type !== 'string' || type.length === 0) return false;
+  if (type === 'group' || type === 'junction' || type === 'tab' || type === 'subflow') {
+    return false;
+  }
+  if (type.startsWith('subflow:')) return false;
+  return !Array.isArray(node.wires);
+}
+
+/**
  * Reconstruct a nested tab/subflow object (GET /flow/:id shape) from a flat
  * Admin API flows array so callers can pair it with the matching `rev` from
  * the same {@link NodeRedAPIClient.getFlowsWithRev} snapshot.
+ *
+ * Children keep their `z` (Node-RED's single-flow response does too). Flow-scoped
+ * config nodes go in `configs`; ordinary nodes (including groups) go in `nodes`.
+ * Subflow definition fields such as `in` / `out` / `name` are preserved.
  */
 export function extractFlowFromFlatFlows(flows: NodeRedNode[], flowId: string): NodeRedFlow {
   const tab = flows.find(node => node.id === flowId);
@@ -265,25 +286,41 @@ export function extractFlowFromFlatFlows(flows: NodeRedNode[], flowId: string): 
     );
   }
 
-  const nodes: NodeRedNode[] = flows
-    .filter(node => node.z === flowId)
-    .map(node => {
-      const copy: NodeRedNode = { ...node };
-      delete copy.z;
-      return copy;
-    });
+  const children = flows.filter(node => node.z === flowId);
+  const nodes: NodeRedNode[] = [];
+  const configs: NodeRedConfig[] = [];
+  for (const child of children) {
+    // Preserve z so a get_flow → deploy_nodes round-trip cannot orphan nodes.
+    const copy: NodeRedNode = { ...child };
+    if (isLikelyConfigNode(copy)) {
+      configs.push(copy);
+    } else {
+      nodes.push(copy);
+    }
+  }
 
   const flow: NodeRedFlow = {
     id: flowId,
     type: tab.type,
     nodes,
   };
+  if (configs.length > 0) flow.configs = configs;
   if (tab.label !== undefined) flow.label = tab.label;
   if (tab.disabled !== undefined) flow.disabled = Boolean(tab.disabled);
   if (tab.info !== undefined) flow.info = tab.info;
   if (tab.env !== undefined) flow.env = tab.env;
-  // Subflow definitions commonly expose `name` instead of (or as well as) label.
-  if (typeof tab.name === 'string' && tab.name && flow.label === undefined) {
+
+  // Preserve subflow definition fields from the flat tab entry.
+  for (const key of ['name', 'category', 'in', 'out', 'meta', 'color'] as const) {
+    if (tab[key] !== undefined) {
+      (flow as NodeRedFlow & Record<string, unknown>)[key] = tab[key];
+    }
+  }
+  if (
+    flow.label === undefined &&
+    typeof tab.name === 'string' &&
+    tab.name.trim().length > 0
+  ) {
     flow.label = tab.name;
   }
   return flow;
@@ -915,17 +952,30 @@ export class NodeRedAPIClient {
           `Refusing to overwrite tab/subflow id '${node.id}' via deploy_nodes. Use deploy_flow to replace a tab.`
         );
       }
-      if (node.z !== undefined && node.z !== null && node.z !== '') {
-        if (typeof node.z !== 'string') {
-          throw new Error(`Node '${node.id}' has an invalid z (expected a tab/subflow id string)`);
-        }
-        if (!tabIds.has(node.z)) {
+      // Merge with the existing node so a partial update cannot drop `z`.
+      const merged: NodeRedNode = existing
+        ? { ...existing, ...node, id: node.id, type: node.type }
+        : { ...node };
+      const z = merged.z;
+      const hasZ = typeof z === 'string' && z.length > 0;
+      if (hasZ) {
+        if (!tabIds.has(z)) {
           throw new Error(
-            `Node '${node.id}' has z='${node.z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
+            `Node '${merged.id}' has z='${z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
           );
         }
+      } else {
+        // Missing or empty z: only global config nodes (no wires) may omit z.
+        if (!isLikelyConfigNode(merged)) {
+          throw new Error(
+            `Node '${merged.id}' needs a non-empty z matching an existing tab or subflow`
+          );
+        }
+        if (merged.z === '') {
+          delete merged.z;
+        }
       }
-      byId.set(node.id, node);
+      byId.set(merged.id, merged);
     }
     return this.deployFlows({
       type: 'nodes',

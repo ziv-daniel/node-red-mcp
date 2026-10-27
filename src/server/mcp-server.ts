@@ -160,10 +160,14 @@ interface FlowValidationResult {
   errors: string[];
 }
 
-function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
+function validateFlowData(
+  flow: { nodes?: unknown[] },
+  options?: { knownNodeIds?: Iterable<string> }
+): FlowValidationResult {
   const errors: string[] = [];
   const nodes = Array.isArray(flow?.nodes) ? (flow.nodes as Record<string, unknown>[]) : [];
-  const nodeIds = new Set<string>();
+  const batchIds = new Set<string>();
+  const knownIds = new Set<string>(options?.knownNodeIds ?? []);
 
   for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
@@ -173,13 +177,17 @@ function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
     if (!node.type) errors.push(`${label}: missing required field "type"`);
 
     if (id) {
-      if (nodeIds.has(id)) {
+      if (batchIds.has(id)) {
         errors.push(`Duplicate node ID: "${id}"`);
       } else {
-        nodeIds.add(id);
+        batchIds.add(id);
       }
     }
   }
+
+  // Wire targets may point at nodes outside this batch when the caller
+  // supplies the current snapshot ids (deploy_nodes partial updates).
+  const resolvableIds = new Set<string>([...knownIds, ...batchIds]);
 
   for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
@@ -195,7 +203,7 @@ function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
           errors.push(`${label}: wire target must be a string`);
           continue;
         }
-        if (!nodeIds.has(target)) {
+        if (!resolvableIds.has(target)) {
           errors.push(`${label}: wire references unknown node "${target}"`);
         }
       }
@@ -205,8 +213,11 @@ function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
   return { valid: errors.length === 0, errors };
 }
 
-function validateFlowOrThrow(flowData: { nodes?: unknown[] }): void {
-  const validation = validateFlowData(flowData);
+function validateFlowOrThrow(
+  flowData: { nodes?: unknown[] },
+  options?: { knownNodeIds?: Iterable<string> }
+): void {
+  const validation = validateFlowData(flowData, options);
   if (!validation.valid) {
     throw new Error(`Validation failed:\n${validation.errors.map(e => `- ${e}`).join('\n')}`);
   }
@@ -1089,7 +1100,15 @@ export class McpNodeRedServer {
             }
             seenIds.add(node.id);
           }
-          if (args?.validate) validateFlowOrThrow({ nodes });
+          if (args?.validate) {
+            // Resolve wire targets against the current snapshot so partial
+            // deploys that wire to nodes outside the batch are accepted.
+            const { flows: currentFlows } = await this.nodeRedClient.getFlowsWithRev();
+            validateFlowOrThrow(
+              { nodes },
+              { knownNodeIds: currentFlows.map(n => n.id) }
+            );
+          }
           const credentials = args?.credentials;
           if (credentials !== undefined) {
             if (
