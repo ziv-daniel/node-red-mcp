@@ -19,6 +19,7 @@ const { mockNodeRedClient, mockSSEHandler } = vi.hoisted(() => ({
   mockNodeRedClient: {
     getFlows: vi.fn(),
     getFlowSummaries: vi.fn(),
+    getFlowsWithRev: vi.fn(),
     getFlow: vi.fn(),
     createFlow: vi.fn(),
     updateFlow: vi.fn(),
@@ -31,6 +32,7 @@ const { mockNodeRedClient, mockSSEHandler } = vi.hoisted(() => ({
     searchModules: vi.fn(),
     installModule: vi.fn(),
     testConnection: vi.fn(),
+    getFlowStatus: vi.fn(),
   },
   mockSSEHandler: {
     start: vi.fn(),
@@ -40,14 +42,18 @@ const { mockNodeRedClient, mockSSEHandler } = vi.hoisted(() => ({
   },
 }));
 
-// Mock NodeRedAPIClient
-vi.mock('../../src/services/nodered-api.js', () => ({
-  NodeRedAPIClient: class {
-    constructor() {
-      return mockNodeRedClient;
-    }
-  },
-}));
+// Mock NodeRedAPIClient; keep real helpers used by get_flows/get_flow
+vi.mock('../../src/services/nodered-api.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/services/nodered-api.js')>();
+  return {
+    ...actual,
+    NodeRedAPIClient: class {
+      constructor() {
+        return mockNodeRedClient;
+      }
+    },
+  };
+});
 
 // Mock SSEHandler
 vi.mock('../../src/server/sse-handler.js', () => ({
@@ -81,6 +87,33 @@ describe('MCP Protocol Integration', () => {
     // Set up mock return values
     mockNodeRedClient.getFlows.mockResolvedValue(mockFlows);
     mockNodeRedClient.getFlowSummaries.mockResolvedValue([]);
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({
+      rev: 'rev-1',
+      flows: [
+        {
+          id: 'flow-1',
+          type: 'tab',
+          label: 'Test Flow',
+          disabled: false,
+          info: 'A test flow for unit testing',
+        },
+        {
+          id: 'node-1',
+          type: 'inject',
+          name: 'Trigger',
+          z: 'flow-1',
+          wires: [['node-2']],
+        },
+        {
+          id: 'node-2',
+          type: 'debug',
+          name: 'Debug Output',
+          z: 'flow-1',
+          wires: [],
+        },
+      ],
+    });
+    mockNodeRedClient.getFlowStatus.mockResolvedValue(null);
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
     mockNodeRedClient.updateFlow.mockResolvedValue(mockFlowTab);
@@ -129,8 +162,8 @@ describe('MCP Protocol Integration', () => {
 
         expect(result.content).toBeDefined();
         expect(result.content[0].type).toBe('text');
-        // Default behavior calls getFlowSummaries, not getFlows
-        expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalled();
+        expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+        expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
       });
 
       it('should retrieve all flow details when includeDetails is true', async () => {
@@ -138,16 +171,20 @@ describe('MCP Protocol Integration', () => {
 
         expect(result.content).toBeDefined();
         expect(result.content[0].type).toBe('text');
-        expect(mockNodeRedClient.getFlows).toHaveBeenCalled();
+        expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+        expect(mockNodeRedClient.getFlows).not.toHaveBeenCalled();
       });
     });
 
     describe('get_flow', () => {
       it('should retrieve specific flow by ID', async () => {
         const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
+        const parsed = JSON.parse(result.content[0].text);
 
         expect(result.content).toBeDefined();
-        expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+        expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+        expect(mockNodeRedClient.getFlow).not.toHaveBeenCalled();
+        expect(parsed.data.id).toBe('flow-1');
       });
     });
 

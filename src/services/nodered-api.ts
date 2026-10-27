@@ -11,6 +11,7 @@ import {
   NodeRedFlow,
   NodeRedFlowSummary,
   NodeRedNode,
+  NodeRedConfig,
   NodeRedNodeType,
   NodeRedSettings,
   NodeRedRuntimeInfo,
@@ -25,7 +26,7 @@ import {
   getTlsRejectUnauthorized,
   getNodeRedAuthScope,
 } from '../utils/auth.js';
-import { handleNodeRedError } from '../utils/error-handling.js';
+import { handleNodeRedError, NodeRedError } from '../utils/error-handling.js';
 import { CircuitBreaker, retryWithCircuitBreaker, type RetryOptions } from '../utils/retry.js';
 
 export interface NodeRedAPIConfig {
@@ -98,6 +99,322 @@ function unexpectedBody(body: unknown, what: string): Error {
   }
   const kind = body === null ? 'null' : Array.isArray(body) ? 'array' : typeof body;
   return new Error(`Node-RED returned an unexpected ${kind} instead of ${what}`);
+}
+
+/**
+ * Fail fast when the caller's `expected_rev` does not match the runtime's
+ * current revision — same optimistic-concurrency model as two editor sessions.
+ */
+export function assertExpectedFlowRev(
+  expectedRev: string,
+  currentRev: string,
+  context: string
+): void {
+  if (expectedRev === currentRev) return;
+  throw new NodeRedError(
+    `Flow revision conflict in ${context}: expected_rev '${expectedRev}' does not match current rev '${currentRev}'. The flows changed since you last read them — re-read flows (get the new rev), re-apply your change, and retry.`,
+    409,
+    409,
+    { code: 'version_mismatch', expected_rev: expectedRev, current_rev: currentRev }
+  );
+}
+
+/**
+ * Replace one tab (or subflow definition) and its child nodes inside a flat
+ * Admin API flows array. Other tabs, subflows, and global config nodes are
+ * preserved. Throws if `flowId` is not present as a `tab` / `subflow` entry.
+ *
+ * Any existing node with `id === flowId` or `z === flowId` is removed first;
+ * nodes omitted from `flowData.nodes` / `flowData.configs` are therefore deleted.
+ */
+export function replaceFlowTabInFlatFlows(
+  flows: NodeRedNode[],
+  flowId: string,
+  flowData: Partial<NodeRedFlow>
+): NodeRedNode[] {
+  const existingTab = flows.find(node => node.id === flowId);
+  if (!existingTab || (existingTab.type !== 'tab' && existingTab.type !== 'subflow')) {
+    throw new Error(
+      `Flow '${flowId}' not found. Re-fetch flows and confirm the tab id before retrying.`
+    );
+  }
+
+  const tabNode: NodeRedNode = {
+    ...existingTab,
+    id: flowId,
+    type: existingTab.type,
+  };
+  // Tab objects in the flat array must not carry nested nodes/configs.
+  delete tabNode.nodes;
+  delete tabNode.configs;
+  delete tabNode.subflows;
+  if (flowData.label !== undefined) tabNode.label = flowData.label;
+  if (flowData.disabled !== undefined) tabNode.disabled = flowData.disabled;
+  if (flowData.info !== undefined) tabNode.info = flowData.info;
+  if (flowData.env !== undefined) tabNode.env = flowData.env;
+
+  const { children, childIds } = collectFlowTabChildren(flowId, flowData);
+  const kept = flows.filter(node => node.id !== flowId && node.z !== flowId);
+  for (const node of kept) {
+    if (childIds.has(node.id)) {
+      throw new Error(
+        `Node id '${node.id}' collides with an existing node outside this tab. Re-fetch flows and use a unique id.`
+      );
+    }
+  }
+  return [...kept, tabNode, ...children];
+}
+
+function assertFlowChildNode(
+  entry: unknown,
+  kind: 'node' | 'config',
+  collection: 'nodes' | 'configs'
+): NodeRedNode {
+  if (!entry || typeof entry !== 'object') {
+    throw new Error(`Every entry in flowData.${collection} must be a node object`);
+  }
+  const node = entry as NodeRedNode;
+  if (typeof node.id !== 'string' || node.id.length === 0) {
+    throw new Error(`Every ${kind} in flowData.${collection} needs a non-empty string id`);
+  }
+  if (typeof node.type !== 'string' || node.type.length === 0) {
+    throw new Error(
+      `${kind === 'config' ? 'Config' : 'Node'} '${node.id}' in flowData.${collection} needs a non-empty string type`
+    );
+  }
+  return node;
+}
+
+function collectFlowTabChildren(
+  flowId: string,
+  flowData: Partial<NodeRedFlow>
+): { children: NodeRedNode[]; childIds: Set<string> } {
+  const children: NodeRedNode[] = [];
+  const childIds = new Set<string>();
+  const pushChild = (node: NodeRedNode, kind: 'node' | 'config'): void => {
+    if (node.id === flowId) {
+      throw new Error(
+        `${kind === 'config' ? 'Config' : 'Node'} id '${node.id}' collides with the tab/subflow id`
+      );
+    }
+    if (childIds.has(node.id)) {
+      throw new Error(`Duplicate id in flowData: ${node.id}`);
+    }
+    childIds.add(node.id);
+    children.push({ ...node, z: flowId });
+  };
+
+  for (const entry of flowData.nodes ?? []) {
+    pushChild({ ...assertFlowChildNode(entry, 'node', 'nodes') }, 'node');
+  }
+  for (const entry of flowData.configs ?? []) {
+    pushChild({ ...assertFlowChildNode(entry, 'config', 'configs') }, 'config');
+  }
+  return { children, childIds };
+}
+
+/**
+ * Build lightweight flow summaries from a flat Admin API flows array (the
+ * same snapshot returned by {@link NodeRedAPIClient.getFlowsWithRev}).
+ */
+export function summarizeFlatFlows(
+  flows: NodeRedNode[],
+  types: string[] = ['tab', 'subflow'],
+  flowStatus: NodeRedFlowStatus | null = null
+): NodeRedFlowSummary[] {
+  const typeSet = new Set(types);
+  const containers = flows.filter(flow => typeof flow?.type === 'string' && typeSet.has(flow.type));
+
+  return containers.map(flow => {
+    const status = flowStatus?.flows?.find(f => f.id === flow.id);
+    const nodeCount = flows.filter(
+      n => n.z === flow.id && n.type !== 'tab' && n.type !== 'subflow' && n.type !== 'group'
+    ).length;
+
+    const summary: NodeRedFlowSummary = {
+      id: flow.id,
+      disabled: Boolean(flow.disabled),
+      status: flow.disabled ? 'inactive' : status?.state === 'stop' ? 'inactive' : 'active',
+    };
+
+    const label = typeof flow.label === 'string' ? flow.label.trim() : '';
+    if (label) summary.label = label;
+    // Subflow definitions commonly use `name` instead of `label`.
+    else if (typeof flow.name === 'string' && flow.name.trim()) summary.label = flow.name.trim();
+
+    const info = typeof flow.info === 'string' ? flow.info.trim() : '';
+    if (info) summary.info = info;
+
+    if (nodeCount > 0) summary.nodeCount = nodeCount;
+
+    return summary;
+  });
+}
+
+/**
+ * Well-known workspace (non-config) node types. Without the Node-RED type
+ * registry we cannot ask `nodeDef.defaults`/`category === 'config'`, so these
+ * plus the presence of wires identify flow nodes.
+ */
+const WELL_KNOWN_FLOW_NODE_TYPES = new Set([
+  'inject',
+  'debug',
+  'function',
+  'change',
+  'switch',
+  'range',
+  'template',
+  'delay',
+  'trigger',
+  'exec',
+  'comment',
+  'complete',
+  'catch',
+  'status',
+  'link in',
+  'link out',
+  'link call',
+  'join',
+  'split',
+  'sort',
+  'batch',
+  'rbe',
+  'json',
+  'xml',
+  'yaml',
+  'html',
+  'csv',
+  'file',
+  'file in',
+  'http in',
+  'http response',
+  'http request',
+  'mqtt in',
+  'mqtt out',
+  'websocket in',
+  'websocket out',
+  'tcp in',
+  'tcp out',
+  'tcp request',
+  'udp in',
+  'udp out',
+]);
+
+/**
+ * Heuristic for config-node entries when the type registry is unavailable.
+ * Config nodes have no wires; groups, junctions, subflow instances and
+ * well-known workspace types (inject, comment, …) are never configs.
+ * Canvas x/y alone does not disqualify a config (some exports include them).
+ */
+export function isLikelyConfigNode(node: NodeRedNode): boolean {
+  const type = node?.type;
+  if (typeof type !== 'string' || type.length === 0) return false;
+  if (type === 'group' || type === 'junction' || type === 'tab' || type === 'subflow') {
+    return false;
+  }
+  if (type.startsWith('subflow:')) return false;
+  if (WELL_KNOWN_FLOW_NODE_TYPES.has(type)) return false;
+  if (Array.isArray(node.wires)) return false;
+  return true;
+}
+
+/**
+ * Structural wire checks for a deploy_nodes batch against known ids from the
+ * same flows snapshot used for the merge / rev check.
+ */
+export function assertDeployNodesWiresValid(
+  nodes: NodeRedNode[],
+  knownNodeIds: Iterable<string>
+): void {
+  const batchIds = new Set<string>();
+  const errors: string[] = [];
+  for (const [i, node] of nodes.entries()) {
+    const id = typeof node?.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+    if (!id) errors.push(`${label}: missing required field "id"`);
+    if (!node?.type) errors.push(`${label}: missing required field "type"`);
+    if (id) {
+      if (batchIds.has(id)) errors.push(`Duplicate node ID: "${id}"`);
+      else batchIds.add(id);
+    }
+  }
+  const resolvable = new Set<string>([...knownNodeIds, ...batchIds]);
+  for (const [i, node] of nodes.entries()) {
+    const id = typeof node?.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+    if (!Array.isArray(node?.wires)) continue;
+    for (const group of node.wires as unknown[]) {
+      if (!Array.isArray(group)) {
+        errors.push(`${label}: wires must be an array of arrays`);
+        continue;
+      }
+      for (const target of group as unknown[]) {
+        if (typeof target !== 'string') {
+          errors.push(`${label}: wire target must be a string`);
+          continue;
+        }
+        if (!resolvable.has(target)) {
+          errors.push(`${label}: wire references unknown node "${target}"`);
+        }
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Validation failed:\n${errors.map(e => `- ${e}`).join('\n')}`);
+  }
+}
+
+/**
+ * Reconstruct a nested tab/subflow object (GET /flow/:id shape) from a flat
+ * Admin API flows array so callers can pair it with the matching `rev` from
+ * the same {@link NodeRedAPIClient.getFlowsWithRev} snapshot.
+ *
+ * Children keep their `z` (Node-RED's single-flow response does too). Flow-scoped
+ * config nodes go in `configs`; ordinary nodes (including groups) go in `nodes`.
+ * Subflow definition fields such as `in` / `out` / `name` are preserved.
+ */
+export function extractFlowFromFlatFlows(flows: NodeRedNode[], flowId: string): NodeRedFlow {
+  const tab = flows.find(node => node.id === flowId);
+  if (!tab || (tab.type !== 'tab' && tab.type !== 'subflow')) {
+    throw new Error(
+      `Flow '${flowId}' not found. Re-fetch flows and confirm the tab id before retrying.`
+    );
+  }
+
+  const children = flows.filter(node => node.z === flowId);
+  const nodes: NodeRedNode[] = [];
+  const configs: NodeRedConfig[] = [];
+  for (const child of children) {
+    // Preserve z so a get_flow → deploy_nodes round-trip cannot orphan nodes.
+    const copy: NodeRedNode = { ...child };
+    if (isLikelyConfigNode(copy)) {
+      configs.push(copy);
+    } else {
+      nodes.push(copy);
+    }
+  }
+
+  const flow: NodeRedFlow = {
+    id: flowId,
+    type: tab.type,
+    nodes,
+  };
+  if (configs.length > 0) flow.configs = configs;
+  if (tab.label !== undefined) flow.label = tab.label;
+  if (tab.disabled !== undefined) flow.disabled = Boolean(tab.disabled);
+  if (tab.info !== undefined) flow.info = tab.info;
+  if (tab.env !== undefined) flow.env = tab.env;
+
+  // Preserve subflow definition fields from the flat tab entry.
+  for (const key of ['name', 'category', 'in', 'out', 'meta', 'color'] as const) {
+    if (tab[key] !== undefined) {
+      (flow as NodeRedFlow & Record<string, unknown>)[key] = tab[key];
+    }
+  }
+  if (flow.label === undefined && typeof tab.name === 'string' && tab.name.trim().length > 0) {
+    flow.label = tab.name;
+  }
+  return flow;
 }
 
 // Containers rather than node instances. A subflow *instance* (`subflow:<id>`)
@@ -667,6 +984,165 @@ export class NodeRedAPIClient {
   }
 
   /**
+   * Get the full flow config plus the `rev` needed for a safe conditional
+   * deploy (Node-RED's v2 admin API only returns `rev` when this header is
+   * sent).
+   */
+  async getFlowsWithRev(): Promise<{ rev: string; flows: NodeRedNode[] }> {
+    try {
+      const response = await this.client.get('/flows', {
+        headers: { 'Node-RED-API-Version': 'v2' },
+      });
+      const data = response.data;
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        typeof data.rev !== 'string' ||
+        !Array.isArray(data.flows)
+      ) {
+        throw unexpectedBody(data, 'v2 flow data');
+      }
+      return { rev: data.rev, flows: data.flows };
+    } catch (error) {
+      handleNodeRedError(error, 'getFlowsWithRev');
+    }
+  }
+
+  /**
+   * Add or update specific nodes and deploy ONLY those nodes — the same
+   * mechanism as the editor's "Modified Nodes" button. Every node not in
+   * `nodes` (by `id`) is left completely untouched and does not restart,
+   * unlike `updateFlow`/`enableFlow`/`disableFlow`/`deleteFlow`, which replace
+   * (and therefore restart) an entire tab via `PUT /flow/:id`.
+   *
+   * Safe to use even on a tab with long-lived connections (for example an MQTT
+   * client or WebSocket node), since nothing outside `nodes` is redeployed.
+   *
+   * Optimistic concurrency: pass the `rev` previously returned by
+   * {@link getFlowsWithRev} / `get_flows` / `get_flow` as `expectedRev`. The
+   * current flows are still fetched to build the merge, but the POST uses the
+   * caller's `expectedRev` (never the freshly fetched rev). A mismatch fails
+   * fast with HTTP 409 semantics before posting; a race after the check still
+   * yields Node-RED's 409 `version_mismatch`.
+   */
+  async deployModifiedNodes(
+    nodes: NodeRedNode[],
+    expectedRev: string,
+    options?: {
+      credentials?: Record<string, unknown>;
+      validate?: boolean;
+    }
+  ): Promise<{ rev: string }> {
+    if (typeof expectedRev !== 'string' || expectedRev.length === 0) {
+      throw new Error('expectedRev is required (non-empty string from get_flows / get_flow)');
+    }
+    // One snapshot for rev check, optional validate, and the replace merge.
+    const { rev: currentRev, flows } = await this.getFlowsWithRev();
+    assertExpectedFlowRev(expectedRev, currentRev, 'deployModifiedNodes');
+
+    if (options?.validate) {
+      assertDeployNodesWiresValid(
+        nodes,
+        flows.map(n => n.id)
+      );
+    }
+
+    const tabIds = new Set(
+      flows.filter(n => n.type === 'tab' || n.type === 'subflow').map(n => n.id)
+    );
+    const byId = new Map(flows.map(node => [node.id, node]));
+    for (const node of nodes) {
+      if (node.type === 'tab' || node.type === 'subflow') {
+        throw new Error(
+          `Refusing to deploy type '${node.type}' via deploy_nodes (id='${node.id}'). Use deploy_flow to create or replace a tab/subflow.`
+        );
+      }
+      const existing = byId.get(node.id);
+      if (existing && (existing.type === 'tab' || existing.type === 'subflow')) {
+        throw new Error(
+          `Refusing to overwrite tab/subflow id '${node.id}' via deploy_nodes. Use deploy_flow to replace a tab.`
+        );
+      }
+      // Add-or-replace: payload fields win; inherit z only when the key is omitted.
+      const replaced: NodeRedNode = { ...node };
+      if (!('z' in node)) {
+        if (typeof existing?.z === 'string') {
+          replaced.z = existing.z;
+        } else {
+          delete replaced.z;
+        }
+      } else if (typeof node.z !== 'string') {
+        throw new Error(`Node '${node.id}' has an invalid z (expected a tab/subflow id string)`);
+      } else {
+        replaced.z = node.z;
+      }
+      const z = replaced.z;
+      const hasZ = typeof z === 'string' && z.length > 0;
+      if (hasZ) {
+        if (!tabIds.has(z)) {
+          throw new Error(
+            `Node '${replaced.id}' has z='${z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
+          );
+        }
+      } else {
+        // Missing or empty z: only global config nodes may omit z.
+        if (!isLikelyConfigNode(replaced)) {
+          throw new Error(
+            `Node '${replaced.id}' needs a non-empty z matching an existing tab or subflow`
+          );
+        }
+        if (replaced.z === '') {
+          delete replaced.z;
+        }
+      }
+      byId.set(replaced.id, replaced);
+    }
+    return this.deployFlows({
+      type: 'nodes',
+      rev: expectedRev,
+      flows: Array.from(byId.values()),
+      ...(options?.credentials !== undefined ? { credentials: options.credentials } : {}),
+    });
+  }
+
+  /**
+   * Replace one tab (and its child nodes) in the flat flow config and deploy
+   * with Admin API v2 revision checking — safer than {@link updateFlow}, which
+   * uses `PUT /flow/:id` with no `rev` check.
+   *
+   * Nodes that belong to the tab (`z === flowId`) but are omitted from
+   * `flowData.nodes` / `flowData.configs` are removed. Other tabs, subflows,
+   * and global config nodes are left untouched.
+   *
+   * Optimistic concurrency: `options.expectedRev` must be the rev from the
+   * prior read. The merge uses a fresh GET, but the POST `rev` is always the
+   * caller's `expectedRev`.
+   */
+  async deployFlow(
+    flowId: string,
+    flowData: Partial<NodeRedFlow>,
+    options: {
+      expectedRev: string;
+      type?: 'flows' | 'nodes';
+      credentials?: Record<string, unknown>;
+    }
+  ): Promise<{ rev: string }> {
+    this.assertSafeSegment(flowId, 'flowId');
+    if (typeof options?.expectedRev !== 'string' || options.expectedRev.length === 0) {
+      throw new Error('expectedRev is required (non-empty string from get_flows / get_flow)');
+    }
+    const { rev: currentRev, flows } = await this.getFlowsWithRev();
+    assertExpectedFlowRev(options.expectedRev, currentRev, 'deployFlow');
+    const merged = replaceFlowTabInFlatFlows(flows, flowId, flowData);
+    return this.deployFlows({
+      type: options.type ?? 'flows',
+      rev: options.expectedRev,
+      flows: merged,
+      ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
+    });
+  }
+
+  /**
    * Delete flow
    */
   async deleteFlow(flowId: string): Promise<void> {
@@ -679,15 +1155,67 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Deploy flows
+   * Deploy (or reload) the active flow configuration.
+   *
+   * Shared Admin API v2 POST `/flows` helper used by {@link deployModifiedNodes},
+   * {@link deployFlow}, and direct redeploys. Node-RED requires a flow body for
+   * `full` / `nodes` / `flows` (a null body returns HTTP 400). Only `reload`
+   * ignores the body and reloads from storage.
+   *
+   * When `flows` is omitted (non-reload), the current flows are fetched and
+   * re-posted with their `rev`. Callers that already built a merged config
+   * should pass `flows` + `rev` to avoid a second GET. A stale `rev` yields
+   * HTTP 409 (`version_mismatch`).
    */
-  async deployFlows(options: NodeRedDeploymentOptions = { type: 'full' }): Promise<void> {
+  async deployFlows(
+    options: NodeRedDeploymentOptions = { type: 'full' }
+  ): Promise<{ rev: string }> {
     try {
-      await this.client.post('/flows', null, {
+      if (options.type === 'reload') {
+        const response = await this.client.post('/flows', undefined, {
+          headers: {
+            'Node-RED-API-Version': 'v2',
+            'Node-RED-Deployment-Type': 'reload',
+          },
+        });
+        const data = response.data;
+        if (!data || typeof data !== 'object' || typeof data.rev !== 'string') {
+          throw unexpectedBody(data, 'v2 deploy response');
+        }
+        return { rev: data.rev };
+      }
+
+      let rev = options.rev;
+      let flows = options.flows;
+      if (!flows) {
+        const current = await this.getFlowsWithRev();
+        rev = current.rev;
+        flows = current.flows;
+      }
+
+      const body: {
+        flows: NodeRedNode[];
+        rev?: string;
+        credentials?: Record<string, unknown>;
+      } = { flows };
+      if (rev !== undefined) {
+        body.rev = rev;
+      }
+      if (options.credentials !== undefined) {
+        body.credentials = options.credentials;
+      }
+
+      const response = await this.client.post('/flows', body, {
         headers: {
+          'Node-RED-API-Version': 'v2',
           'Node-RED-Deployment-Type': options.type,
         },
       });
+      const data = response.data;
+      if (!data || typeof data !== 'object' || typeof data.rev !== 'string') {
+        throw unexpectedBody(data, 'v2 deploy response');
+      }
+      return { rev: data.rev };
     } catch (error) {
       handleNodeRedError(error, 'deployFlows');
     }
@@ -695,13 +1223,15 @@ export class NodeRedAPIClient {
 
   /**
    * Enable specific flow
+   *
+   * `PUT /flow/:id` already persists and deploys the tab (runtime
+   * `updateFlow` → `setFlows(..., "flows")`), so no follow-up deploy is needed.
    */
   async enableFlow(flowId: string): Promise<void> {
     try {
       const flow = await this.getFlow(flowId);
       flow.disabled = false;
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `enableFlow(${flowId})`);
     }
@@ -709,13 +1239,15 @@ export class NodeRedAPIClient {
 
   /**
    * Disable specific flow
+   *
+   * `PUT /flow/:id` already persists and deploys the tab (runtime
+   * `updateFlow` → `setFlows(..., "flows")`), so no follow-up deploy is needed.
    */
   async disableFlow(flowId: string): Promise<void> {
     try {
       const flow = await this.getFlow(flowId);
       flow.disabled = true;
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `disableFlow(${flowId})`);
     }

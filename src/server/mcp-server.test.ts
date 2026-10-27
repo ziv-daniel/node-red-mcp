@@ -34,9 +34,12 @@ import { SSEHandler } from './sse-handler.js';
 const mockNodeRedClient = {
   getFlows: vi.fn(),
   getFlowSummaries: vi.fn(),
+  getFlowsWithRev: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
   updateFlow: vi.fn(),
+  deployFlow: vi.fn(),
+  deployModifiedNodes: vi.fn(),
   enableFlow: vi.fn(),
   disableFlow: vi.fn(),
   searchModules: vi.fn(),
@@ -61,9 +64,11 @@ const mockSSEHandler = {
   destroy: vi.fn(),
 };
 
-// Mock NodeRedAPIClient with a class
-vi.mock('../services/nodered-api.js', () => {
+// Mock NodeRedAPIClient with a class; keep real helpers (summarizeFlatFlows, etc.)
+vi.mock('../services/nodered-api.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../services/nodered-api.js')>();
   return {
+    ...actual,
     NodeRedAPIClient: class {
       constructor() {
         return mockNodeRedClient;
@@ -141,9 +146,64 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.testConnection.mockResolvedValue(true);
     mockNodeRedClient.getFlows.mockResolvedValue(mockFlows);
     mockNodeRedClient.getFlowSummaries.mockResolvedValue(mockFlowSummaries);
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({
+      rev: 'rev-1',
+      flows: [
+        {
+          id: 'flow-1',
+          type: 'tab',
+          label: 'Test Flow',
+          disabled: false,
+          info: 'A test flow for unit testing',
+        },
+        {
+          id: 'node-1',
+          type: 'inject',
+          name: 'Trigger',
+          x: 100,
+          y: 100,
+          z: 'flow-1',
+          wires: [['node-2']],
+        },
+        {
+          id: 'node-2',
+          type: 'debug',
+          name: 'Debug Output',
+          x: 300,
+          y: 100,
+          z: 'flow-1',
+          wires: [],
+        },
+        {
+          id: 'subflow-1',
+          type: 'subflow',
+          label: 'Test Subflow',
+          disabled: false,
+          info: 'A reusable subflow',
+        },
+        {
+          id: 'subflow-node-1',
+          type: 'function',
+          name: 'Process',
+          x: 200,
+          y: 150,
+          z: 'subflow-1',
+          wires: [],
+        },
+        {
+          id: 'flow-disabled',
+          type: 'tab',
+          label: 'Disabled Flow',
+          disabled: true,
+          info: 'This flow is disabled',
+        },
+      ],
+    });
     mockNodeRedClient.getFlow.mockResolvedValue(mockFlowTab);
     mockNodeRedClient.createFlow.mockResolvedValue(mockCreatedFlow);
     mockNodeRedClient.updateFlow.mockResolvedValue(mockFlowTab);
+    mockNodeRedClient.deployFlow.mockResolvedValue({ rev: 'rev-2' });
+    mockNodeRedClient.deployModifiedNodes.mockResolvedValue({ rev: 'rev-2' });
     mockNodeRedClient.enableFlow.mockResolvedValue(undefined);
     mockNodeRedClient.disableFlow.mockResolvedValue(undefined);
     mockNodeRedClient.searchModules.mockResolvedValue(mockSearchResult);
@@ -337,9 +397,9 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 20 tools defined', () => {
+    it('should have exactly 22 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(20);
+      expect(tools.length).toBe(22);
     });
 
     it('should include semantic_search_flows tool', () => {
@@ -412,39 +472,78 @@ describe('McpNodeRedServer', () => {
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.success).toBe(true);
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
     });
   });
 
   describe('Tool Execution - get_flows', () => {
-    it('should return flow summaries by default', async () => {
+    it('should return flow summaries by default from a single getFlowsWithRev snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', {});
 
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['tab', 'subflow']);
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlows).not.toHaveBeenCalled();
       expect(result.content).toBeDefined();
       expect(result.content[0].type).toBe('text');
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.data.some((f: { id: string }) => f.id === 'flow-1')).toBe(true);
     });
 
-    it('should return full flows when includeDetails is true', async () => {
+    it('exposes the current rev alongside data without changing the data shape', async () => {
+      const result = await mcpServer.callTool('get_flows', {});
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.rev).toBe('rev-1');
+      expect(Array.isArray(parsed.data)).toBe(true);
+    });
+
+    it('should return full flows when includeDetails is true from the same snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', { includeDetails: true });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlows).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlows).not.toHaveBeenCalled();
       expect(mockNodeRedClient.getFlowSummaries).not.toHaveBeenCalled();
+      expect(parsed.data.some((n: { id: string }) => n.id === 'node-1')).toBe(true);
     });
 
-    it('should pass custom types to getFlowSummaries', async () => {
+    it('should filter summaries by custom types from the same snapshot', async () => {
       const result = await mcpServer.callTool('get_flows', { types: ['tab'] });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlowSummaries).toHaveBeenCalledWith(['tab']);
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(parsed.data.every((f: { type?: string; id: string }) => f.id !== 'subflow-1')).toBe(
+        true
+      );
+      expect(parsed.data.some((f: { id: string }) => f.id === 'flow-1')).toBe(true);
     });
   });
 
   describe('Tool Execution - get_flow', () => {
-    it('should return specific flow', async () => {
+    it('should return specific flow derived from getFlowsWithRev', async () => {
       const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
+      const parsed = JSON.parse(result.content[0].text);
 
-      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
+      expect(mockNodeRedClient.getFlow).not.toHaveBeenCalled();
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.id).toBe('flow-1');
+      expect(parsed.data.nodes).toHaveLength(2);
       expect(result.content).toBeDefined();
+    });
+
+    it('exposes the current rev alongside the flow data from one snapshot', async () => {
+      const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
+      const parsed = JSON.parse(result.content[0].text);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.rev).toBe('rev-1');
+      expect(parsed.data.id).toBe('flow-1');
+      expect(parsed.data.label).toBe('Test Flow');
+      expect(parsed.data.nodes.map((n: { id: string }) => n.id)).toEqual(['node-1', 'node-2']);
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalledTimes(1);
+      expect(mockNodeRedClient.getFlow).not.toHaveBeenCalled();
     });
 
     it('should throw validation error when flowId is missing', async () => {
@@ -488,6 +587,285 @@ describe('McpNodeRedServer', () => {
       const result = await mcpServer.callTool('update_flow', { flowId: 'flow-1' });
 
       expect(result.content[0].text).toContain('flowData');
+    });
+  });
+
+  describe('Tool Execution - deploy_flow', () => {
+    it('deploys a tab via deployFlow and reports the new rev', async () => {
+      const flowData = {
+        label: 'Updated',
+        nodes: [{ id: 'node-a', type: 'inject', wires: [[]] }],
+      };
+
+      const result = await mcpServer.callTool('deploy_flow', {
+        flowId: 'flow-1',
+        flowData,
+        expected_rev: 'rev-1',
+      });
+
+      expect(mockNodeRedClient.deployFlow).toHaveBeenCalledWith('flow-1', flowData, {
+        expectedRev: 'rev-1',
+        type: 'flows',
+      });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.rev).toBe('rev-2');
+      expect(parsed.message).toContain('flow-1');
+    });
+
+    it('passes type "nodes" when requested', async () => {
+      const flowData = { nodes: [] };
+      await mcpServer.callTool('deploy_flow', {
+        flowId: 'flow-1',
+        flowData,
+        expected_rev: 'rev-1',
+        type: 'nodes',
+      });
+
+      expect(mockNodeRedClient.deployFlow).toHaveBeenCalledWith('flow-1', flowData, {
+        expectedRev: 'rev-1',
+        type: 'nodes',
+      });
+    });
+
+    it('rejects when flowData is missing', async () => {
+      const result = await mcpServer.callTool('deploy_flow', {
+        flowId: 'flow-1',
+        expected_rev: 'rev-1',
+      });
+
+      expect(result.content[0].text).toContain('flowData');
+      expect(mockNodeRedClient.deployFlow).not.toHaveBeenCalled();
+    });
+
+    it('rejects when expected_rev is missing', async () => {
+      const result = await mcpServer.callTool('deploy_flow', {
+        flowId: 'flow-1',
+        flowData: { nodes: [] },
+      });
+
+      expect(result.content[0].text).toContain('expected_rev');
+      expect(mockNodeRedClient.deployFlow).not.toHaveBeenCalled();
+    });
+
+    it('is hidden and rejected in read-only mode', async () => {
+      process.env.MCP_READ_ONLY = 'true';
+      try {
+        const tools = mcpServer.getToolDefinitions();
+        expect(tools.find(t => t.name === 'deploy_flow')).toBeUndefined();
+
+        const result = await mcpServer.callTool('deploy_flow', {
+          flowId: 'flow-1',
+          flowData: { nodes: [] },
+          expected_rev: 'rev-1',
+        });
+        expect(result.content[0].text).toContain('read-only mode');
+      } finally {
+        delete process.env.MCP_READ_ONLY;
+      }
+    });
+
+    it('describes omission-deletes and recommends itself from update_flow', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const deployFlow = tools.find(t => t.name === 'deploy_flow');
+      const updateFlow = tools.find(t => t.name === 'update_flow');
+
+      expect(deployFlow?.description).toMatch(/omitted/i);
+      expect(deployFlow?.description).toMatch(/deleted/i);
+      expect(deployFlow?.description).toMatch(/expected_rev/);
+      expect(deployFlow?.inputSchema.required).toContain('expected_rev');
+      expect(deployFlow?.annotations?.destructiveHint).toBe(true);
+      expect(updateFlow?.description).toMatch(/PUT \/flow\/:id/);
+      expect(updateFlow?.description).toMatch(/deploy_flow/);
+    });
+  });
+
+  describe('Tool Execution - deploy_nodes', () => {
+    it('deploys the given nodes and reports the new rev', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1' }];
+
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+      });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {});
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.rev).toBe('rev-2');
+      expect(parsed.message).toContain('node-a');
+    });
+
+    it('forwards optional credentials to the API client when keys match node ids', async () => {
+      const nodes = [{ id: 'node-a', type: 'mqtt-broker' }];
+      const credentials = { 'node-a': { user: 'u', password: 'p' } };
+
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+        credentials,
+      });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        credentials,
+      });
+      expect(result.content[0].text).toContain('node-a');
+    });
+
+    it('rejects credentials in the encrypted `$` form', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'mqtt-broker' }],
+        expected_rev: 'rev-1',
+        credentials: { $: 'encrypted-blob' },
+      });
+
+      expect(result.content[0].text).toMatch(/\$/);
+      expect(result.content[0].text).toMatch(/credential store/i);
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects credentials keys that are not in nodes', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'mqtt-broker' }],
+        expected_rev: 'rev-1',
+        credentials: { 'other-node': { user: 'u' } },
+      });
+
+      expect(result.content[0].text).toContain('other-node');
+      expect(result.content[0].text).toMatch(/does not match any id in nodes/);
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('forwards validate:true into deployModifiedNodes (same-snapshot validation)', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] }];
+      mockNodeRedClient.deployModifiedNodes.mockRejectedValueOnce(
+        new Error('Validation failed:\n- Node "node-a": wire references unknown node "missing"')
+      );
+
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+        validate: true,
+      });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        validate: true,
+      });
+      expect(result.content[0].text).toMatch(/Validation failed|wires|missing/i);
+    });
+
+    it('accepts validate:true when deployModifiedNodes succeeds for outside-batch wires', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'flow-1', wires: [['node-2']] }];
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+        validate: true,
+      });
+
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        validate: true,
+      });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+    });
+
+    it('skips structural validation when validate is omitted', async () => {
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] }];
+      await mcpServer.callTool('deploy_nodes', {
+        nodes,
+        expected_rev: 'rev-1',
+      });
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {});
+    });
+
+    it('rejects when nodes is missing or empty', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [],
+        expected_rev: 'rev-1',
+      });
+
+      expect(result.content[0].text).toContain('nodes');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects when expected_rev is missing', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'inject', z: 'tab-1' }],
+      });
+
+      expect(result.content[0].text).toContain('expected_rev');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a node missing an id', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ type: 'inject', z: 'tab-1' }],
+        expected_rev: 'rev-1',
+      });
+
+      expect(result.content[0].text).toContain('id');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a node missing a type', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', z: 'tab-1' }],
+        expected_rev: 'rev-1',
+      });
+
+      expect(result.content[0].text).toContain('type');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate node ids', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [
+          { id: 'node-a', type: 'inject', z: 'tab-1' },
+          { id: 'node-a', type: 'debug', z: 'tab-1' },
+        ],
+        expected_rev: 'rev-1',
+      });
+
+      expect(result.content[0].text).toContain('Duplicate node id');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-object credentials value', async () => {
+      const result = await mcpServer.callTool('deploy_nodes', {
+        nodes: [{ id: 'node-a', type: 'inject', z: 'tab-1' }],
+        expected_rev: 'rev-1',
+        credentials: ['not-an-object'],
+      });
+
+      expect(result.content[0].text).toContain('credentials');
+      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+    });
+
+    it('documents that flow nodes need wires or z (else global config)', () => {
+      const tools = mcpServer.getToolDefinitions();
+      const deployNodes = tools.find(t => t.name === 'deploy_nodes');
+      expect(deployNodes?.description).toMatch(/wires/i);
+      expect(deployNodes?.description).toMatch(/global config/i);
+      const nodesProp = deployNodes?.inputSchema?.properties?.nodes as
+        { description?: string } | undefined;
+      expect(nodesProp?.description).toMatch(/wires/i);
+      expect(nodesProp?.description).toMatch(/global config/i);
+    });
+
+    it('is hidden and rejected in read-only mode', async () => {
+      process.env.MCP_READ_ONLY = 'true';
+      try {
+        const tools = mcpServer.getToolDefinitions();
+        expect(tools.find(t => t.name === 'deploy_nodes')).toBeUndefined();
+
+        const result = await mcpServer.callTool('deploy_nodes', {
+          nodes: [{ id: 'node-a', type: 'inject', z: 'tab-1' }],
+          expected_rev: 'rev-1',
+        });
+        expect(result.content[0].text).toContain('read-only mode');
+      } finally {
+        delete process.env.MCP_READ_ONLY;
+      }
     });
   });
 
@@ -1091,7 +1469,7 @@ describe('McpNodeRedServer', () => {
 
   describe('Tool Execution - Error Handling', () => {
     it('should handle errors in tool execution', async () => {
-      mockNodeRedClient.getFlow.mockRejectedValueOnce(new Error('Connection failed'));
+      mockNodeRedClient.getFlowsWithRev.mockRejectedValueOnce(new Error('Connection failed'));
 
       const result = await mcpServer.callTool('get_flow', { flowId: 'flow-1' });
 
@@ -1361,9 +1739,10 @@ describe('McpNodeRedServer', () => {
         content: { flowId: 'flow-1' },
       });
       const result = await mcpServer.callTool('get_flow', {});
-      expect(mockNodeRedClient.getFlow).toHaveBeenCalledWith('flow-1');
+      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
+      expect(parsed.data.id).toBe('flow-1');
     });
 
     it('should return error when flowId elicitation is declined', async () => {
