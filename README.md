@@ -85,20 +85,20 @@ docker run -e NODERED_URL=http://your-nodered:1880 \
 
 ### Flow Management
 
-| Tool                    | Description                        | Key Parameters                                   |
-| ----------------------- | ---------------------------------- | ------------------------------------------------ |
-| `get_flows`             | List flows (summary or full) + rev | `includeDetails?`, `types?`, `limit?`, `offset?` |
-| `get_flow`              | Get a specific flow + rev          | `flowId`                                         |
-| `create_flow`           | Create a new flow                  | `flowData`, `validate?`                          |
-| `update_flow`           | Update an existing flow (PUT)      | `flowId`, `flowData`, `validate?`                |
-| `deploy_flow`           | Replace one tab; rev-checked POST  | `flowId`, `flowData`, `expected_rev`, `type?`    |
+| Tool                    | Description                        | Key Parameters                                       |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------- |
+| `get_flows`             | List flows (summary or full) + rev | `includeDetails?`, `types?`, `limit?`, `offset?`     |
+| `get_flow`              | Get a specific flow + rev          | `flowId`                                             |
+| `create_flow`           | Create a new flow                  | `flowData`, `validate?`                              |
+| `update_flow`           | Update an existing flow (PUT)      | `flowId`, `flowData`, `validate?`                    |
+| `deploy_flow`           | Replace one tab; rev-checked POST  | `flowId`, `flowData`, `expected_rev`, `type?`        |
 | `deploy_nodes`          | Upsert nodes; deploy only those    | `nodes`, `expected_rev`, `credentials?`, `validate?` |
-| `enable_flow`           | Enable a flow                      | `flowId`                                         |
-| `disable_flow`          | Disable a flow                     | `flowId`                                         |
-| `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                  |
-| `validate_flow`         | Validate flow structure            | `flowId`                                         |
-| `search_flows`          | Search nodes by type/name/property | `type?`, `query?`, `flowId?`                     |
-| `semantic_search_flows` | Embeddings-based semantic search   | `query`, `scope?`, `topK?`, `refresh?`           |
+| `enable_flow`           | Enable a flow                      | `flowId`                                             |
+| `disable_flow`          | Disable a flow                     | `flowId`                                             |
+| `delete_flow`           | Delete a flow (dry-run by default) | `flowId`, `dryRun?`, `confirm?`                      |
+| `validate_flow`         | Validate flow structure            | `flowId`                                             |
+| `search_flows`          | Search nodes by type/name/property | `type?`, `query?`, `flowId?`                         |
+| `semantic_search_flows` | Embeddings-based semantic search   | `query`, `scope?`, `topK?`, `refresh?`               |
 
 `deploy_nodes` flow nodes must include `wires` or a `z` matching an existing
 tab/subflow; a node with neither is treated as a global config node. Prefer

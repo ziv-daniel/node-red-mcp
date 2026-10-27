@@ -737,9 +737,7 @@ describe('McpNodeRedServer', () => {
     });
 
     it('forwards validate:true into deployModifiedNodes (same-snapshot validation)', async () => {
-      const nodes = [
-        { id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] },
-      ];
+      const nodes = [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] }];
       mockNodeRedClient.deployModifiedNodes.mockRejectedValueOnce(
         new Error('Validation failed:\n- Node "node-a": wire references unknown node "missing"')
       );
@@ -849,8 +847,7 @@ describe('McpNodeRedServer', () => {
       expect(deployNodes?.description).toMatch(/wires/i);
       expect(deployNodes?.description).toMatch(/global config/i);
       const nodesProp = deployNodes?.inputSchema?.properties?.nodes as
-        | { description?: string }
-        | undefined;
+        { description?: string } | undefined;
       expect(nodesProp?.description).toMatch(/wires/i);
       expect(nodesProp?.description).toMatch(/global config/i);
     });

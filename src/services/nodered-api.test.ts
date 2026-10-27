@@ -441,10 +441,7 @@ describe('NodeRedAPIClient', () => {
         });
 
         await expect(
-          client.deployModifiedNodes(
-            [{ id: 'node-a', type: 'inject', z: 'missing-tab' }],
-            'rev-1'
-          )
+          client.deployModifiedNodes([{ id: 'node-a', type: 'inject', z: 'missing-tab' }], 'rev-1')
         ).rejects.toThrow(/does not match any existing tab or subflow/);
         expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
@@ -586,9 +583,7 @@ describe('NodeRedAPIClient', () => {
 
         const posted = mockAxiosInstance.post.mock.calls[0][1];
         expect(posted.flows).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ id: 'broker-1', type: 'mqtt-broker' }),
-          ])
+          expect.arrayContaining([expect.objectContaining({ id: 'broker-1', type: 'mqtt-broker' })])
         );
         expect(posted.flows.find((n: any) => n.id === 'broker-1').z).toBeUndefined();
       });
@@ -925,9 +920,7 @@ describe('NodeRedAPIClient', () => {
         expect(flow.type).toBe('subflow');
         expect((flow as any).name).toBe('Formatter');
         expect((flow as any).in).toEqual([{ x: 10, y: 20, wires: [{ id: 'sf-fn-1' }] }]);
-        expect((flow as any).out).toEqual([
-          { x: 100, y: 20, wires: [{ id: 'sf-fn-1', port: 0 }] },
-        ]);
+        expect((flow as any).out).toEqual([{ x: 100, y: 20, wires: [{ id: 'sf-fn-1', port: 0 }] }]);
         expect(flow.nodes[0]).toMatchObject({ id: 'sf-fn-1', z: 'sf-1' });
       });
 

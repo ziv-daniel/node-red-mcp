@@ -223,9 +223,7 @@ export function summarizeFlatFlows(
   flowStatus: NodeRedFlowStatus | null = null
 ): NodeRedFlowSummary[] {
   const typeSet = new Set(types);
-  const containers = flows.filter(
-    flow => typeof flow?.type === 'string' && typeSet.has(flow.type)
-  );
+  const containers = flows.filter(flow => typeof flow?.type === 'string' && typeSet.has(flow.type));
 
   return containers.map(flow => {
     const status = flowStatus?.flows?.find(f => f.id === flow.id);
@@ -413,11 +411,7 @@ export function extractFlowFromFlatFlows(flows: NodeRedNode[], flowId: string): 
       (flow as NodeRedFlow & Record<string, unknown>)[key] = tab[key];
     }
   }
-  if (
-    flow.label === undefined &&
-    typeof tab.name === 'string' &&
-    tab.name.trim().length > 0
-  ) {
+  if (flow.label === undefined && typeof tab.name === 'string' && tab.name.trim().length > 0) {
     flow.label = tab.name;
   }
   return flow;
@@ -1074,9 +1068,7 @@ export class NodeRedAPIClient {
           delete replaced.z;
         }
       } else if (typeof node.z !== 'string') {
-        throw new Error(
-          `Node '${node.id}' has an invalid z (expected a tab/subflow id string)`
-        );
+        throw new Error(`Node '${node.id}' has an invalid z (expected a tab/subflow id string)`);
       } else {
         replaced.z = node.z;
       }
