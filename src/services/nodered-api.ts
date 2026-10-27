@@ -256,7 +256,7 @@ export function summarizeFlatFlows(
 /**
  * Well-known workspace (non-config) node types. Without the Node-RED type
  * registry we cannot ask `nodeDef.defaults`/`category === 'config'`, so these
- * plus canvas placement (x/y) / wires identify flow nodes.
+ * plus the presence of wires identify flow nodes.
  */
 const WELL_KNOWN_FLOW_NODE_TYPES = new Set([
   'inject',
@@ -304,9 +304,9 @@ const WELL_KNOWN_FLOW_NODE_TYPES = new Set([
 
 /**
  * Heuristic for config-node entries when the type registry is unavailable.
- * Matches Node-RED's usual export shape: config nodes are not placed on the
- * canvas (no x/y) and have no wires. Groups, junctions, subflow instances and
+ * Config nodes have no wires; groups, junctions, subflow instances and
  * well-known workspace types (inject, comment, …) are never configs.
+ * Canvas x/y alone does not disqualify a config (some exports include them).
  */
 export function isLikelyConfigNode(node: NodeRedNode): boolean {
   const type = node?.type;
@@ -316,8 +316,6 @@ export function isLikelyConfigNode(node: NodeRedNode): boolean {
   }
   if (type.startsWith('subflow:')) return false;
   if (WELL_KNOWN_FLOW_NODE_TYPES.has(type)) return false;
-  // Canvas-positioned nodes are workspace nodes even without wires (e.g. comment).
-  if (typeof node.x === 'number' || typeof node.y === 'number') return false;
   if (Array.isArray(node.wires)) return false;
   return true;
 }
@@ -1056,19 +1054,31 @@ export class NodeRedAPIClient {
     );
     const byId = new Map(flows.map(node => [node.id, node]));
     for (const node of nodes) {
+      if (node.type === 'tab' || node.type === 'subflow') {
+        throw new Error(
+          `Refusing to deploy type '${node.type}' via deploy_nodes (id='${node.id}'). Use deploy_flow to create or replace a tab/subflow.`
+        );
+      }
       const existing = byId.get(node.id);
       if (existing && (existing.type === 'tab' || existing.type === 'subflow')) {
         throw new Error(
           `Refusing to overwrite tab/subflow id '${node.id}' via deploy_nodes. Use deploy_flow to replace a tab.`
         );
       }
-      // Add-or-replace: payload fields win; only inherit z when the caller omitted it.
+      // Add-or-replace: payload fields win; inherit z only when the key is omitted.
       const replaced: NodeRedNode = { ...node };
-      const inheritedZ = node.z ?? existing?.z;
-      if (inheritedZ !== undefined) {
-        replaced.z = inheritedZ;
+      if (!('z' in node)) {
+        if (typeof existing?.z === 'string') {
+          replaced.z = existing.z;
+        } else {
+          delete replaced.z;
+        }
+      } else if (typeof node.z !== 'string') {
+        throw new Error(
+          `Node '${node.id}' has an invalid z (expected a tab/subflow id string)`
+        );
       } else {
-        delete replaced.z;
+        replaced.z = node.z;
       }
       const z = replaced.z;
       const hasZ = typeof z === 'string' && z.length > 0;

@@ -463,6 +463,91 @@ describe('NodeRedAPIClient', () => {
         expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
 
+      it('rejects a payload whose own type is tab or subflow', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes(
+            [{ id: 'brand-new-tab', type: 'tab', label: 'Nope' } as any],
+            'rev-1'
+          )
+        ).rejects.toThrow(/Refusing to deploy type 'tab'/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('rejects an explicit null z', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [
+              { id: 'tab-1', type: 'tab', label: 'A' },
+              { id: 'node-a', type: 'inject', z: 'tab-1', wires: [[]] },
+            ],
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes(
+            [{ id: 'node-a', type: 'inject', z: null as any, wires: [[]] }],
+            'rev-1'
+          )
+        ).rejects.toThrow(/invalid z/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('requires z for group, junction, and subflow instance nodes', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'g1', type: 'group' }], 'rev-1')
+        ).rejects.toThrow(/needs a non-empty z/);
+
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+        await expect(
+          client.deployModifiedNodes([{ id: 'j1', type: 'junction' }], 'rev-1')
+        ).rejects.toThrow(/needs a non-empty z/);
+
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [
+              { id: 'tab-1', type: 'tab', label: 'A' },
+              { id: 'sf-1', type: 'subflow', name: 'SF', in: [], out: [] },
+            ],
+          },
+        });
+        await expect(
+          client.deployModifiedNodes([{ id: 'inst-1', type: 'subflow:sf-1' }], 'rev-1')
+        ).rejects.toThrow(/needs a non-empty z/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('allows a config node that carries x/y without requiring z', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployModifiedNodes(
+          [{ id: 'broker-1', type: 'mqtt-broker', name: 'Local', x: 10, y: 20 }],
+          'rev-1'
+        );
+
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        expect(posted.flows.find((n: any) => n.id === 'broker-1')).toMatchObject({
+          type: 'mqtt-broker',
+          x: 10,
+          y: 20,
+        });
+        expect(posted.flows.find((n: any) => n.id === 'broker-1').z).toBeUndefined();
+      });
+
       it('rejects a flow node missing z', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({
           data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
@@ -804,6 +889,25 @@ describe('NodeRedAPIClient', () => {
         const flow = extractFlowFromFlatFlows(flat, 'tab-1');
         expect(flow.nodes.map(n => n.id)).toEqual(['note-1']);
         expect(flow.configs?.map(c => c.id)).toEqual(['broker-local']);
+      });
+
+      it('keeps flow-scoped configs with x/y in configs', () => {
+        const flat = [
+          { id: 'tab-1', type: 'tab', label: 'Main' },
+          {
+            id: 'broker-local',
+            type: 'mqtt-broker',
+            z: 'tab-1',
+            x: 12,
+            y: 34,
+            broker: 'localhost',
+          },
+        ];
+        const flow = extractFlowFromFlatFlows(flat, 'tab-1');
+        expect(flow.nodes).toEqual([]);
+        expect(flow.configs).toEqual([
+          expect.objectContaining({ id: 'broker-local', z: 'tab-1', x: 12, y: 34 }),
+        ]);
       });
 
       it('preserves subflow in/out/name from the flat definition', () => {

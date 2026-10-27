@@ -160,14 +160,10 @@ interface FlowValidationResult {
   errors: string[];
 }
 
-function validateFlowData(
-  flow: { nodes?: unknown[] },
-  options?: { knownNodeIds?: Iterable<string> }
-): FlowValidationResult {
+function validateFlowData(flow: { nodes?: unknown[] }): FlowValidationResult {
   const errors: string[] = [];
   const nodes = Array.isArray(flow?.nodes) ? (flow.nodes as Record<string, unknown>[]) : [];
-  const batchIds = new Set<string>();
-  const knownIds = new Set<string>(options?.knownNodeIds ?? []);
+  const nodeIds = new Set<string>();
 
   for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
@@ -177,17 +173,13 @@ function validateFlowData(
     if (!node.type) errors.push(`${label}: missing required field "type"`);
 
     if (id) {
-      if (batchIds.has(id)) {
+      if (nodeIds.has(id)) {
         errors.push(`Duplicate node ID: "${id}"`);
       } else {
-        batchIds.add(id);
+        nodeIds.add(id);
       }
     }
   }
-
-  // Wire targets may point at nodes outside this batch when the caller
-  // supplies the current snapshot ids (deploy_nodes partial updates).
-  const resolvableIds = new Set<string>([...knownIds, ...batchIds]);
 
   for (const [i, node] of nodes.entries()) {
     const id = typeof node.id === 'string' ? node.id : '';
@@ -203,7 +195,7 @@ function validateFlowData(
           errors.push(`${label}: wire target must be a string`);
           continue;
         }
-        if (!resolvableIds.has(target)) {
+        if (!nodeIds.has(target)) {
           errors.push(`${label}: wire references unknown node "${target}"`);
         }
       }
@@ -213,11 +205,8 @@ function validateFlowData(
   return { valid: errors.length === 0, errors };
 }
 
-function validateFlowOrThrow(
-  flowData: { nodes?: unknown[] },
-  options?: { knownNodeIds?: Iterable<string> }
-): void {
-  const validation = validateFlowData(flowData, options);
+function validateFlowOrThrow(flowData: { nodes?: unknown[] }): void {
+  const validation = validateFlowData(flowData);
   if (!validation.valid) {
     throw new Error(`Validation failed:\n${validation.errors.map(e => `- ${e}`).join('\n')}`);
   }
