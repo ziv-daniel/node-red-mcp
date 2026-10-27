@@ -689,7 +689,7 @@ describe('McpNodeRedServer', () => {
         expected_rev: 'rev-1',
       });
 
-      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', undefined);
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {});
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
       expect(parsed.rev).toBe('rev-2');
@@ -706,11 +706,9 @@ describe('McpNodeRedServer', () => {
         credentials,
       });
 
-      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(
-        nodes,
-        'rev-1',
-        credentials
-      );
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        credentials,
+      });
       expect(result.content[0].text).toContain('node-a');
     });
 
@@ -738,20 +736,27 @@ describe('McpNodeRedServer', () => {
       expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
     });
 
-    it('validates nodes when validate is true', async () => {
+    it('forwards validate:true into deployModifiedNodes (same-snapshot validation)', async () => {
+      const nodes = [
+        { id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] },
+      ];
+      mockNodeRedClient.deployModifiedNodes.mockRejectedValueOnce(
+        new Error('Validation failed:\n- Node "node-a": wire references unknown node "missing"')
+      );
+
       const result = await mcpServer.callTool('deploy_nodes', {
-        nodes: [
-          { id: 'node-a', type: 'inject', z: 'tab-1', wires: [['missing']] },
-        ],
+        nodes,
         expected_rev: 'rev-1',
         validate: true,
       });
 
-      expect(result.content[0].text).toMatch(/Validation failed|wires/i);
-      expect(mockNodeRedClient.deployModifiedNodes).not.toHaveBeenCalled();
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        validate: true,
+      });
+      expect(result.content[0].text).toMatch(/Validation failed|wires|missing/i);
     });
 
-    it('accepts validate:true when a wire targets a node outside the batch but in the snapshot', async () => {
+    it('accepts validate:true when deployModifiedNodes succeeds for outside-batch wires', async () => {
       const nodes = [{ id: 'node-a', type: 'inject', z: 'flow-1', wires: [['node-2']] }];
       const result = await mcpServer.callTool('deploy_nodes', {
         nodes,
@@ -759,8 +764,9 @@ describe('McpNodeRedServer', () => {
         validate: true,
       });
 
-      expect(mockNodeRedClient.getFlowsWithRev).toHaveBeenCalled();
-      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', undefined);
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {
+        validate: true,
+      });
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(true);
     });
@@ -771,7 +777,7 @@ describe('McpNodeRedServer', () => {
         nodes,
         expected_rev: 'rev-1',
       });
-      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', undefined);
+      expect(mockNodeRedClient.deployModifiedNodes).toHaveBeenCalledWith(nodes, 'rev-1', {});
     });
 
     it('rejects when nodes is missing or empty', async () => {

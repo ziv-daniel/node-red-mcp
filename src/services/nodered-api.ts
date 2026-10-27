@@ -254,10 +254,59 @@ export function summarizeFlatFlows(
 }
 
 /**
- * Heuristic for config-node entries in a flat flows array when the type
- * registry is unavailable: regular canvas nodes always carry a `wires` array,
- * while config nodes (mqtt-broker, etc.) do not. Groups, junctions and
- * subflow instances are never configs.
+ * Well-known workspace (non-config) node types. Without the Node-RED type
+ * registry we cannot ask `nodeDef.defaults`/`category === 'config'`, so these
+ * plus canvas placement (x/y) / wires identify flow nodes.
+ */
+const WELL_KNOWN_FLOW_NODE_TYPES = new Set([
+  'inject',
+  'debug',
+  'function',
+  'change',
+  'switch',
+  'range',
+  'template',
+  'delay',
+  'trigger',
+  'exec',
+  'comment',
+  'complete',
+  'catch',
+  'status',
+  'link in',
+  'link out',
+  'link call',
+  'join',
+  'split',
+  'sort',
+  'batch',
+  'rbe',
+  'json',
+  'xml',
+  'yaml',
+  'html',
+  'csv',
+  'file',
+  'file in',
+  'http in',
+  'http response',
+  'http request',
+  'mqtt in',
+  'mqtt out',
+  'websocket in',
+  'websocket out',
+  'tcp in',
+  'tcp out',
+  'tcp request',
+  'udp in',
+  'udp out',
+]);
+
+/**
+ * Heuristic for config-node entries when the type registry is unavailable.
+ * Matches Node-RED's usual export shape: config nodes are not placed on the
+ * canvas (no x/y) and have no wires. Groups, junctions, subflow instances and
+ * well-known workspace types (inject, comment, …) are never configs.
  */
 export function isLikelyConfigNode(node: NodeRedNode): boolean {
   const type = node?.type;
@@ -266,7 +315,57 @@ export function isLikelyConfigNode(node: NodeRedNode): boolean {
     return false;
   }
   if (type.startsWith('subflow:')) return false;
-  return !Array.isArray(node.wires);
+  if (WELL_KNOWN_FLOW_NODE_TYPES.has(type)) return false;
+  // Canvas-positioned nodes are workspace nodes even without wires (e.g. comment).
+  if (typeof node.x === 'number' || typeof node.y === 'number') return false;
+  if (Array.isArray(node.wires)) return false;
+  return true;
+}
+
+/**
+ * Structural wire checks for a deploy_nodes batch against known ids from the
+ * same flows snapshot used for the merge / rev check.
+ */
+export function assertDeployNodesWiresValid(
+  nodes: NodeRedNode[],
+  knownNodeIds: Iterable<string>
+): void {
+  const batchIds = new Set<string>();
+  const errors: string[] = [];
+  for (const [i, node] of nodes.entries()) {
+    const id = typeof node?.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+    if (!id) errors.push(`${label}: missing required field "id"`);
+    if (!node?.type) errors.push(`${label}: missing required field "type"`);
+    if (id) {
+      if (batchIds.has(id)) errors.push(`Duplicate node ID: "${id}"`);
+      else batchIds.add(id);
+    }
+  }
+  const resolvable = new Set<string>([...knownNodeIds, ...batchIds]);
+  for (const [i, node] of nodes.entries()) {
+    const id = typeof node?.id === 'string' ? node.id : '';
+    const label = id ? `Node "${id}"` : `Node[${i}]`;
+    if (!Array.isArray(node?.wires)) continue;
+    for (const group of node.wires as unknown[]) {
+      if (!Array.isArray(group)) {
+        errors.push(`${label}: wires must be an array of arrays`);
+        continue;
+      }
+      for (const target of group as unknown[]) {
+        if (typeof target !== 'string') {
+          errors.push(`${label}: wire target must be a string`);
+          continue;
+        }
+        if (!resolvable.has(target)) {
+          errors.push(`${label}: wire references unknown node "${target}"`);
+        }
+      }
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Validation failed:\n${errors.map(e => `- ${e}`).join('\n')}`);
+  }
 }
 
 /**
@@ -933,13 +1032,24 @@ export class NodeRedAPIClient {
   async deployModifiedNodes(
     nodes: NodeRedNode[],
     expectedRev: string,
-    credentials?: Record<string, unknown>
+    options?: {
+      credentials?: Record<string, unknown>;
+      validate?: boolean;
+    }
   ): Promise<{ rev: string }> {
     if (typeof expectedRev !== 'string' || expectedRev.length === 0) {
       throw new Error('expectedRev is required (non-empty string from get_flows / get_flow)');
     }
+    // One snapshot for rev check, optional validate, and the replace merge.
     const { rev: currentRev, flows } = await this.getFlowsWithRev();
     assertExpectedFlowRev(expectedRev, currentRev, 'deployModifiedNodes');
+
+    if (options?.validate) {
+      assertDeployNodesWiresValid(
+        nodes,
+        flows.map(n => n.id)
+      );
+    }
 
     const tabIds = new Set(
       flows.filter(n => n.type === 'tab' || n.type === 'subflow').map(n => n.id)
@@ -952,36 +1062,40 @@ export class NodeRedAPIClient {
           `Refusing to overwrite tab/subflow id '${node.id}' via deploy_nodes. Use deploy_flow to replace a tab.`
         );
       }
-      // Merge with the existing node so a partial update cannot drop `z`.
-      const merged: NodeRedNode = existing
-        ? { ...existing, ...node, id: node.id, type: node.type }
-        : { ...node };
-      const z = merged.z;
+      // Add-or-replace: payload fields win; only inherit z when the caller omitted it.
+      const replaced: NodeRedNode = { ...node };
+      const inheritedZ = node.z ?? existing?.z;
+      if (inheritedZ !== undefined) {
+        replaced.z = inheritedZ;
+      } else {
+        delete replaced.z;
+      }
+      const z = replaced.z;
       const hasZ = typeof z === 'string' && z.length > 0;
       if (hasZ) {
         if (!tabIds.has(z)) {
           throw new Error(
-            `Node '${merged.id}' has z='${z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
+            `Node '${replaced.id}' has z='${z}' which does not match any existing tab or subflow. Re-fetch flows and set z to a valid tab/subflow id.`
           );
         }
       } else {
-        // Missing or empty z: only global config nodes (no wires) may omit z.
-        if (!isLikelyConfigNode(merged)) {
+        // Missing or empty z: only global config nodes may omit z.
+        if (!isLikelyConfigNode(replaced)) {
           throw new Error(
-            `Node '${merged.id}' needs a non-empty z matching an existing tab or subflow`
+            `Node '${replaced.id}' needs a non-empty z matching an existing tab or subflow`
           );
         }
-        if (merged.z === '') {
-          delete merged.z;
+        if (replaced.z === '') {
+          delete replaced.z;
         }
       }
-      byId.set(merged.id, merged);
+      byId.set(replaced.id, replaced);
     }
     return this.deployFlows({
       type: 'nodes',
       rev: expectedRev,
       flows: Array.from(byId.values()),
-      ...(credentials !== undefined ? { credentials } : {}),
+      ...(options?.credentials !== undefined ? { credentials: options.credentials } : {}),
     });
   }
 

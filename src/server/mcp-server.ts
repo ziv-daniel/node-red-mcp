@@ -1100,15 +1100,6 @@ export class McpNodeRedServer {
             }
             seenIds.add(node.id);
           }
-          if (args?.validate) {
-            // Resolve wire targets against the current snapshot so partial
-            // deploys that wire to nodes outside the batch are accepted.
-            const { flows: currentFlows } = await this.nodeRedClient.getFlowsWithRev();
-            validateFlowOrThrow(
-              { nodes },
-              { knownNodeIds: currentFlows.map(n => n.id) }
-            );
-          }
           const credentials = args?.credentials;
           if (credentials !== undefined) {
             if (
@@ -1131,11 +1122,12 @@ export class McpNodeRedServer {
               }
             }
           }
-          const deployed = await this.nodeRedClient.deployModifiedNodes(
-            nodes,
-            expectedRev,
-            credentials
-          );
+          // validate (if requested) runs inside deployModifiedNodes against the
+          // same getFlowsWithRev snapshot used for the rev check and merge.
+          const deployed = await this.nodeRedClient.deployModifiedNodes(nodes, expectedRev, {
+            ...(credentials !== undefined ? { credentials } : {}),
+            ...(args?.validate ? { validate: true } : {}),
+          });
           return {
             content: [
               {

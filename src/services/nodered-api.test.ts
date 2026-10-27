@@ -413,7 +413,7 @@ describe('NodeRedAPIClient', () => {
         await client.deployModifiedNodes(
           [{ id: 'node-a', type: 'mqtt-broker', name: 'broker' }],
           'rev-1',
-          credentials
+          { credentials }
         );
 
         expect(mockAxiosInstance.post).toHaveBeenCalledWith(
@@ -532,6 +532,109 @@ describe('NodeRedAPIClient', () => {
         expect(posted.flows.find((n: any) => n.id === 'node-b')).toMatchObject({
           z: 'tab-1',
         });
+      });
+
+      it('drops omitted fields on replace (add-or-replace, not shallow merge)', async () => {
+        const tab = { id: 'tab-1', type: 'tab', label: 'A' };
+        const existing = {
+          id: 'node-a',
+          type: 'inject',
+          z: 'tab-1',
+          name: 'old-name',
+          info: 'old-info',
+          g: 'group-1',
+          wires: [[]],
+        };
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [tab, existing] },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployModifiedNodes(
+          [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [[]] }],
+          'rev-1'
+        );
+
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        const nodeA = posted.flows.find((n: any) => n.id === 'node-a');
+        expect(nodeA).toEqual({ id: 'node-a', type: 'inject', z: 'tab-1', wires: [[]] });
+        expect(nodeA).not.toHaveProperty('name');
+        expect(nodeA).not.toHaveProperty('info');
+        expect(nodeA).not.toHaveProperty('g');
+      });
+
+      it('rejects inject with no z and no wires', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: { rev: 'rev-1', flows: [{ id: 'tab-1', type: 'tab', label: 'A' }] },
+        });
+
+        await expect(
+          client.deployModifiedNodes([{ id: 'node-new', type: 'inject' }], 'rev-1')
+        ).rejects.toThrow(/needs a non-empty z/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('deploys a node whose z is a subflow id', async () => {
+        const flat = [
+          { id: 'sf-1', type: 'subflow', name: 'Formatter', in: [], out: [] },
+          { id: 'sf-fn-1', type: 'function', z: 'sf-1', wires: [[]] },
+        ];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: { rev: 'rev-1', flows: flat } });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployModifiedNodes(
+          [{ id: 'sf-fn-1', type: 'function', z: 'sf-1', name: 'updated', wires: [[]] }],
+          'rev-1'
+        );
+
+        const posted = mockAxiosInstance.post.mock.calls[0][1];
+        expect(posted.flows.find((n: any) => n.id === 'sf-fn-1')).toMatchObject({
+          z: 'sf-1',
+          name: 'updated',
+        });
+      });
+
+      it('with validate:true, fails with version_mismatch on stale rev before posting', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-fresh',
+            flows: [
+              { id: 'tab-1', type: 'tab', label: 'A' },
+              { id: 'node-b', type: 'debug', z: 'tab-1', wires: [] },
+            ],
+          },
+        });
+
+        await expect(
+          client.deployModifiedNodes(
+            [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['node-b']] }],
+            'rev-stale',
+            { validate: true }
+          )
+        ).rejects.toThrow(/expected_rev 'rev-stale'/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('with validate:true, accepts wires to ids present in the same snapshot', async () => {
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            rev: 'rev-1',
+            flows: [
+              { id: 'tab-1', type: 'tab', label: 'A' },
+              { id: 'node-b', type: 'debug', z: 'tab-1', wires: [] },
+            ],
+          },
+        });
+        mockAxiosInstance.post.mockResolvedValueOnce({ data: { rev: 'rev-2' } });
+
+        await client.deployModifiedNodes(
+          [{ id: 'node-a', type: 'inject', z: 'tab-1', wires: [['node-b']] }],
+          'rev-1',
+          { validate: true }
+        );
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledTimes(1);
+        expect(mockAxiosInstance.post).toHaveBeenCalled();
       });
 
       it('rejects an unexpected v2 deploy response shape', async () => {
@@ -690,6 +793,17 @@ describe('NodeRedAPIClient', () => {
         expect(flow.configs).toEqual([
           expect.objectContaining({ id: 'broker-local', type: 'mqtt-broker', z: 'tab-1' }),
         ]);
+      });
+
+      it('classifies comment nodes (x/y, no wires) into nodes, not configs', () => {
+        const flat = [
+          { id: 'tab-1', type: 'tab', label: 'Main' },
+          { id: 'note-1', type: 'comment', z: 'tab-1', x: 40, y: 80, name: 'Note' },
+          { id: 'broker-local', type: 'mqtt-broker', z: 'tab-1', broker: 'localhost' },
+        ];
+        const flow = extractFlowFromFlatFlows(flat, 'tab-1');
+        expect(flow.nodes.map(n => n.id)).toEqual(['note-1']);
+        expect(flow.configs?.map(c => c.id)).toEqual(['broker-local']);
       });
 
       it('preserves subflow in/out/name from the flat definition', () => {
