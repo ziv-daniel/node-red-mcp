@@ -262,15 +262,43 @@ on your deployment, and this server needs to know which:
   `NODERED_USERNAME`/`NODERED_PASSWORD` on every request, including the
   WebSocket upgrade — exactly what a proxy in this position expects, and exactly
   what Node-RED's own admin API would reject if its `adminAuth` were enabled.
+- **Node-RED is embedded in a Signal K server** (the
+  [`signalk-node-red`](https://github.com/SignalK/signalk-node-red) plugin) —
+  the credentials are Signal K's own, not Node-RED's: the plugin mounts the
+  admin API at a sub-path (e.g.
+  `http://host:3000/plugins/signalk-node-red/redAdmin`) behind the Signal K
+  server's JWT security, and never configures Node-RED's `adminAuth` itself. Set
+  **`NODERED_AUTH_EXCHANGE=signalk`** and the server exchanges the credentials
+  at Signal K's documented login endpoint, **`POST /signalk/v1/auth/login`** —
+  resolved at the Signal K server root (everything before the plugin mount path
+  in `NODERED_URL`, so a server served behind a reverse-proxy sub-path works
+  too), not at the admin sub-path — and sends the returned JWT as a Bearer token
+  on every admin request and on the `/comms` WebSocket upgrade. Naming the
+  exchange implies it: `NODERED_ADMIN_AUTH_ENABLED=true` isn't needed, and a
+  Basic fallback would only ever 401 at Signal K. The login response carries no
+  usable `expires_in` (Signal K reports `timeToLive`, `null` when the token
+  never expires), so the cache TTL is derived from the token's own `exp` claim
+  (conservative 1h fallback for opaque tokens), refreshed 60s before expiry.
 
-In this mode the exchange requests a scope, and Node-RED validates it against
-the user's own `adminAuth` permissions. The default is `*`, narrowing to `read`
-when [`MCP_READ_ONLY`](#-read-only-mode) is set — so a Node-RED user declared
-with `permissions: "read"` can be used as-is. Set **`NODERED_AUTH_SCOPE`**
-explicitly to override either default. This matters because Node-RED rejects an
-over-broad scope request with the _same_ `invalid_grant` / "Invalid resource
-owner credentials" response it gives for a wrong password, so a scope mismatch
-would otherwise look exactly like a bad credential.
+  Note the token's reach: Signal K guards plugin routes with an _admin_
+  permission, and signalk-node-red registers no route permissions of its own, so
+  `NODERED_USERNAME`/`NODERED_PASSWORD` must belong to a Signal K **admin** user
+  — and the JWT this server caches can administer the **whole Signal K server**
+  (its routes, subscriptions, other plugins), not just the embedded Node-RED.
+  `MCP_READ_ONLY=true` still hides this server's write tools, but it does not
+  narrow the token itself, so only point this server at a Signal K instance
+  whose admin account you'd trust with the whole server.
+
+In the `nodered` exchange the request carries a scope, and Node-RED validates it
+against the user's own `adminAuth` permissions. The default is `*`, narrowing to
+`read` when [`MCP_READ_ONLY`](#-read-only-mode) is set — so a Node-RED user
+declared with `permissions: "read"` can be used as-is. Set
+**`NODERED_AUTH_SCOPE`** explicitly to override either default. This matters
+because Node-RED rejects an over-broad scope request with the _same_
+`invalid_grant` / "Invalid resource owner credentials" response it gives for a
+wrong password, so a scope mismatch would otherwise look exactly like a bad
+credential. The `signalk` exchange has no scope to request — Signal K's login
+hands out the account's full JWT — so `NODERED_AUTH_SCOPE` is ignored there.
 
 Pairing a read-scoped Node-RED user with `MCP_READ_ONLY` is the stronger
 configuration of the two: `MCP_READ_ONLY` hides the write tools, while the
@@ -297,25 +325,26 @@ credential pair sent independently of the Bearer exchange.
 
 ## ⚙️ Environment Variables
 
-| Variable                      | Required | Default                   | Description                                                                                                                                                     |
-| ----------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                                                                                   |
-| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username, or a reverse-proxy Basic-auth username — see [Node-RED Authentication](#node-red-authentication)                                       |
-| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password, or a reverse-proxy Basic-auth password — see [Node-RED Authentication](#node-red-authentication)                                       |
-| `NODERED_ADMIN_AUTH_ENABLED`  | No       | `false`                   | Set `true` when `NODERED_USERNAME`/`PASSWORD` are Node-RED's _own_ `adminAuth` credentials, to exchange them for a Bearer token instead of sending static Basic |
-| `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                                                                                       |
-| `NODERED_AUTH_SCOPE`          | No       | `*`                       | Scope requested in the `/auth/token` exchange; defaults to `read` under `MCP_READ_ONLY` — set explicitly for a narrower `adminAuth` permission                  |
-| `MCP_TRANSPORT`               | No       | `stdio`                   | `stdio`, `http`, or `both`. The published image bakes in `stdio`; set `http` to serve the HTTP endpoint and let the healthcheck pass                            |
-| `HTTP_ENABLED`                | No       | `false`                   | Serve HTTP alongside `MCP_TRANSPORT=stdio`. Ignored when transport is `http`/`both` — it can turn HTTP on, never off                                            |
-| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                                                                                        |
-| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                                                                                        |
-| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)                                                                  |
-| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                                                                                    |
-| `PORT`                        | No       | `3000`                    | Listen port                                                                                                                                                     |
-| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                                                                                                |
-| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                                                                                            |
-| `TRUST_PROXY`                 | No       | `false`                   | Reverse proxy hops to trust — see [Running Behind a Reverse Proxy](#running-behind-a-reverse-proxy)                                                             |
-| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                                                                                       |
+| Variable                      | Required | Default                   | Description                                                                                                                                                                                                                             |
+| ----------------------------- | -------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODERED_URL`                 | Yes      | —                         | URL of your Node-RED instance                                                                                                                                                                                                           |
+| `NODERED_USERNAME`            | No       | —                         | Node-RED admin username, or a reverse-proxy Basic-auth username — see [Node-RED Authentication](#node-red-authentication)                                                                                                               |
+| `NODERED_PASSWORD`            | No       | —                         | Node-RED admin password, or a reverse-proxy Basic-auth password — see [Node-RED Authentication](#node-red-authentication)                                                                                                               |
+| `NODERED_ADMIN_AUTH_ENABLED`  | No       | `false`                   | Set `true` when `NODERED_USERNAME`/`PASSWORD` are Node-RED's _own_ `adminAuth` credentials, to exchange them for a Bearer token instead of sending static Basic — implied by `NODERED_AUTH_EXCHANGE=signalk`                            |
+| `NODERED_AUTH_EXCHANGE`       | No       | `nodered`                 | Credential exchange for `NODERED_USERNAME`/`PASSWORD`: `nodered` (Node-RED's `/auth/token`) or `signalk` (Signal K's `POST /signalk/v1/auth/login`, for Node-RED embedded via the signalk-node-red plugin). Any other value is rejected |
+| `NODERED_API_TOKEN`           | No       | —                         | Pre-issued Node-RED bearer token; takes precedence over username/password                                                                                                                                                               |
+| `NODERED_AUTH_SCOPE`          | No       | `*`                       | Scope requested in the `/auth/token` exchange; defaults to `read` under `MCP_READ_ONLY` — set explicitly for a narrower `adminAuth` permission. Ignored when the exchange is `signalk`                                                  |
+| `MCP_TRANSPORT`               | No       | `stdio`                   | `stdio`, `http`, or `both`. The published image bakes in `stdio`; set `http` to serve the HTTP endpoint and let the healthcheck pass                                                                                                    |
+| `HTTP_ENABLED`                | No       | `false`                   | Serve HTTP alongside `MCP_TRANSPORT=stdio`. Ignored when transport is `http`/`both` — it can turn HTTP on, never off                                                                                                                    |
+| `MCP_USERNAME`                | No       | —                         | MCP server auth username                                                                                                                                                                                                                |
+| `MCP_PASSWORD`                | No       | —                         | MCP server auth password                                                                                                                                                                                                                |
+| `MCP_READ_ONLY`               | No       | `false`                   | Set `true` to hide write tools and reject write calls — see [Read-Only Mode](#-read-only-mode)                                                                                                                                          |
+| `HOST`                        | No       | `0.0.0.0`                 | Bind address                                                                                                                                                                                                                            |
+| `PORT`                        | No       | `3000`                    | Listen port                                                                                                                                                                                                                             |
+| `LOG_LEVEL`                   | No       | `info`                    | `debug`, `info`, `warn`, `error`                                                                                                                                                                                                        |
+| `NODERED_REJECT_UNAUTHORIZED` | No       | `true`                    | Set `false` to allow self-signed TLS                                                                                                                                                                                                    |
+| `TRUST_PROXY`                 | No       | `false`                   | Reverse proxy hops to trust — see [Running Behind a Reverse Proxy](#running-behind-a-reverse-proxy)                                                                                                                                     |
+| `EMBEDDING_MODEL`             | No       | `Xenova/all-MiniLM-L6-v2` | Model for semantic search                                                                                                                                                                                                               |
 
 ### Running Behind a Reverse Proxy
 

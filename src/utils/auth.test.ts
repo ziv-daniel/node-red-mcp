@@ -737,12 +737,16 @@ describe('resolveNodeRedAuthHeader', () => {
     delete process.env.NODERED_PASSWORD;
     delete process.env.NODERED_API_TOKEN;
     delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    delete process.env.NODERED_AUTH_EXCHANGE;
     delete process.env.MCP_READ_ONLY;
     process.env.NODERED_URL = 'http://localhost:1880';
   });
 
   afterEach(() => {
     delete process.env.MCP_READ_ONLY;
+    // The exp-claim TTL test fakes the clock; restore it even if that test
+    // fails, so later tests measure real time again.
+    vi.useRealTimers();
   });
 
   it('passes NODERED_API_TOKEN through unchanged without hitting the network', async () => {
@@ -821,6 +825,122 @@ describe('resolveNodeRedAuthHeader', () => {
       'http://localhost:1880/auth/token',
       expect.anything(),
       expect.anything()
+    );
+  });
+
+  it('exchanges credentials at the Signal K login endpoint when NODERED_AUTH_EXCHANGE=signalk', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    // Sub-path admin root (embedded Node-RED behind signalk) — the login must
+    // resolve to the server root, not the admin path.
+    process.env.NODERED_URL = 'http://localhost:3000/plugins/signalk-node-red/redAdmin';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { token: 'sk-jwt-token', type: 'JWT' },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer sk-jwt-token' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledWith(
+      'http://localhost:3000/signalk/v1/auth/login',
+      { username: 'admin', password: 'secret' },
+      expect.anything()
+    );
+  });
+
+  it('resolves the Signal K login through a reverse-proxy sub-path and implies the exchange gate', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    // NODERED_ADMIN_AUTH_ENABLED deliberately left unset — signalk implies it,
+    // since a static Basic header could never reach the plugin's admin routes.
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    // The Signal K server itself sits behind a reverse-proxy sub-path (/sk);
+    // the origin alone would drop that prefix and point the login at the
+    // wrong place.
+    process.env.NODERED_URL = 'https://sk.example.com/sk/plugins/signalk-node-red/redAdmin';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { token: 'sk-jwt-token', type: 'JWT' },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const header = await resolveNodeRedAuthHeader();
+
+    expect(header).toEqual({ Authorization: 'Bearer sk-jwt-token' });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(axios.post).toHaveBeenCalledWith(
+      'https://sk.example.com/sk/signalk/v1/auth/login',
+      { username: 'admin', password: 'secret' },
+      expect.anything()
+    );
+  });
+
+  it('rejects an unknown NODERED_AUTH_EXCHANGE value instead of silently falling back', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    // Typo — previously this fell back to the nodered exchange silently.
+    process.env.NODERED_AUTH_EXCHANGE = 'signal-k';
+    const axios = (await import('axios')).default;
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await expect(resolveNodeRedAuthHeader()).rejects.toThrow(/Invalid NODERED_AUTH_EXCHANGE/);
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  it('derives the signalk token cache TTL from the JWT exp claim, not the 1h fallback', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    // Fake JWT with exp two hours out: header.payload.sig, base64url. exp is
+    // past the 1h fallback, so a token still cached at t+61m proves the TTL
+    // came from exp — and the re-exchange at t+1h59m30s proves it refreshes
+    // 60s ahead of expiry rather than at some fixed lifetime.
+    vi.useFakeTimers();
+    const exp = Math.floor(Date.now() / 1000) + 2 * 3600;
+    const b64url = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+    const token1 = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ exp })}.sig`;
+    const token2 = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ exp: exp + 7200 })}.sig2`;
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post)
+      .mockResolvedValueOnce({ data: { token: token1, type: 'JWT' } })
+      .mockResolvedValueOnce({ data: { token: token2, type: 'JWT' } });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    const first = await resolveNodeRedAuthHeader();
+    // 61 minutes in: past the 1h fallback, still 59m from exp — must be the
+    // same cached token, with no re-exchange.
+    await vi.advanceTimersByTimeAsync(61 * 60 * 1000);
+    const second = await resolveNodeRedAuthHeader();
+    // Now within the 60s refresh buffer of exp — re-exchanged.
+    await vi.advanceTimersByTimeAsync((58 * 60 + 30) * 1000);
+    const third = await resolveNodeRedAuthHeader();
+
+    expect(first).toEqual({ Authorization: `Bearer ${token1}` });
+    expect(second).toEqual(first);
+    expect(third).toEqual({ Authorization: `Bearer ${token2}` });
+    expect(axios.post).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a signalk login response without a token', async () => {
+    process.env.NODERED_USERNAME = 'admin';
+    process.env.NODERED_PASSWORD = 'secret';
+    process.env.NODERED_ADMIN_AUTH_ENABLED = 'true';
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    const axios = (await import('axios')).default;
+    vi.mocked(axios.post).mockResolvedValue({
+      data: { statusCode: 401 },
+    });
+    const { resolveNodeRedAuthHeader } = await import('./auth.js');
+
+    await expect(resolveNodeRedAuthHeader()).rejects.toThrow(
+      /Unexpected response from Signal K \/signalk\/v1\/auth\/login/
     );
   });
 
@@ -926,6 +1046,7 @@ describe('isNodeRedAdminAuthEnabled', () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    delete process.env.NODERED_AUTH_EXCHANGE;
   });
 
   it('is false when unset', async () => {
@@ -944,6 +1065,21 @@ describe('isNodeRedAdminAuthEnabled', () => {
     const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
     expect(isNodeRedAdminAuthEnabled()).toBe(true);
   });
+
+  it('is true when NODERED_AUTH_EXCHANGE=signalk, with no separate gate needed', async () => {
+    // NODERED_ADMIN_AUTH_ENABLED deliberately left unset — naming the
+    // signalk exchange implies the exchange gate, since Basic auth can
+    // never reach the plugin's admin routes.
+    process.env.NODERED_AUTH_EXCHANGE = 'signalk';
+    const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
+    expect(isNodeRedAdminAuthEnabled()).toBe(true);
+  });
+
+  it('rejects an unknown NODERED_AUTH_EXCHANGE value', async () => {
+    process.env.NODERED_AUTH_EXCHANGE = 'signal-k';
+    const { isNodeRedAdminAuthEnabled } = await import('./auth.js');
+    expect(() => isNodeRedAdminAuthEnabled()).toThrow(/Invalid NODERED_AUTH_EXCHANGE/);
+  });
 });
 
 describe('resolveNodeRedAuthToken', () => {
@@ -954,6 +1090,7 @@ describe('resolveNodeRedAuthToken', () => {
     delete process.env.NODERED_PASSWORD;
     delete process.env.NODERED_API_TOKEN;
     delete process.env.NODERED_ADMIN_AUTH_ENABLED;
+    delete process.env.NODERED_AUTH_EXCHANGE;
     process.env.NODERED_URL = 'http://localhost:1880';
   });
 
@@ -1018,6 +1155,7 @@ describe('resolveNodeRedAuthToken', () => {
 describe('getNodeRedAuthScope', () => {
   beforeEach(() => {
     delete process.env.NODERED_AUTH_SCOPE;
+    delete process.env.NODERED_AUTH_EXCHANGE;
     delete process.env.MCP_READ_ONLY;
   });
 

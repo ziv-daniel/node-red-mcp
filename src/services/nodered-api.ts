@@ -443,7 +443,7 @@ export class NodeRedAPIClient {
           error.response?.status === 401 &&
           !config._authRetry &&
           !this.hasExplicitAuthOverride &&
-          (isNodeRedAdminAuthEnabled() || validateNodeRedAuth().type === 'bearer')
+          (validateNodeRedAuth().type === 'bearer' || isNodeRedAdminAuthEnabled())
         ) {
           config._authRetry = true;
           // Force a fresh token now; the request interceptor will also call
