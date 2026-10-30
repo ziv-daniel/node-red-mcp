@@ -404,6 +404,40 @@ export function getNodeRedAuthScope(): string {
 }
 
 /**
+ * The credential exchange used for NODERED_USERNAME/NODERED_PASSWORD:
+ * 'nodered' (default) for Node-RED's own /auth/token password grant, or
+ * 'signalk' for Signal K's POST /signalk/v1/auth/login (Node-RED embedded in
+ * a Signal K server via the signalk-node-red plugin).
+ *
+ * A typo like `signal-k` used to fall back to the nodered exchange silently
+ * and fail far from the cause, at the Node-RED endpoint — so unknown values
+ * are rejected outright, and the error names the variable to fix.
+ */
+export function getNodeRedAuthExchange(): 'nodered' | 'signalk' {
+  const raw = (process.env.NODERED_AUTH_EXCHANGE || 'nodered').trim().toLowerCase();
+  if (raw !== 'nodered' && raw !== 'signalk') {
+    throw new Error(
+      `Invalid NODERED_AUTH_EXCHANGE value "${process.env.NODERED_AUTH_EXCHANGE}": expected "nodered" or "signalk"`
+    );
+  }
+  return raw;
+}
+
+/**
+ * Root of the Signal K server that NODERED_URL points into: everything up to
+ * the plugin mount path, falling back to the URL's origin when there is no
+ * /plugins/ segment. The embedded admin API lives at e.g.
+ * http://host:3000/plugins/signalk-node-red/redAdmin, and the server itself
+ * may sit behind a reverse-proxy sub-path
+ * (https://host/sk/plugins/signalk-node-red/redAdmin) — the origin alone
+ * would drop that prefix and point the login at the wrong place.
+ */
+function getSignalKServerRoot(baseURL: string): string {
+  const pluginsIndex = baseURL.indexOf('/plugins/');
+  return pluginsIndex === -1 ? new URL(baseURL).origin : baseURL.substring(0, pluginsIndex);
+}
+
+/**
  * Remaining lifetime of a JWT in milliseconds, read from its `exp` claim.
  * Falls back to a conservative 1 hour for non-JWT or unreadable tokens —
  * callers re-exchange on use, so guessing low only costs an extra login.
@@ -424,17 +458,16 @@ function jwtLifetimeMs(token: string): number {
 
 async function fetchNodeRedToken(username: string, password: string): Promise<CachedNodeRedToken> {
   const baseURL = (process.env.NODERED_URL || 'http://localhost:1880').replace(/\/+$/, '');
-  const exchange = (process.env.NODERED_AUTH_EXCHANGE || 'nodered').toLowerCase();
+  const exchange = getNodeRedAuthExchange();
 
   if (exchange === 'signalk') {
     // Signal K server security — e.g. the signalk-node-red plugin's embedded
     // Node-RED, whose admin API is mounted under a sub-path behind the
     // server's own authentication. Credentials are exchanged at the server's
-    // POST /login (at the origin, not under the admin sub-path) and the
-    // returned JWT authorizes every admin API request.
-    const origin = new URL(baseURL).origin;
+    // documented login endpoint (resolved at the server root, not under the
+    // admin sub-path) and the returned JWT authorizes every admin API request.
     const response = await axios.post(
-      `${origin}/login`,
+      `${getSignalKServerRoot(baseURL)}/signalk/v1/auth/login`,
       { username, password },
       {
         timeout: parseInt(process.env.NODERED_TIMEOUT || '5000'),
@@ -444,11 +477,13 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
     const token = response.data?.token;
     if (typeof token !== 'string' || token.length === 0) {
       throw new Error(
-        `Unexpected response from Signal K /login: ${JSON.stringify(response.data).substring(0, 200)}`
+        `Unexpected response from Signal K /signalk/v1/auth/login: ${JSON.stringify(response.data).substring(0, 200)}`
       );
     }
-    // Signal K's /login returns no expires_in — read the exp claim from the
-    // JWT itself, with a conservative fallback for opaque tokens.
+    // Signal K's login response carries no usable expires_in (it reports
+    // timeToLive, null when the token never expires), so derive the cache TTL
+    // from the JWT's own exp claim — with a conservative fallback for opaque
+    // tokens.
     const ttlMs = Math.max(jwtLifetimeMs(token) - 60_000, 5_000);
     return { accessToken: token, expiresAt: Date.now() + ttlMs };
   }
@@ -478,8 +513,13 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
 
 /**
  * When true, NODERED_USERNAME/NODERED_PASSWORD are exchanged for a Bearer
- * token via Node-RED's own /auth/token endpoint — i.e. Node-RED's adminAuth
- * is enabled and is the thing actually checking these credentials.
+ * token on first use instead of being sent as a static HTTP Basic header —
+ * i.e. the credentials belong to the component that actually authenticates
+ * the admin API. That's Node-RED's own adminAuth (`/auth/token` exchange)
+ * when NODERED_ADMIN_AUTH_ENABLED=true, or the Signal K server itself when
+ * NODERED_AUTH_EXCHANGE=signalk — naming that exchange implies this gate,
+ * since a static Basic header can never reach the plugin's admin routes and
+ * would just 401 at Signal K.
  *
  * When false (default), those credentials are sent as a static HTTP Basic
  * header on every request instead, via getNodeRedAuthHeader(). That's for
@@ -490,7 +530,9 @@ async function fetchNodeRedToken(username: string, password: string): Promise<Ca
  * would 401 immediately at the proxy, before ever reaching Node-RED.
  */
 export function isNodeRedAdminAuthEnabled(): boolean {
-  return process.env.NODERED_ADMIN_AUTH_ENABLED === 'true';
+  return (
+    process.env.NODERED_ADMIN_AUTH_ENABLED === 'true' || getNodeRedAuthExchange() === 'signalk'
+  );
 }
 
 /**
@@ -533,8 +575,9 @@ async function resolveBearerToken(forceRefresh: boolean): Promise<string | undef
  * Resolve a usable Authorization header for Node-RED's HTTP admin API.
  *
  * Bearer mode (NODERED_API_TOKEN) always uses that token directly. Basic mode
- * (NODERED_USERNAME/PASSWORD) uses a Bearer token from the /auth/token
- * exchange only when isNodeRedAdminAuthEnabled() is true; otherwise it falls
+ * (NODERED_USERNAME/PASSWORD) uses a Bearer token from the configured
+ * exchange (Node-RED's /auth/token, or Signal K's /signalk/v1/auth/login)
+ * only when isNodeRedAdminAuthEnabled() is true; otherwise it falls
  * back to a static HTTP Basic header via getNodeRedAuthHeader() (see that
  * function's caveat: Node-RED's own admin API does not accept Basic auth, so
  * this fallback path is only correct when the credentials are actually meant
