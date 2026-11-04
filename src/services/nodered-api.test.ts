@@ -313,34 +313,46 @@ describe('NodeRedAPIClient', () => {
     });
 
     describe('deployFlows', () => {
-      it('should deploy with default full type', async () => {
+      it('should require flows for a full deploy', async () => {
+        await expect(client.deployFlows()).rejects.toThrow(/options\.flows/);
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
+      });
+
+      it('should send the flows payload as the body', async () => {
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
+        const flows = [
+          { id: 'tab1', type: 'tab', label: 'Tab 1' },
+          { id: 'n1', type: 'inject', z: 'tab1' },
+        ];
 
-        await client.deployFlows();
+        await client.deployFlows({ type: 'nodes', flows });
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'full' },
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', flows, {
+          headers: { 'Node-RED-Deployment-Type': 'nodes' },
         });
       });
 
-      it('should deploy with specified type', async () => {
+      it('should deploy reload with a valid empty JSON body', async () => {
         mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
-        await client.deployFlows({ type: 'nodes' });
+        await client.deployFlows({ type: 'reload' });
 
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'nodes' },
-        });
+        expect(mockAxiosInstance.post).toHaveBeenCalledWith(
+          '/flows',
+          {},
+          {
+            headers: { 'Node-RED-Deployment-Type': 'reload' },
+          }
+        );
       });
     });
 
     describe('enableFlow', () => {
-      it('should enable a flow and deploy', async () => {
+      it('should enable a flow without a separate deploy', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockDisabledFlow });
         mockAxiosInstance.put.mockResolvedValueOnce({
           data: { ...mockDisabledFlow, disabled: false },
         });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.enableFlow('flow-disabled');
 
@@ -349,17 +361,14 @@ describe('NodeRedAPIClient', () => {
           '/flow/flow-disabled',
           expect.objectContaining({ disabled: false })
         );
-        expect(mockAxiosInstance.post).toHaveBeenCalledWith('/flows', null, {
-          headers: { 'Node-RED-Deployment-Type': 'flows' },
-        });
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
     });
 
     describe('disableFlow', () => {
-      it('should disable a flow and deploy', async () => {
+      it('should disable a flow without a separate deploy', async () => {
         mockAxiosInstance.get.mockResolvedValueOnce({ data: mockFlowTab });
         mockAxiosInstance.put.mockResolvedValueOnce({ data: { ...mockFlowTab, disabled: true } });
-        mockAxiosInstance.post.mockResolvedValueOnce({ data: {} });
 
         await client.disableFlow('flow-1');
 
@@ -368,6 +377,7 @@ describe('NodeRedAPIClient', () => {
           '/flow/flow-1',
           expect.objectContaining({ disabled: true })
         );
+        expect(mockAxiosInstance.post).not.toHaveBeenCalled();
       });
     });
   });
@@ -870,18 +880,6 @@ describe('NodeRedAPIClient', () => {
       });
     });
 
-    describe('setGlobalContext', () => {
-      it('should set global context value', async () => {
-        mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
-
-        await client.setGlobalContext('newKey', 'newValue');
-
-        expect(mockAxiosInstance.put).toHaveBeenCalledWith('/context/global/newKey', {
-          value: 'newValue',
-        });
-      });
-    });
-
     describe('deleteGlobalContext', () => {
       it('should delete global context key', async () => {
         mockAxiosInstance.delete.mockResolvedValueOnce({ data: {} });
@@ -908,18 +906,6 @@ describe('NodeRedAPIClient', () => {
         const context = await client.getFlowContext('flow-1', 'flowVar');
 
         expect(mockAxiosInstance.get).toHaveBeenCalledWith('/context/flow/flow-1/flowVar');
-      });
-    });
-
-    describe('setFlowContext', () => {
-      it('should set flow context value', async () => {
-        mockAxiosInstance.put.mockResolvedValueOnce({ data: {} });
-
-        await client.setFlowContext('flow-1', 'flowVar', 'newValue');
-
-        expect(mockAxiosInstance.put).toHaveBeenCalledWith('/context/flow/flow-1/flowVar', {
-          value: 'newValue',
-        });
       });
     });
   });
@@ -1276,7 +1262,7 @@ describe('NodeRedAPIClient', () => {
 
     it('deployFlows propagates error', async () => {
       mockAxiosInstance.post.mockRejectedValueOnce(err);
-      await expect(client.deployFlows()).rejects.toThrow();
+      await expect(client.deployFlows({ type: 'reload' })).rejects.toThrow();
     });
 
     it('enableFlow propagates error', async () => {
@@ -1354,11 +1340,6 @@ describe('NodeRedAPIClient', () => {
       await expect(client.getGlobalContext()).rejects.toThrow();
     });
 
-    it('setGlobalContext propagates error', async () => {
-      mockAxiosInstance.put.mockRejectedValueOnce(err);
-      await expect(client.setGlobalContext('key', 'value')).rejects.toThrow();
-    });
-
     it('deleteGlobalContext propagates error', async () => {
       mockAxiosInstance.delete.mockRejectedValueOnce(err);
       await expect(client.deleteGlobalContext('key')).rejects.toThrow();
@@ -1367,11 +1348,6 @@ describe('NodeRedAPIClient', () => {
     it('getFlowContext propagates error', async () => {
       mockAxiosInstance.get.mockRejectedValueOnce(err);
       await expect(client.getFlowContext('flow-1')).rejects.toThrow();
-    });
-
-    it('setFlowContext propagates error', async () => {
-      mockAxiosInstance.put.mockRejectedValueOnce(err);
-      await expect(client.setFlowContext('flow-1', 'key', 'val')).rejects.toThrow();
     });
 
     it('getLibraryEntries propagates error', async () => {
