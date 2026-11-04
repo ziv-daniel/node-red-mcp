@@ -45,10 +45,8 @@ const mockNodeRedClient = {
   testConnection: vi.fn().mockResolvedValue(true),
   getRuntimeInfo: vi.fn(),
   getGlobalContext: vi.fn(),
-  setGlobalContext: vi.fn(),
   deleteGlobalContext: vi.fn(),
   getFlowContext: vi.fn(),
-  setFlowContext: vi.fn(),
   deleteFlow: vi.fn(),
   getFlowStatus: vi.fn(),
   getSettings: vi.fn(),
@@ -151,10 +149,8 @@ describe('McpNodeRedServer', () => {
     mockNodeRedClient.getInstalledModules.mockResolvedValue(mockInstalledModules);
     mockNodeRedClient.getRuntimeInfo.mockResolvedValue(mockRuntimeInfo);
     mockNodeRedClient.getGlobalContext.mockResolvedValue({});
-    mockNodeRedClient.setGlobalContext.mockResolvedValue(undefined);
     mockNodeRedClient.deleteGlobalContext.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowContext.mockResolvedValue({});
-    mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
     mockNodeRedClient.deleteFlow.mockResolvedValue(undefined);
     mockNodeRedClient.getFlowStatus.mockResolvedValue(mockFlowStatus);
     mockNodeRedClient.getSettings.mockResolvedValue(mockSettings);
@@ -337,9 +333,9 @@ describe('McpNodeRedServer', () => {
       expect(tool?.annotations?.readOnlyHint).toBe(true);
     });
 
-    it('should have exactly 20 tools defined', () => {
+    it('should have exactly 19 tools defined', () => {
       const tools = mcpServer.getToolDefinitions();
-      expect(tools.length).toBe(20);
+      expect(tools.length).toBe(19);
     });
 
     it('should include semantic_search_flows tool', () => {
@@ -603,60 +599,6 @@ describe('McpNodeRedServer', () => {
 
     it('should return validation error when scope is flow but flowId is missing', async () => {
       const result = await mcpServer.callTool('get_context', { scope: 'flow' });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('flowId');
-    });
-  });
-
-  describe('Tool Execution - set_context', () => {
-    it('should write a global context variable', async () => {
-      mockNodeRedClient.setGlobalContext.mockResolvedValue(undefined);
-      const result = await mcpServer.callTool('set_context', { key: 'counter', value: 99 });
-
-      expect(mockNodeRedClient.setGlobalContext).toHaveBeenCalledWith('counter', 99);
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(true);
-      expect(parsed.data.key).toBe('counter');
-    });
-
-    it('should write a flow context variable', async () => {
-      mockNodeRedClient.setFlowContext.mockResolvedValue(undefined);
-      const result = await mcpServer.callTool('set_context', {
-        scope: 'flow',
-        flowId: 'flow-1',
-        key: 'localVar',
-        value: 'hello',
-      });
-
-      expect(mockNodeRedClient.setFlowContext).toHaveBeenCalledWith('flow-1', 'localVar', 'hello');
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(true);
-    });
-
-    it('should return validation error when key is missing', async () => {
-      const result = await mcpServer.callTool('set_context', { value: 1 });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('key');
-    });
-
-    it('should return validation error when value is missing', async () => {
-      const result = await mcpServer.callTool('set_context', { key: 'x' });
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('value');
-    });
-
-    it('should return validation error when scope is flow but flowId is missing', async () => {
-      const result = await mcpServer.callTool('set_context', {
-        scope: 'flow',
-        key: 'x',
-        value: 1,
-      });
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.success).toBe(false);

@@ -679,11 +679,24 @@ export class NodeRedAPIClient {
   }
 
   /**
-   * Deploy flows
+   * Deploy flows.
+   *
+   * Node-RED's admin API requires a JSON body on POST /flows for every
+   * deployment type except `reload` (which re-reads the flow configuration
+   * from storage instead of using the request body). The body must also be
+   * valid strict JSON — Node-RED's body-parser rejects the bare `null` this
+   * method used to send with a 400 before the route handler even runs. For
+   * non-reload types the body is the complete flow configuration to deploy
+   * (the flat array GET /flows returns).
    */
   async deployFlows(options: NodeRedDeploymentOptions = { type: 'full' }): Promise<void> {
     try {
-      await this.client.post('/flows', null, {
+      if (options.type !== 'reload' && !Array.isArray(options.flows)) {
+        throw new Error(
+          `deployFlows: options.flows (the complete flow configuration from GET /flows) is required for deployment type "${options.type}" — only "reload" deploys without a body`
+        );
+      }
+      await this.client.post('/flows', options.type === 'reload' ? {} : options.flows, {
         headers: {
           'Node-RED-Deployment-Type': options.type,
         },
@@ -700,8 +713,11 @@ export class NodeRedAPIClient {
     try {
       const flow = await this.getFlow(flowId);
       flow.disabled = false;
+      // PUT /flow applies and persists the change immediately — no separate
+      // deploy is needed. (The deployFlows call that used to run here always
+      // failed with a 400: it sent a bare `null` body, which Node-RED's
+      // body-parser rejects before the route handler runs.)
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `enableFlow(${flowId})`);
     }
@@ -714,8 +730,9 @@ export class NodeRedAPIClient {
     try {
       const flow = await this.getFlow(flowId);
       flow.disabled = true;
+      // Same as enableFlow: PUT /flow applies and persists the change
+      // immediately; no separate deploy is needed (and the old one 400'd).
       await this.updateFlow(flowId, flow);
-      await this.deployFlows({ type: 'flows' });
     } catch (error) {
       handleNodeRedError(error, `disableFlow(${flowId})`);
     }
@@ -924,17 +941,11 @@ export class NodeRedAPIClient {
     }
   }
 
-  /**
-   * Set global context value
-   */
-  async setGlobalContext(key: string, value: any): Promise<void> {
-    try {
-      this.assertSafeSegment(key, 'key');
-      await this.client.put(`/context/global/${key}`, { value });
-    } catch (error) {
-      handleNodeRedError(error, `setGlobalContext(${key})`);
-    }
-  }
+  // The admin API has no way to WRITE context: Node-RED only registers
+  // GET and DELETE routes for /context (verified in editor-api lib/admin),
+  // so setGlobalContext/setFlowContext (PUT /context/...) were removed —
+  // they could only ever fail. To set context, deploy a function node that
+  // calls global.set()/flow.set().
 
   /**
    * Delete global context key
@@ -960,19 +971,6 @@ export class NodeRedAPIClient {
       return response.data;
     } catch (error) {
       handleNodeRedError(error, `getFlowContext(${flowId}, ${key || 'all'})`);
-    }
-  }
-
-  /**
-   * Set flow context value
-   */
-  async setFlowContext(flowId: string, key: string, value: any): Promise<void> {
-    try {
-      this.assertSafeSegment(flowId, 'flowId');
-      this.assertSafeSegment(key, 'key');
-      await this.client.put(`/context/flow/${flowId}/${key}`, { value });
-    } catch (error) {
-      handleNodeRedError(error, `setFlowContext(${flowId}, ${key})`);
     }
   }
 

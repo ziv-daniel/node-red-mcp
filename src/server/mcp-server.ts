@@ -642,34 +642,6 @@ export class McpNodeRedServer {
         },
       },
       {
-        name: 'set_context',
-        description: 'Write a Node-RED context variable.',
-        annotations: { readOnlyHint: false },
-        inputSchema: {
-          type: 'object',
-          properties: {
-            scope: {
-              type: 'string',
-              enum: ['global', 'flow'],
-              description: 'Context scope (default: "global")',
-              default: 'global',
-            },
-            key: {
-              type: 'string',
-              description: 'Variable name to write',
-            },
-            value: {
-              description: 'Value to store (any JSON-serialisable type)',
-            },
-            flowId: {
-              type: 'string',
-              description: 'Flow tab ID (required when scope is "flow")',
-            },
-          },
-          required: ['key', 'value'],
-        },
-      },
-      {
         name: 'delete_context',
         description: 'Delete a Node-RED global context variable.',
         annotations: { readOnlyHint: false },
@@ -1022,19 +994,6 @@ export class McpNodeRedServer {
               ? await this.nodeRedClient.getFlowContext(args.flowId, key)
               : await this.nodeRedClient.getGlobalContext(key);
           result = { success: true, data: contextData, timestamp };
-          break;
-        }
-
-        case 'set_context': {
-          validateRequired(args, ['key', 'value']);
-          const scope = args?.scope || 'global';
-          if (scope === 'flow') {
-            validateRequired(args, ['flowId']);
-            await this.nodeRedClient.setFlowContext(args.flowId, args.key, args.value);
-          } else {
-            await this.nodeRedClient.setGlobalContext(args.key, args.value);
-          }
-          result = { success: true, data: { scope, key: args.key }, timestamp };
           break;
         }
 

@@ -166,6 +166,23 @@ and this project adheres to
 - [Circuit Breaker Pattern](https://martinfowler.com/bliki/CircuitBreaker.html)
 - [Exponential Backoff Strategy](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)
 
+### Removed
+
+- **`set_context` tool**: Node-RED's admin API only registers GET and DELETE
+  routes for `/context` — there is no way to write context over the admin API,
+  so the tool could only ever fail (404). To set a context value, deploy a
+  function node that calls `global.set()`/`flow.set()`.
+
+### Fixed
+
+- **Flow deploys**: `enable_flow`/`disable_flow` no longer report a spurious
+  HTTP 400 after applying the change. `PUT /flow` already applies and persists
+  the change, so the trailing `POST /flows` deploy — which sent a bare `null`
+  body that Node-RED's strict JSON body-parser always rejected — was removed.
+  `deployFlows` now matches the admin API contract: it requires the flow
+  configuration (`options.flows`) for `full`/`flows`/`nodes` deploys and sends a
+  valid empty JSON object for `reload`.
+
 ---
 
 ## [1.0.0] - 2025-06-12
