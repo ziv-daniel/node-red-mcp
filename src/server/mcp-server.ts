@@ -502,13 +502,18 @@ export class McpNodeRedServer {
       },
       {
         name: 'update_flow',
-        description: 'Update an existing Node-RED flow',
+        description:
+          'Update an existing Node-RED flow. Replaces the ENTIRE flow object: send the complete flow from get_flow (nodes AND configs arrays) — anything omitted is deleted. Applies immediately.',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
             flowId: { type: 'string', description: 'Flow ID to update' },
-            flowData: { type: 'object', description: 'Updated flow data' },
+            flowData: {
+              type: 'object',
+              description:
+                'Complete flow object to store (from get_flow, edited). A partial object deletes omitted nodes/configs.',
+            },
             validate: {
               type: 'boolean',
               description: 'If true, validate flowData for structural errors before updating',
@@ -520,7 +525,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'enable_flow',
-        description: 'Enable a specific Node-RED flow',
+        description:
+          'Enable a specific Node-RED flow. Applies immediately (PUT /flow) and persists — no separate deploy is needed.',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -532,7 +538,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'disable_flow',
-        description: 'Disable a specific Node-RED flow',
+        description:
+          'Disable a specific Node-RED flow. Applies immediately (PUT /flow) and persists — no separate deploy is needed.',
         annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
@@ -618,7 +625,8 @@ export class McpNodeRedServer {
       },
       {
         name: 'get_context',
-        description: 'Read Node-RED context variables (global or flow scope).',
+        description:
+          'Read Node-RED context variables (global or flow scope). Node-RED returns the value encoded as {msg, format}; a key that is not set reads back as msg "(undefined)" — that means "not set", not an error.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
@@ -798,7 +806,7 @@ export class McpNodeRedServer {
       {
         name: 'get_node_errors',
         description:
-          'Check Node-RED for nodes that are in an error state (red status) after deployment. Connects to the Node-RED event bus, collects retained node statuses, and returns any nodes with active errors or warnings. Use after create_flow or update_flow to catch nodes with missing required configuration.',
+          'Check Node-RED for nodes that are in an error state (red status) after deployment. Connects to the Node-RED event bus, collects retained node statuses, and returns any nodes with active errors or warnings. Use after create_flow or update_flow to catch nodes with missing required configuration. Only node statuses are checked: a runtime exception thrown inside a function node does not produce an error status, so an empty result is not proof that no runtime error occurred.',
         annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
