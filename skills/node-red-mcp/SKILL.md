@@ -13,8 +13,8 @@ This server talks to Node-RED's admin HTTP API. Two facts shape everything
 below:
 
 - **Every write is live.** There is no separate deploy step. `create_flow`,
-  `update_flow`, `enable_flow`, `disable_flow` and `delete_flow` change the
-  running instance the moment they succeed.
+  `update_flow`, `deploy_flow`, `deploy_nodes`, `enable_flow`, `disable_flow`
+  and `delete_flow` change the running instance the moment they succeed.
 - **`update_flow` replaces the whole flow tab.** Whatever you send becomes the
   flow. Nodes you leave out are deleted.
 
@@ -22,9 +22,9 @@ Every tool returns JSON text shaped like
 `{ "success": true, "data": ..., "timestamp": ... }` or
 `{ "success": false, "error": "...", "errorDetails": { code, statusCode, upstreamStatus?, upstreamResponse? } }`.
 A failed call does not throw: always read `success`. The exceptions are
-`create_flow`, `update_flow`, `enable_flow`, `disable_flow`, `search_modules`,
-`install_module` and unfiltered `get_installed_modules`, which return plain text
-or raw JSON on success.
+`create_flow`, `update_flow`, `deploy_flow`, `deploy_nodes`, `enable_flow`,
+`disable_flow`, `search_modules`, `install_module` and unfiltered
+`get_installed_modules`, which return plain text or raw JSON on success.
 
 ## Which tool for which intent
 
@@ -35,6 +35,8 @@ or raw JSON on success.
 | Find nodes by type, name or property    | `search_flows` (see Known issues)                                    |
 | Find flows by topic in natural language | `semantic_search_flows` (BM25 keyword ranking, see Known issues)     |
 | Change a flow                           | `get_flow`, edit, `update_flow` with `validate: true`                |
+| Safely replace a flow tab               | `get_flow`, then `deploy_flow` with its `rev`                        |
+| Add or update nodes                     | `get_flows`, then `deploy_nodes` with its `rev`                      |
 | Build a new flow                        | `create_flow` with `validate: true`                                  |
 | Check a deployed flow's wiring          | `validate_flow` with `flowId`                                        |
 | Find nodes showing red/yellow status    | `get_node_errors` (`includeWarnings: true` for yellow)               |

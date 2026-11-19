@@ -11,12 +11,28 @@ and this project adheres to
 
 ### Added
 
+- **`deploy_flow` tool**: Revision-safe replacement of one tab via Admin API v2.
+  Requires `expected_rev` from a prior `get_flows` / `get_flow` read (optimistic
+  concurrency like two editor sessions). Merges only that tab + its `z`
+  children, then `POST /flows` with the caller's `expected_rev`. Default
+  deployment type is `flows` (optional `nodes`). Nodes omitted from the provided
+  tab content are deleted. Returns the new `rev` on success. Prefer over
+  `update_flow` for concurrent-safe edits. Shares the `deployFlowsWithRev`
+  helper with `deploy_nodes`.
+- **`deploy_nodes` tool**: Upsert specific nodes by id and deploy with
+  `Node-RED-Deployment-Type: nodes` (editor "Modified Nodes"). Requires
+  `expected_rev` from a prior read; only the listed nodes restart. Optional
+  top-level `credentials`. Stale `expected_rev` fails fast with HTTP 409
+  guidance; returns the new `rev` on success.
+- **Flow `rev` on reads**: `get_flows` and `get_flow` return the current Admin
+  API v2 revision as a top-level `rev` sibling of `data` (existing `data` shape
+  unchanged) for use as `expected_rev` on deploy tools.
 - **Read-Only Mode (`MCP_READ_ONLY`)**: Structurally prevents mutation of
   Node-RED flows when exposing this server to remote agents
-  - Write tools (`create_flow`, `update_flow`, `delete_flow`, `enable_flow`,
-    `disable_flow`, `set_context`, `delete_context`, `install_module`) are
-    removed from `getToolDefinitions()`/tool listings entirely, so clients never
-    see them as available capabilities
+  - Write tools (`create_flow`, `update_flow`, `deploy_flow`, `deploy_nodes`,
+    `delete_flow`, `enable_flow`, `disable_flow`, `delete_context`,
+    `install_module`) are removed from `getToolDefinitions()`/tool listings
+    entirely, so clients never see them as available capabilities
   - `callTool` also rejects these tools if called directly by name, as
     defense-in-depth against a client that caches an older tool list
   - Derived from each tool's existing `readOnlyHint` annotation rather than a
