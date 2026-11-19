@@ -19,6 +19,13 @@ export interface NodeRedFlowTool {
 export interface McpToolResult {
   success: boolean;
   data?: any;
+  /**
+   * Current Node-RED Admin API v2 flow revision when the tool read or wrote
+   * flows. Added as a sibling of `data` so existing consumers of `data` keep
+   * their shape. Pass this value as `expected_rev` to `deploy_flow` /
+   * `deploy_nodes` for optimistic concurrency.
+   */
+  rev?: string;
   error?: string;
   /**
    * Machine-readable detail for a failed call: the error code, the HTTP status

@@ -17,6 +17,7 @@ import { McpNodeRedServer } from './mcp-server.js';
 const mockNodeRedClient = {
   getFlows: vi.fn(),
   getFlowSummaries: vi.fn(),
+  getFlowsWithRev: vi.fn(),
   getFlow: vi.fn(),
   createFlow: vi.fn(),
   updateFlow: vi.fn(),
@@ -42,13 +43,17 @@ const mockSSEHandler = {
   destroy: vi.fn(),
 };
 
-vi.mock('../services/nodered-api.js', () => ({
-  NodeRedAPIClient: class {
-    constructor() {
-      return mockNodeRedClient;
-    }
-  },
-}));
+vi.mock('../services/nodered-api.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../services/nodered-api.js')>();
+  return {
+    ...actual,
+    NodeRedAPIClient: class {
+      constructor() {
+        return mockNodeRedClient;
+      }
+    },
+  };
+});
 
 vi.mock('./sse-handler.js', () => ({
   SSEHandler: class {
@@ -78,6 +83,7 @@ describe('Pagination + filters', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNodeRedClient.testConnection.mockResolvedValue(true);
+    mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: [] });
     mcp = new McpNodeRedServer();
   });
 
@@ -92,6 +98,21 @@ describe('Pagination + filters', () => {
     beforeEach(() => {
       mockNodeRedClient.getFlowSummaries.mockResolvedValue(summaries);
       mockNodeRedClient.getFlows.mockResolvedValue(summaries);
+      // Build a flat snapshot that summarizeFlatFlows turns into `summaries`.
+      const flat: Record<string, unknown>[] = [];
+      for (const s of summaries) {
+        flat.push({
+          id: s.id,
+          type: 'tab',
+          label: s.label,
+          disabled: s.disabled,
+        });
+        for (let i = 0; i < (s.nodeCount ?? 0); i++) {
+          flat.push({ id: `${s.id}-n${i}`, type: 'inject', z: s.id, wires: [[]] });
+        }
+      }
+      mockNodeRedClient.getFlowsWithRev.mockResolvedValue({ rev: 'rev-1', flows: flat });
+      mockNodeRedClient.getFlowStatus.mockResolvedValue(null);
     });
 
     it('returns a plain array when no pagination params (legacy shape)', async () => {

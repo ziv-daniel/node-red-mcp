@@ -226,8 +226,19 @@ function summarizeResponseBody(data: unknown): string | undefined {
 
   if (typeof data === 'object') {
     const body = data as Record<string, any>;
-    const known = body.message || body.error_description || body.error;
-    if (typeof known === 'string' && known.trim()) return known.trim();
+    // Prefer a meaningful message, but Node-RED often returns
+    // `{ code: "version_mismatch", message: "Error" }` — skip the generic
+    // "Error" string so the machine-readable code surfaces instead.
+    const candidates = [body.message, body.error_description, body.error, body.code];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue;
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      if (/^error$/i.test(trimmed) && typeof body.code === 'string' && body.code.trim()) {
+        continue;
+      }
+      return trimmed;
+    }
     return safeStringify(body).slice(0, RESPONSE_PREVIEW_LIMIT);
   }
 
@@ -270,6 +281,28 @@ export function handleNodeRedError(error: any, context: string): never {
     // (missing permission) indistinguishable from a 404 (endpoint gone).
     const detail = summarizeResponseBody(data);
     const statusLabel = statusText ? `HTTP ${status} ${statusText}` : `HTTP ${status}`;
+
+    // Admin API v2 POST /flows returns 409 with `{ code: "version_mismatch" }`
+    // when the posted `rev` is stale — tell callers to re-read and retry.
+    // Only attach that hint for version_mismatch; other 409s keep a generic conflict.
+    if (status === 409) {
+      const code =
+        data && typeof data === 'object' && typeof (data as { code?: unknown }).code === 'string'
+          ? (data as { code: string }).code
+          : undefined;
+      const revHint =
+        code === 'version_mismatch'
+          ? '. The flow revision (rev) is out of date — re-read flows and retry.'
+          : '';
+      throw new NodeRedError(
+        `Node-RED API conflict in ${context}${requestSuffix}: ${statusLabel}${
+          detail ? ` — ${detail}` : ''
+        }${revHint}`,
+        409,
+        status,
+        data
+      );
+    }
 
     throw new NodeRedError(
       `Node-RED API error in ${context}${requestSuffix}: ${statusLabel}${
