@@ -41,7 +41,7 @@ or raw JSON on success.
 | Turn a flow on or off                   | `enable_flow` / `disable_flow`                                       |
 | Remove a flow                           | `delete_flow` (dry run first)                                        |
 | Read context variables                  | `get_context` (`scope: "global"` or `"flow"` with `flowId`)          |
-| Write or delete context                 | `set_context`, `delete_context` (global only; see Known issues)      |
+| Delete a context variable               | `delete_context` (global only)                                       |
 | Find or install palette modules         | `search_modules` (npm registry), `install_module`                    |
 | Version, per-type node counts, modules  | `get_runtime_info`                                                   |
 | Is the runtime started or stopped       | `get_flow_state`                                                     |
@@ -80,10 +80,9 @@ you have not sent yet; use `validate: true` on the write for that.
 ### Always ask the human first
 
 Get an explicit yes before `update_flow`, `create_flow`, `enable_flow`,
-`disable_flow`, `delete_flow` with `dryRun: false`, `set_context`,
-`delete_context` and `install_module`. Name the flow (label and id) and say what
-will happen. Never treat silence or an earlier general approval as a yes for a
-destructive call.
+`disable_flow`, `delete_flow` with `dryRun: false`, `delete_context` and
+`install_module`. Name the flow (label and id) and say what will happen. Never
+treat silence or an earlier general approval as a yes for a destructive call.
 
 `delete_flow` is a dry run by default and returns `wouldDelete`. Show that to
 the human. Only after their yes, call it again with `dryRun: false` and
@@ -122,6 +121,8 @@ the human. Only after their yes, call it again with `dryRun: false` and
   `{ "label": "new" }`) deletes every node in the flow.
 - `get_context` returns `{ "msg": "(undefined)", "format": "undefined" }` for a
   key that does not exist. That is "not set", not an error.
+- Context cannot be written through the admin API at all. To set a value, deploy
+  a function node that calls `global.set()` / `flow.set()`.
 - `semantic_search_flows` caches its index for about a minute. Pass
   `refresh: true` after an edit.
 - `semantic_search_flows` scores are relative: the best hit is always `1`.
@@ -141,10 +142,6 @@ an entry once it is fixed.
   yourself.
 - `get_flows` summaries carry no `nodeCount`, so `sortBy: "nodeCount"` has no
   effect.
-- `enable_flow` and `disable_flow` apply the change, then report
-  `success: false` with an HTTP 400 from `POST /flows`. Check the real state
-  with `get_flows` before retrying.
-- `set_context` fails with 404: Node-RED's admin API cannot write context.
 - `get_installed_modules` fails with "returned HTML instead of JSON". Use
   `get_runtime_info`, whose `modules` field lists installed modules.
 - `semantic_search_flows` only matches ASCII words. For labels in other

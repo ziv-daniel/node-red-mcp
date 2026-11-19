@@ -199,8 +199,17 @@ export interface NodeRedFlowStatus {
 }
 
 export interface NodeRedDeploymentOptions {
-  type: 'full' | 'nodes' | 'flows';
+  /**
+   * `reload` re-reads the flow configuration from storage and needs no body;
+   * every other type deploys the configuration sent as the request body.
+   */
+  type: 'full' | 'nodes' | 'flows' | 'reload';
   nodes?: string[];
+  /**
+   * The complete flow configuration to deploy (the flat array GET /flows
+   * returns). Required for every type except `reload`.
+   */
+  flows?: unknown[];
 }
 
 export interface NodeRedAPIError {
